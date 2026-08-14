@@ -10,6 +10,37 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 
 const loader = new GLTFLoader();
 
+/* GLTFLoader normally turns embedded GLB images into blob: URLs and loads them
+ * through fetch(). Some Chromium/WebView builds reject that blob fetch even
+ * though they support decoding the exact same Blob. Decode embedded PNG/JPEG
+ * data directly before the loader creates a URL so model materials keep their
+ * textures instead of falling back to white. External image URIs still follow
+ * Three.js's normal loader path. */
+loader.register((parser) => {
+  const loadImageSource = parser.loadImageSource.bind(parser);
+  parser.loadImageSource = (sourceIndex, textureLoader) => {
+    const source = parser.json.images?.[sourceIndex];
+    if (source?.bufferView === undefined || typeof globalThis.createImageBitmap !== 'function') {
+      return loadImageSource(sourceIndex, textureLoader);
+    }
+    if (parser.sourceCache[sourceIndex] !== undefined) {
+      return parser.sourceCache[sourceIndex].then((texture) => texture.clone());
+    }
+    const promise = parser.getDependency('bufferView', source.bufferView)
+      .then((bufferView) => createImageBitmap(new Blob([bufferView], { type: source.mimeType }), {
+        premultiplyAlpha: 'none', colorSpaceConversion: 'none',
+      }))
+      .then((imageBitmap) => {
+        const texture = new THREE.Texture(imageBitmap);
+        texture.needsUpdate = true;
+        return texture;
+      });
+    parser.sourceCache[sourceIndex] = promise;
+    return promise;
+  };
+  return { name: 'CONSTELLATION_direct_embedded_images' };
+});
+
 export function decodeGltfAsset({ entry, bytes }) {
   return new Promise((resolve, reject) => {
     loader.parse(bytes, '', (gltf) => resolve(Object.freeze({

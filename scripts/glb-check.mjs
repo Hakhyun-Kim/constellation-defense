@@ -38,9 +38,26 @@ function inspectGlb(entry) {
     throw new Error('BIN chunk 누락');
   }
   const binLength = bytes.readUInt32LE(binOffset);
+  const bin = bytes.subarray(binOffset + 8, binOffset + 8 + binLength);
   if (binOffset + 8 + binLength !== bytes.length) throw new Error('BIN chunk 길이 불일치');
   if (json.buffers?.length !== 1 || json.buffers[0].uri) throw new Error('외부 또는 data URI buffer가 남음');
   if ((json.images || []).some((image) => image.uri)) throw new Error('외부 image URI가 남음');
+
+  for (const image of json.images || []) {
+    if (!Number.isInteger(image.bufferView)) throw new Error('embedded image bufferView missing');
+    const view = json.bufferViews?.[image.bufferView];
+    const offset = view?.byteOffset || 0;
+    const length = view?.byteLength || 0;
+    if (!Number.isInteger(length) || length < 4 || offset < 0 || offset + length > bin.length) {
+      throw new Error('embedded image bufferView is out of range');
+    }
+    const imageBytes = bin.subarray(offset, offset + length);
+    const png = imageBytes[0] === 0x89 && imageBytes[1] === 0x50 && imageBytes[2] === 0x4e && imageBytes[3] === 0x47;
+    const jpeg = imageBytes[0] === 0xff && imageBytes[1] === 0xd8 && imageBytes[2] === 0xff;
+    if (image.mimeType === 'image/png' && !png) throw new Error('PNG embedded image magic mismatch');
+    if (image.mimeType === 'image/jpeg' && !jpeg) throw new Error('JPEG embedded image magic mismatch');
+    if (image.mimeType !== 'image/png' && image.mimeType !== 'image/jpeg') throw new Error(`unsupported embedded image MIME: ${image.mimeType}`);
+  }
 
   const triangles = (json.meshes || []).reduce((sum, mesh) => sum + (mesh.primitives || []).reduce((meshSum, primitive) => {
     const accessor = json.accessors?.[primitive.indices];
@@ -50,6 +67,7 @@ function inspectGlb(entry) {
     bytes: bytes.length,
     meshes: json.meshes?.length || 0,
     triangles: Math.round(triangles),
+    images: json.images?.length || 0,
     animations: (json.animations || []).map((animation) => animation.name),
   };
 }

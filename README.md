@@ -9,11 +9,15 @@ During battle, swap neighboring stars on the 6×6 board. Each match targets the 
 - **Flare** damages enemies on that road.
 - **Tide** slows that road's enemy line.
 - **Bloom** restores the citadel and pushes danger back.
-- Four- and five-star constellations create stronger tactical moments.
+- Four-star matches add one constellation mark and five-star matches add two.
+  Complete three marks, then bank the **Constellation Guardian** until a boss or
+  critical lane needs its focused support fire.
 
 The player’s choices are deliberately focused: choose a route and companions on the expedition, position the recruited heroes, select their specializations and castle upgrades between battles, then react with tactical swaps during the fight. Random summoning, duplicate heroes, rank combinations, and rarity collection are not part of the current game.
 
 The redesign decisions and verification gates are recorded in [docs/design/journey-campaign-redesign.md](docs/design/journey-campaign-redesign.md).
+The current pacing and bankable-constellation rule is documented in
+[docs/design/constellation-aid-and-defense-pacing.md](docs/design/constellation-aid-and-defense-pacing.md).
 For a fresh setup or handoff to another computer, start with [docs/CONTINUATION.md](docs/CONTINUATION.md).
 
 ## Play

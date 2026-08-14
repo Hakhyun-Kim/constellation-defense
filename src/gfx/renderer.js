@@ -136,6 +136,7 @@ export class Renderer3D {
     this.enemyViews = new Map();
     this.projViews = new Map();
     this.blueprintViews = new Map();
+    this.constellationAidViews = new Map();
     this.gatePilot = null;
     this.gatePilotRequest = null;
     this.castleFortify = 0;
@@ -713,6 +714,28 @@ export class Renderer3D {
     return { group, sprite, ring, attackT: 0 };
   }
 
+  _makeConstellationAidView() {
+    const group = new THREE.Group();
+    const { group: model, refs } = makeHumanHero('mage', 2);
+    model.scale.setScalar(.78);
+    model.rotation.y = Math.PI;
+    model.position.y = .05;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(.52, .7, 24),
+      new THREE.MeshBasicMaterial({ color: 0xd8b4ff, transparent: true, opacity: .78, depthWrite: false }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = .04;
+    const star = new THREE.Mesh(
+      new THREE.OctahedronGeometry(.16),
+      new THREE.MeshBasicMaterial({ color: 0xffe27a }),
+    );
+    star.position.set(0, 1.28, 0);
+    group.add(model, ring, star);
+    this.scene.add(group);
+    return { group, model, refs, ring, star, attackT: 0 };
+  }
+
   /* ---------- 상태 동기화 ---------- */
   sync(state) {
     const fieldIds = new Set();
@@ -757,6 +780,23 @@ export class Renderer3D {
       if (!blueprintIds.has(id)) {
         this.scene.remove(view.group);
         this.blueprintViews.delete(id);
+      }
+    }
+
+    const aidIds = new Set();
+    for (const summon of state.constellationAids || []) {
+      aidIds.add(summon.id);
+      let view = this.constellationAidViews.get(summon.id);
+      if (!view) {
+        view = this._makeConstellationAidView();
+        this.constellationAidViews.set(summon.id, view);
+      }
+      view.group.position.set(wx(summon.x), 0, wz(summon.y));
+    }
+    for (const [id, view] of this.constellationAidViews) {
+      if (!aidIds.has(id)) {
+        this.scene.remove(view.group);
+        this.constellationAidViews.delete(id);
       }
     }
 
@@ -814,7 +854,7 @@ export class Renderer3D {
         v = this._makeProjView(p);
         this.projViews.set(p.id, v);
       }
-      const y3 = p.kind === 'bolt' ? 1.6 : 0.85;
+      const y3 = p.kind === 'bolt' ? 1.6 : p.kind === 'constellation' ? 1.25 : 0.85;
       const nx = wx(p.x), nz = wz(p.y);
       if (p.kind === 'arrow' && v.lastPos) {
         const dx = nx - v.lastPos.x, dz = nz - v.lastPos.z;
@@ -920,6 +960,13 @@ export class Renderer3D {
       );
       g.add(stamp);
       g.userData.pulse = true;
+    } else if (p.kind === 'constellation') {
+      const star = new THREE.Mesh(
+        new THREE.OctahedronGeometry(.2),
+        new THREE.MeshBasicMaterial({ color: 0xffe27a }),
+      );
+      g.add(star);
+      g.userData.pulse = true;
     } else {
       const bolt = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), new THREE.MeshBasicMaterial({ color: 0x8df3ff }));
       g.add(bolt);
@@ -1014,6 +1061,22 @@ export class Renderer3D {
         }
         case 'blueprintDismiss': {
           this.burst(x3, .62, z3, 0x8aa69a, 6, 1.4, { grav: .5, ttl: .35 });
+          break;
+        }
+        case 'constellationAidSummon': {
+          this._shockRing(x3, z3, 1.12, 0xd8b4ff, .5, .16);
+          this.burst(x3, .85, z3, 0xd8b4ff, 14, 2.5, { grav: .7, ttl: .46 });
+          this.showNumber(x3, 2.05, z3, '✦ 별자리 수호자', '#fff0ae', 1.02);
+          break;
+        }
+        case 'constellationAidAttack': {
+          const view = this.constellationAidViews.get(ev.summonId);
+          if (view) view.attackT = 1;
+          this.burst(x3, 1.1, z3, 0xffe27a, 5, 1.6, { grav: .2, ttl: .32 });
+          break;
+        }
+        case 'constellationAidDismiss': {
+          this.burst(x3, .72, z3, 0xb9a0dc, 8, 1.8, { grav: .4, ttl: .38 });
           break;
         }
         case 'kill': {
@@ -1290,6 +1353,23 @@ export class Renderer3D {
       }
     }
 
+    for (const [id, view] of this.constellationAidViews) {
+      view.ring.rotation.z = t * 1.8;
+      view.ring.material.opacity = .56 + Math.sin(t * 4 + id) * .18;
+      view.star.rotation.y = t * 3.2;
+      view.star.position.y = 1.28 + Math.sin(t * 3.4 + id) * .09;
+      if (view.refs.staffOrb) view.refs.staffOrb.scale.setScalar(1 + Math.sin(t * 5 + id) * .16);
+      if (view.attackT > 0) {
+        view.attackT = Math.max(0, view.attackT - dt * 3.8);
+        const k = Math.sin((1 - view.attackT) * Math.PI);
+        view.refs.armPivot.rotation.x = -1.9 * k;
+        view.star.scale.setScalar(1 + k * .5);
+      } else {
+        view.refs.armPivot.rotation.x *= .8;
+        view.star.scale.setScalar(1);
+      }
+    }
+
     for (const [id, v] of this.enemyViews) {
       const bossHop = v.boss ? 4.2 : (v.midBoss ? 5.5 : 7);
       const hop = Math.abs(Math.sin(t * bossHop + id)) * (v.boss || v.midBoss ? 0.2 : 0.14);
@@ -1461,6 +1541,8 @@ export class Renderer3D {
     for (const view of this.enemyViews.values()) this._disposePilotView(view);
     for (const view of this.blueprintViews.values()) view.group.removeFromParent();
     this.blueprintViews.clear();
+    for (const view of this.constellationAidViews.values()) view.group.removeFromParent();
+    this.constellationAidViews.clear();
     if (this.decor) {
       this.grass.dispose();
       this.sea.dispose();

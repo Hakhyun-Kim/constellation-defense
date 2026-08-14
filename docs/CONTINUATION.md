@@ -8,12 +8,15 @@ up `Constellation Defense` on another computer.
 ## Current handoff state
 
 - Branch: `main`
-- Latest feature/fix commit: run `git log -1 --oneline`; the current handoff is
-  P3-4's local playtest aggregation and conservative Early Access evidence gate.
-- Working tree at handoff: clean after the P3-4 tooling commit.
-- Latest deterministic gates: `npm.cmd run check` and `npm.cmd run storage:check`
-  passed on 2026-08-14. The first-expedition and full two-chapter 60-run balance
-  gates also passed with the real match-3, hero-active, and blueprint policies.
+- Latest feature/fix commit: run `git log -1 --oneline`; the current local
+  follow-up adds defense pacing, bankable constellation support, and an
+  embedded-GLB texture decode workaround.
+- Working tree at handoff: contains that local feature/fix until it is reviewed
+  and committed. Preserve it when taking the next task.
+- Latest deterministic gates: `npm.cmd run check` and
+  `node scripts/balance-check.mjs 60` passed locally on 2026-08-14. The
+  first-expedition and full two-chapter 60-run balance policies use real
+  match-3, hero-active, blueprint, and constellation-support commands.
 
 The current campaign is an authored constellation expedition. It starts with
 Arin and Luna, uses a fixed five-hero party, and connects short defense stages
@@ -50,9 +53,14 @@ commits:
 - `ed530be` gives the town continuous delta-time movement, normalized diagonal
   input, axis-separated collision sliding, click-to-walk, held mobile controls,
   animated procedural characters, and camera follow.
-- `48775b8` starts a completed encounter's next defense after a visible
-  four-second countdown. The first defense remains deliberate and overlays
-  pause the clock.
+- `48775b8` introduced automatic linked defenses; the current follow-up uses a
+  visible ten-second countdown for the first and subsequent defenses. Choosing
+  the map battle remains deliberate, and overlays pause the clock.
+- The 2026-08-14 follow-up adds a short `VICTORY` acknowledgement before a
+  completed node returns to the map. Four- and five-star matches now charge a
+  save-safe Constellation Guardian that can be held for a boss; it is an
+  engine-owned temporary support, not a new board rule. See
+  [constellation-aid-and-defense-pacing.md](design/constellation-aid-and-defense-pacing.md).
 - `2d49fd0` gives all five named heroes an engine-owned active command with
   cooldown, UI selection, bot use, deterministic tests, and localized effects.
 - `03f53dc` makes reduced effects the default, respects the OS reduced-motion

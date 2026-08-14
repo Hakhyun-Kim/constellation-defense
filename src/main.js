@@ -424,6 +424,7 @@ function newGame(difficulty, opts = {}) {
   if (opts.retry) sessionMeter?.action('restarts');
   refreshAll();
   ui.hideOver();
+  ui.hideDefenseVictory();
   music.setWave(1);
   /* 이어하기 메뉴를 띄울 때는 프롤로그를 잠시 미룬다 — 메뉴 위에 이야기가 겹치면 안 된다 */
   if (!opts.holdStory) playStory('prologue');
@@ -440,6 +441,7 @@ function startTrial() {
   giveStarters();
   resetSession();
   ui.hideVictory();
+  ui.hideDefenseVictory();
   refreshAll();
   music.setWave(1);
   SFX.waveStart();
@@ -603,6 +605,22 @@ function doMonsterBlueprint() {
   renderer.onEvents(state, result.events);
   handleEvents(result.events);
   sessionMeter?.action('blueprintCasts');
+  ui.updateHud(state, store.shards, store.best(state.difficulty));
+  return true;
+}
+function doConstellationAid() {
+  const result = E.castConstellationAid(state);
+  if (!result.ok) {
+    if (result.reason === 'phase') ui.toast('✦ 별자리 수호자는 전투 중에만 부를 수 있어요.', 'bad');
+    else if (result.reason === 'charge') ui.toast(`✦ 성좌 인장 ${result.charge || 0}/${D.TACTICS.constellationAid.chargeNeeded} · 4매치 +1, 5매치 +2`, 'bad');
+    else if (result.reason === 'active') ui.toast('✦ 별자리 수호자가 이미 길을 지키고 있어요.');
+    else if (result.reason === 'none') ui.toast('✦ 적이 나타나면 가장 위급한 길에 수호자를 보낼 수 있어요.');
+    return false;
+  }
+  SFX.ultimate();
+  renderer.onEvents(state, result.events);
+  handleEvents(result.events);
+  sessionMeter?.action('constellationAids');
   ui.updateHud(state, store.shards, store.best(state.difficulty));
   return true;
 }
@@ -979,8 +997,19 @@ function handleEvents(events) {
           if (key) setTimeout(() => playStory(key), 700);
         }
         break;
+      case 'constellationCharge':
+        if (ev.charge < ev.needed) ui.toast(`✦ 성좌 인장 +${ev.gained} · ${ev.charge}/${ev.needed}`, 'good');
+        break;
+      case 'constellationReady':
+        SFX.shard();
+        ui.toast('✦ 성좌 완성! 별자리 지원 준비 완료 · 보스까지 아껴 둘 수 있어요.', 'good');
+        break;
+      case 'constellationAidSummon':
+        ui.toast('✦ 별자리 수호자가 길을 지킵니다!', 'good');
+        break;
       case 'journeyReturn':
         SFX.waveClear();
+        ui.showDefenseVictory({ name: ev.name, total: ev.total, state });
         ui.toast(`✦ ${ev.name} · 방어 ${ev.total}/${ev.total} 완료! 다음 별길을 선택하세요.`, 'good');
         autoSave();
         refreshAll();
@@ -1279,6 +1308,7 @@ const handlers = {
   },
   onHeroActive(heroId) { doHeroActive(heroId); },
   onMonsterBlueprint() { return doMonsterBlueprint(); },
+  onConstellationAid() { return doConstellationAid(); },
   onSceneClick(cx, cy) {
     const pad = renderer.screenToPad(cx, cy);
     if (pad == null) { deselectAll(); return; }
@@ -1748,7 +1778,7 @@ function isPaused() {
   /* 이야기는 준비 단계에만 뜨므로 멈출 게 없지만, 전설 연출은 전투 중에도 뜬다.
    * 별자리(스킬)·옷장·도감·승리 화면도 멈춘다 — 열어 놓고 고민할 시간을 준다 */
   return ui.isMetaOpen() || ui.isSkillOpen() || ui.isClosetOpen() || ui.isSettingsOpen()
-    || ui.isRevealOpen() || ui.isBookOpen() || ui.isVictoryOpen() || state.phase === 'over';
+    || ui.isRevealOpen() || ui.isBookOpen() || ui.isVictoryOpen() || ui.isDefenseVictoryOpen() || state.phase === 'over';
 }
 
 let desktopInfo = null;
@@ -1803,7 +1833,7 @@ function setEffectsPreference(next) {
 function observePlaySession(now, forceInactive = false) {
   if (!sessionMeter || sessionMeter.finished) return;
   const management = ui.isMetaOpen() || ui.isSkillOpen() || ui.isClosetOpen() || ui.isSettingsOpen()
-    || ui.isBookOpen() || ui.isVictoryOpen();
+    || ui.isBookOpen() || ui.isVictoryOpen() || ui.isDefenseVictoryOpen();
   const phase = ui.isStoryOpen() ? 'story'
     : ui.isVillageActive() ? 'village'
       : management ? 'management' : state.phase;
@@ -1989,7 +2019,8 @@ if (judgeMode) {
   E.prepareJourneyBattle(state);
   prepareJudgeWave(state);
   refreshAll();
-  tryStartWave();
+  /* The direct review route skips menus, not the first-defense countdown.
+   * Reviewers can still use the same manual-start override as normal play. */
   /* 성능 비교는 로딩 시간 차이 때문에 서로 다른 전투 시점을 재지 않도록
    * 같은 시드의 초반 전투를 고정 틱만큼 진행한 뒤 엔진 상태를 멈춘다. */
   if (perfMode) {

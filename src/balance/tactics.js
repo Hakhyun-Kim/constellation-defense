@@ -23,6 +23,19 @@ export const TACTICS = {
     pushCount: { 3: 2, 4: 4, 5: 4 },
     pushDistance: { 3: 48, 4: 48, 5: 100 },
   },
+  /* Four- and five-star matches leave a persistent constellation mark.  The
+   * player can bank a completed set for an upcoming boss rather than having
+   * every large match resolve as immediate power. */
+  constellationAid: {
+    chargeNeeded: 3,
+    marks: { 4: 1, 5: 2 },
+    duration: 12,
+    attackPeriod: .8,
+    damage: 46,
+    bossDamageMul: 1.75,
+    projectileSpeed: 520,
+    deployProgress: .7,
+  },
 };
 
 export const tacticPower = (size) => (size >= 5 ? 1.9 : size === 4 ? 1.35 : 1);

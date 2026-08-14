@@ -2,19 +2,17 @@
  * it never decides combat results and only asks main to press the same start
  * action available to the player. */
 
-export const AUTO_PHASE_DELAY = 4;
+export const AUTO_PHASE_DELAY = 10;
 
 export function autoPhaseKey(state) {
   if (!state || state.phase !== 'prep') return null;
   if (state.journey?.activeBattle) {
-    /* The first defense after choosing a map node is a deliberate player start.
-     * Only the next defense in that same encounter is linked automatically. */
-    if ((state.journey.wavesInBattle || 0) <= 0) return null;
+    /* Choosing a battle node is the deliberate action. Once its preparation
+     * screen is visible, every defense (including the first) uses the same
+     * readable countdown and the same manual start override. */
     return `journey:${state.journey.activeBattle}:${state.journey.wavesInBattle}`;
   }
-  /* The very first wave remains an onboarding/setup moment. */
-  if ((state.wave || 1) <= 1) return null;
-  return `wave:${state.loop || 0}:${state.wave}`;
+  return `wave:${state.loop || 0}:${state.wave || 1}`;
 }
 
 export function createAutoPhaseClock() {

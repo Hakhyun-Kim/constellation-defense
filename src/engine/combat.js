@@ -11,6 +11,7 @@ import { damageEnemy, applyBurn, applySlow, applyStun } from './effects.js';
 import { createResonance, resonanceDamageMul } from './resonance.js';
 import { completeJourneyWave, journeyBattleProgress, journeyEncounter } from './journey.js';
 import { updateMonsterBlueprints } from './blueprints.js';
+import { updateConstellationAids } from './constellation-aid.js';
 
 /* ---------- 웨이브 생성 ---------- */
 function pickWeighted(state, mix) {
@@ -112,6 +113,7 @@ export function startWave(state) {
   state.spawnQueue = [...(state.pendingWave || buildWave(state))];
   state.waveT = 0;
   state.blueprintSummons = [];
+  state.constellationAids = [];
   state.waveDmgTaken = 0;                  // 완벽 방어 판정 재료 (수리로 되돌려도 완벽은 아니다)
   for (const hero of state.field) hero.activeCd = 0;
   if (state.champ) {                       // 별지기는 성문 앞에서 웨이브를 맞는다
@@ -661,6 +663,7 @@ function endWave(state, events) {
   // A blueprint is a temporary defense asset, never a journey/prep companion.
   // Clear it at the exact combat boundary even if its normal lifetime remains.
   state.blueprintSummons = [];
+  state.constellationAids = [];
   const bonus = D.WAVE_BONUS(state.wave);
   const journeyProgress = journeyBattleProgress(state);
   state.gold += bonus;
@@ -749,6 +752,7 @@ export function tick(state, dt) {
 
   updateHeroes(state, dt, events);
   updateMonsterBlueprints(state, dt, events);
+  updateConstellationAids(state, dt, events);
   updateChampion(state, dt, events);
   champAutoCast(state, dt, events);
   updateTower(state, dt, events);

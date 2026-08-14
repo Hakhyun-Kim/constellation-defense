@@ -48,6 +48,9 @@
         <span id="bossBarName">🐉 보스</span>
         <div class="bossbar-track"><div id="bossBarFill"></div></div>
       </div>
+      <div id="phaseCountdown" class="phase-countdown hidden" role="status" aria-live="polite">
+        <span>다음 방어가 시작됩니다</span><b id="phaseCountdownNum">10</b><small>초 뒤 자동 시작 · Space로 즉시 시작</small>
+      </div>
       <div id="comboChip" class="hidden"></div>
       <!-- 3매치 결과가 전장에 도착했음을 알리는 전술 피드백. 실제 피해 숫자는 3D 착탄 지점에서 따로 뜬다. -->
       <div id="tacticImpact" class="tactic-impact" aria-live="polite" aria-atomic="true">
@@ -106,6 +109,10 @@
       <div id="combatBlueprintBar" class="combat-blueprint-bar hidden" aria-live="polite">
         <span class="combat-blueprint-copy"><b id="combatBlueprintName">👺 몬스터 청사진</b><small id="combatBlueprintRole">시장 분기에서 기록한 동료를 소환합니다</small></span>
         <button id="combatBlueprintBtn" type="button" disabled>소환 대기</button>
+      </div>
+      <div id="combatConstellationBar" class="combat-constellation-bar" aria-live="polite">
+        <span class="combat-constellation-copy"><b id="combatConstellationName">✦ 별자리 지원 0/3</b><small id="combatConstellationRole">4·5매치로 성좌 인장을 모으세요</small></span>
+        <button id="combatConstellationBtn" type="button" disabled>성좌 충전</button>
       </div>
       <div id="lanePressure" class="tactic-routes lane-pressure" aria-label="세 방어로 압력">
         <span data-route="0" class="clear"><b>왼쪽</b><i><i></i></i><em>안전</em></span>

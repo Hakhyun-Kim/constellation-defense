@@ -634,6 +634,28 @@ function tacticState(route = 0, count = 1) {
   const flare5 = tacticState(0, 6);
   const f4 = E.castTactic(flare4, 0, 'flare', 4);
   const f5 = E.castTactic(flare5, 0, 'flare', 5);
+  const aid = tacticState(1, 2);
+  const aid4 = E.castTactic(aid, 1, 'tide', 4);
+  const aid5 = E.castTactic(aid, 1, 'tide', 5);
+  ok('constellation aid: four/five matches add one/two marks and finish the set', aid4.ok && aid5.ok
+    && aid.constellationAid.charge === D.TACTICS.constellationAid.chargeNeeded
+    && aid5.events.some((event) => event.type === 'constellationReady'));
+  const heldAid = E.deserialize(JSON.parse(JSON.stringify(E.serialize(aid))));
+  ok('constellation aid: a completed set survives save/load for a later boss',
+    heldAid.constellationAid.charge === D.TACTICS.constellationAid.chargeNeeded && heldAid.constellationAids.length === 0);
+  const target = aid.enemies[0];
+  target.boss = true;
+  const castAid = E.castConstellationAid(aid, 1);
+  const aidEvents = E.tick(aid, .11);
+  const aidShot = aid.projectiles.find((projectile) => projectile.kind === 'constellation');
+  ok('constellation aid: combat summon fires a boss-strengthened star shot', castAid.ok
+    && aid.constellationAid.charge === 0 && aid.constellationAidCasts === 1
+    && aidEvents.some((event) => event.type === 'constellationAidAttack')
+    && aidShot?.dmg === Math.round(D.TACTICS.constellationAid.damage * D.TACTICS.constellationAid.bossDamageMul));
+  aid.constellationAids[0].life = .01;
+  const dismissEvents = E.tick(aid, .02);
+  ok('constellation aid: temporary guardian ends inside the defense boundary', aid.constellationAids.length === 0
+    && dismissEvents.some((event) => event.type === 'constellationAidDismiss'));
   ok('전술: 4매치는 Flare 대상을 다섯까지 넓힌다', f4.ok && f4.events.filter(e => e.type === 'starfall').length === 5);
   ok('전술: 5매치는 Flare 대상을 전부 넓힌다', f5.ok && f5.events.filter(e => e.type === 'starfall').length === 6);
 

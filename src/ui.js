@@ -6,6 +6,7 @@ import * as E from './engine.js';
 import { heroCardClass, heroCardMarkup } from './app/hero-card.js';
 import { combatLanePressure } from './app/combat-focus.js';
 import { VILLAGE_FACILITY_SPOTS, VILLAGE_RECRUITER_SPOTS, VILLAGE_START, advanceVillage, isNearVillageTarget, villageWalkPoint } from './app/village-layout.js';
+import { getLocale } from './app/i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -104,12 +105,13 @@ export class UI {
       'placeBar', 'placeBarText', 'placeBarCancel',
       'castleRows', 'heroPanel', 'hpTitle', 'hpInfo', 'heroActiveBtn', 'recallBtn', 'sellBtn', 'moveHint',
       'combatHeroBar', 'combatHeroName', 'combatHeroRole', 'combatHeroActiveBtn',
-      'combatBlueprintBar', 'combatBlueprintName', 'combatBlueprintRole', 'combatBlueprintBtn', 'lanePressure',
+      'combatBlueprintBar', 'combatBlueprintName', 'combatBlueprintRole', 'combatBlueprintBtn',
+      'combatConstellationBar', 'combatConstellationName', 'combatConstellationRole', 'combatConstellationBtn', 'lanePressure',
       'diffRow',
       'storyModal', 'storyIcon', 'storyTitle', 'storyLines', 'storyNext', 'storyOff',
       'demoBtn', 'spectateBtn', 'demoBar', 'demoCaption', 'demoDetail', 'demoExit',
       'revealModal', 'revealCard', 'summonReveal', 'revealTier', 'revealArt', 'revealName', 'revealDesc',
-      'wavePreview', 'bossBar', 'bossBarFill', 'bossBarName', 'bossWarnBanner',
+      'wavePreview', 'bossBar', 'bossBarFill', 'bossBarName', 'bossWarnBanner', 'phaseCountdown', 'phaseCountdownNum',
       'saveBtn', 'loadBtn', 'playtestBtn', 'settingsBtn', 'loadFile',
       'settingsModal', 'settingsLanguage', 'settingsGfx', 'settingsEffects', 'settingsApplyNote',
       'settingsSfxBtn', 'settingsBgmBtn', 'settingsKeyRows', 'settingsKeyReset',
@@ -154,6 +156,13 @@ export class UI {
       </section>`);
     this.el.journeyModal = $('journeyModal');
     this.el.journeyBody = $('journeyBody');
+    document.body.insertAdjacentHTML('beforeend', `
+      <section id="defenseVictory" class="defense-victory hidden" role="status" aria-live="assertive">
+        <div class="defense-victory-card"><span>🏆 VICTORY</span><h2 id="defenseVictoryTitle">방어 성공!</h2><p id="defenseVictoryDetail"></p></div>
+      </section>`);
+    this.el.defenseVictory = $('defenseVictory');
+    this.el.defenseVictoryTitle = $('defenseVictoryTitle');
+    this.el.defenseVictoryDetail = $('defenseVictoryDetail');
     this._journeyState = null;
     this._village = { open: false, nodeId: null, ...VILLAGE_START, dirX: 0, dirZ: -1, moving: false, destination: null, dialog: null };
     this._villageKeys = new Set();
@@ -673,6 +682,7 @@ export class UI {
     el.heroActiveBtn.addEventListener('click', () => h.onHeroActive(Number(el.heroActiveBtn.dataset.heroId)));
     el.combatHeroActiveBtn.addEventListener('click', () => h.onHeroActive(Number(el.combatHeroActiveBtn.dataset.heroId)));
     el.combatBlueprintBtn.addEventListener('click', () => h.onMonsterBlueprint());
+    el.combatConstellationBtn.addEventListener('click', () => h.onConstellationAid());
     /* 저장/불러오기 — "간단한 파일" 하나로 오간다 */
     el.saveBtn.addEventListener('click', () => h.onSave());
     el.loadBtn.addEventListener('click', () => el.loadFile.click());
@@ -803,6 +813,7 @@ export class UI {
     el.castleGhost.style.width = `${pct}%`;
     this.updateLanePressure(state);
     this.updateMonsterBlueprint(state);
+    this.updateConstellationAid(state);
     /* 소환 버튼도 "왜 안 눌리는지"를 버튼 얼굴에 적는다 — 회색이 된 이유가 돈인지 자리인지 보이게 */
     const canPay = state.gold >= D.SUMMON_COST;
     const benchFull = state.bench.length >= D.BENCH_MAX;
@@ -855,6 +866,39 @@ export class UI {
     el.combatBlueprintBtn.title = `${spec.desc} · G`;
   }
 
+  updateConstellationAid(state) {
+    const el = this.el;
+    const spec = D.TACTICS.constellationAid;
+    const status = E.canCastConstellationAid(state);
+    const active = (state.constellationAids || [])[0];
+    const charge = state.constellationAid?.charge || 0;
+    const english = getLocale() === 'en';
+    const routeNames = english ? ['Left', 'Center', 'Right'] : ['왼쪽', '가운데', '오른쪽'];
+    el.combatConstellationName.textContent = english
+      ? `✦ Constellation Aid ${charge}/${spec.chargeNeeded}`
+      : `✦ 별자리 지원 ${charge}/${spec.chargeNeeded}`;
+    el.combatConstellationRole.textContent = active
+      ? english ? `Guarding ${routeNames[active.route]} · ${Math.max(0, active.life).toFixed(1)}s`
+        : `${routeNames[active.route]} 길 수호 중 · ${Math.max(0, active.life).toFixed(1)}초`
+      : status.ok
+        ? english ? 'Constellation complete · hold it for a boss'
+          : '성좌 완성 · 보스가 올 때까지 보류할 수 있어요'
+        : charge < spec.chargeNeeded
+          ? english ? '4-match +1 · 5-match +2 marks' : '4매치 +1 · 5매치 +2 인장'
+          : status.reason === 'none' ? english ? 'It will assist the most threatened lane' : '적이 나타나면 가장 위급한 길을 돕습니다'
+            : english ? 'The guardian can only be called in battle' : '전투 중에만 별자리 수호자를 부를 수 있어요';
+    el.combatConstellationBtn.disabled = !status.ok;
+    el.combatConstellationBtn.classList.toggle('ready', status.ok);
+    el.combatConstellationBtn.textContent = status.ok
+      ? english ? `✦ Call ${routeNames[status.target.route]}` : `✦ ${routeNames[status.target.route]} 길 호출`
+      : active ? english ? 'Guarding' : '수호 중'
+        : charge >= spec.chargeNeeded ? english ? 'Awaiting enemy' : '적 대기'
+          : english ? `Marks ${charge}/${spec.chargeNeeded}` : `성좌 ${charge}/${spec.chargeNeeded}`;
+    el.combatConstellationBtn.title = english
+      ? 'A charged Constellation Guardian can be held for a boss.'
+      : '4·5매치로 충전한 별자리 수호자는 보스까지 아껴 둘 수 있습니다.';
+  }
+
   setWaveUI(state, autoStartSeconds = null) {
     const el = this.el;
     const journeyProgress = E.journeyBattleProgress(state);
@@ -863,25 +907,35 @@ export class UI {
       ? `${journeyProgress.node.name} · 방어 ${journeyProgress.step}/${journeyProgress.total}`
       : `${state.wave}웨이브`;
     if (state.phase === 'prep') {
-      const countdown = Number.isFinite(autoStartSeconds)
-        ? ` · 자동 ${Math.max(1, Math.ceil(autoStartSeconds))}초`
+      const seconds = Number.isFinite(autoStartSeconds) ? Math.max(1, Math.ceil(autoStartSeconds)) : null;
+      const countdown = seconds != null
+        ? ` · 자동 ${seconds}초`
         : '';
       const encounterIcon = encounter.boss ? ' 🐉' : (encounter.midBoss ? ' 👿' : '');
       el.waveBtn.textContent = `▶ ${stageLabel} 시작!${encounterIcon}${countdown} (Space)`;
       el.waveBtn.classList.toggle('auto-next', !!countdown);
       el.waveBtn.classList.remove('hidden');
       el.waveInfo.classList.add('hidden');
+      el.phaseCountdown.classList.toggle('hidden', seconds == null);
+      if (seconds != null) {
+        const english = getLocale() === 'en';
+        el.phaseCountdown.querySelector('span').textContent = english ? 'Next defense begins' : '다음 방어가 시작됩니다';
+        el.phaseCountdown.querySelector('small').textContent = english ? 'Auto start · Space starts now' : '초 뒤 자동 시작 · Space로 즉시 시작';
+        el.phaseCountdownNum.textContent = seconds;
+      }
     } else if (state.phase === 'wave') {
       el.waveBtn.classList.remove('auto-next');
       el.waveBtn.classList.add('hidden');
       el.wavePreview.classList.add('hidden');
       el.waveInfo.classList.remove('hidden');
+      el.phaseCountdown.classList.add('hidden');
       el.remainN.textContent = `${stageLabel} · 남은 몬스터 ${E.remainingEnemies(state)}`;
     } else {
       el.waveBtn.classList.remove('auto-next');
       el.waveBtn.classList.add('hidden');
       el.wavePreview.classList.add('hidden');
       el.waveInfo.classList.add('hidden');
+      el.phaseCountdown.classList.add('hidden');
     }
     /* 난이도는 게임 시작 전(1웨이브 준비)에만 변경 가능 */
     const canDiff = state.phase === 'prep' && state.wave === 1;
@@ -890,6 +944,24 @@ export class UI {
       b.classList.toggle('on', b.dataset.d === state.difficulty);
     });
   }
+
+  showDefenseVictory({ name, total, state }) {
+    const english = getLocale() === 'en';
+    this.el.defenseVictoryTitle.textContent = english ? `${name} defended!` : `${name} 방어 성공!`;
+    this.el.defenseVictoryDetail.textContent = english
+      ? `Defense ${total}/${total} complete · Citadel ${state.castleHp}/${state.castleMax} · Choose the next star road.`
+      : `방어 ${total}/${total} 완료 · 성 체력 ${state.castleHp}/${state.castleMax} · 다음 별자리 길을 고르세요.`;
+    this.el.defenseVictory.classList.remove('hidden');
+    clearTimeout(this._defenseVictoryT);
+    this._defenseVictoryT = setTimeout(() => this.hideDefenseVictory(), 2600);
+  }
+
+  hideDefenseVictory() {
+    clearTimeout(this._defenseVictoryT);
+    this.el.defenseVictory.classList.add('hidden');
+  }
+
+  isDefenseVictoryOpen() { return !this.el.defenseVictory.classList.contains('hidden'); }
 
   /* 콤보 칩 — 매 프레임 호출되므로 "값이 바뀔 때만" 다시 그린다.
    * (전에는 프레임마다 pop 애니메이션을 재시작해 글자가 계속 떨려 보였다) */

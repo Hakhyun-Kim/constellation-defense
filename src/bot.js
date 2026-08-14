@@ -153,6 +153,17 @@ export function nextMonsterBlueprint(state, P, rng = state.rng || Math.random) {
   return { spec: status.spec, route: status.target.route };
 }
 
+/* A completed constellation is deliberately held for a boss, unless the
+ * castle is already in a critical lane-pressure situation.  This keeps the
+ * balance bot on the same information and strategic timing as a player. */
+export function nextConstellationAid(state, P, rng = state.rng || Math.random) {
+  const status = E.canCastConstellationAid(state);
+  if (!status.ok || rng() > (P.activeUse || 0)) return null;
+  const boss = state.enemies.some((enemy) => !enemy.dead && (enemy.boss || enemy.midBoss));
+  const critical = state.castleHp / state.castleMax <= .38;
+  return boss || critical ? { route: status.target.route } : null;
+}
+
 /* 지도에서도 사람과 봇이 같은 공개 정보만 사용한다. 영입 가능한 동료가
  * 있는 길을 먼저 택하고, 그 다음 보급과 전투를 고른다. */
 const JOURNEY_KIND_PRIORITY = {

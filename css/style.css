@@ -369,6 +369,31 @@ body {
 }
 #bossBar.mid #bossBarFill { background: linear-gradient(90deg, #ff8a3d, #ffc93d); }
 
+.phase-countdown {
+  position: absolute;
+  top: 15%; left: 50%; transform: translateX(-50%);
+  z-index: 9; display: grid; grid-template-columns: auto auto; align-items: center; gap: 0 9px;
+  min-width: min(82%, 310px); padding: 10px 16px 9px; border: 2px solid #ffe08a; border-radius: 15px;
+  background: rgba(31, 35, 73, .9); color: #fff7d5; box-shadow: 0 8px 24px rgba(20, 18, 55, .35);
+  text-align: center; pointer-events: none;
+}
+.phase-countdown > span { font-size: 13px; font-weight: 900; }
+.phase-countdown > b { min-width: 36px; color: #ffe36d; font-size: 29px; line-height: 1; text-shadow: 0 0 10px rgba(255, 220, 92, .42); }
+.phase-countdown > small { grid-column: 1 / -1; margin-top: 3px; color: #d9dcff; font-size: 10px; font-weight: 700; }
+
+.defense-victory {
+  position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px;
+  background: rgba(9, 13, 34, .44); pointer-events: auto;
+}
+.defense-victory-card {
+  width: min(420px, 100%); padding: 24px 26px; border: 2px solid #ffe18a; border-radius: 19px;
+  background: linear-gradient(145deg, rgba(46, 35, 96, .98), rgba(23, 48, 88, .98));
+  box-shadow: 0 18px 52px rgba(0, 0, 0, .44), inset 0 1px rgba(255,255,255,.25); text-align: center;
+}
+.defense-victory-card > span { color: #ffe27a; font-size: 13px; font-weight: 900; letter-spacing: .16em; }
+.defense-victory-card h2 { margin: 5px 0 8px; color: #fff8d7; font-size: 25px; }
+.defense-victory-card p { color: #d9e6ff; font-size: 13px; line-height: 1.55; }
+
 .wave-btn {
   position: absolute;
   left: 50%;
@@ -2444,6 +2469,13 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .combat-blueprint-copy small { color: #5d7c70; font-size: 9.5px; }
 .combat-blueprint-bar > button { flex: none; min-width: 83px; border: 1px solid #9eafa7; border-radius: 8px; padding: 6px 8px; background: #e4ece8; color: #718078; font-size: 11px; font-weight: 900; cursor: default; }
 .combat-blueprint-bar > button.ready { border-color: #248d67; background: linear-gradient(180deg, #8af0c1, #43bd8c); color: #103f30; box-shadow: 0 2px 0 #197454; cursor: pointer; }
+.combat-constellation-bar { display: flex; align-items: center; gap: 8px; min-height: 42px; margin-top: 6px; padding: 5px 6px 5px 9px; border: 1px solid #bca5ec; border-radius: 10px; background: #faf6ff; box-shadow: inset 3px 0 #8057cc; }
+.combat-constellation-copy { display: grid; min-width: 0; flex: 1; }
+.combat-constellation-copy b, .combat-constellation-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combat-constellation-copy b { color: #57358e; font-size: 12px; }
+.combat-constellation-copy small { color: #7b6a98; font-size: 9.5px; }
+.combat-constellation-bar > button { flex: none; min-width: 91px; border: 1px solid #b6acc9; border-radius: 8px; padding: 6px 8px; background: #ebe8f1; color: #817a8c; font-size: 11px; font-weight: 900; cursor: default; }
+.combat-constellation-bar > button.ready { border-color: #7550b6; background: linear-gradient(180deg, #e4c5ff, #b37bea); color: #38205f; box-shadow: 0 2px 0 #7045af; cursor: pointer; }
 .tactic-routes { display: grid; grid-template-columns: repeat(3, 1fr); margin: 6px 0 4px; text-align: center; color: #77739a; font-size: 10px; font-weight: 800; }
 .tactic-routes span { position: relative; z-index: 3; border-radius: 7px; transition: color .15s, background .15s, box-shadow .15s, transform .15s; }
 .lane-pressure { gap: 4px; }
@@ -2516,6 +2548,7 @@ body.judge-mode #diffRow { display: none !important; }
   .tactic-lanes { display: none; }
   .combat-hero-copy small { max-width: 190px; }
   .combat-blueprint-copy small { max-width: 190px; }
+  .combat-constellation-copy small { max-width: 190px; }
 }
 
 /* During a live defense, management recedes and the fixed party becomes a
@@ -2571,6 +2604,7 @@ body.combat-focus #benchCard .bench { margin-top: 4px; }
 }
 .reduced-effects .tactic-star.matched { animation-duration: .12s; }
 .reduced-effects .tactic-beam.run { animation-duration: .13s; }
+.reduced-effects .defense-victory { transition: none; }
 
 @media (prefers-reduced-motion: reduce) {
   #bossWarnBanner,
@@ -2588,6 +2622,7 @@ body.combat-focus #benchCard .bench { margin-top: 4px; }
   }
   .tactic-star.matched { animation-duration: .12s; }
   .tactic-beam.run { animation-duration: .13s; }
+  .defense-victory { transition: none; }
 }
 @font-face { font-family: "Jua"; src: url("../assets/fonts/Jua-Regular.ttf") format("truetype"); font-display: swap; font-weight: 400; }
 @font-face { font-family: "Gaegu"; src: url("../assets/fonts/Gaegu-Bold.ttf") format("truetype"); font-display: swap; font-weight: 700; }

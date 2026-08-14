@@ -174,6 +174,9 @@ export function playRun(profileName, difficulty, seed, options = {}) {
       const blueprint = Bot.nextMonsterBlueprint(state, profile, state.rng);
       if (blueprint) E.castMonsterBlueprint(state, blueprint.route);
 
+      const constellationAid = Bot.nextConstellationAid(state, profile, state.rng);
+      if (constellationAid) E.castConstellationAid(state, constellationAid.route);
+
       if (profile.midWave && Bot.wantsSummon(state, profile)) {
         if (E.summon(state).ok) Bot.placeAll(state, profile.sloppy || 0);
       }
@@ -185,6 +188,7 @@ export function playRun(profileName, difficulty, seed, options = {}) {
     survived: (!!state.journey?.complete && finalChapterIndex + 1 >= chapterCap) || state.wave > waveCap,
     tactics: state.tacticCasts,
     blueprints: state.blueprintCasts || 0,
+    constellationAids: state.constellationAidCasts || 0,
     chapter: state.journey?.chapter || null,
     node: state.journey?.current || null,
     castleHp: Math.round(state.castleHp || 0),
@@ -204,6 +208,7 @@ export function runProfile(profile, difficulty, runs, options = {}) {
   const survived = [];
   const tactics = [];
   const blueprints = [];
+  const constellationAids = [];
   const reachedAct2 = [];
   const nodeCounts = {};
   for (let index = 0; index < runs; index++) {
@@ -212,6 +217,7 @@ export function runProfile(profile, difficulty, runs, options = {}) {
     survived.push(result.survived ? 1 : 0);
     tactics.push(result.tactics);
     blueprints.push(result.blueprints);
+    constellationAids.push(result.constellationAids);
     reachedAct2.push(result.reachedAct2 ? 1 : 0);
     nodeCounts[result.node || 'none'] = (nodeCounts[result.node || 'none'] || 0) + 1;
   }
@@ -229,6 +235,7 @@ export function runProfile(profile, difficulty, runs, options = {}) {
     reachedAct2Pct: `${(reachedAct2Rate * 100).toFixed(0)}%`,
     tacticMean: average(tactics).toFixed(1),
     blueprintMean: average(blueprints).toFixed(1),
+    constellationAidMean: average(constellationAids).toFixed(1),
     nodeCounts,
   };
 }

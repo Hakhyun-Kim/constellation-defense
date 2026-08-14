@@ -8,6 +8,7 @@ import * as D from '../data.js';
 import { damageEnemy, applySlow } from './effects.js';
 import { squadTacticMods } from './squad.js';
 import { recordTacticMemory } from './run-memory.js';
+import { chargeConstellationAid } from './constellation-aid.js';
 
 const validSize = (size) => (size >= 5 ? 5 : size === 4 ? 4 : 3);
 
@@ -56,6 +57,11 @@ export function castTactic(state, route, kind, size = 3) {
     }
   }
   state.tacticCasts = (state.tacticCasts || 0) + 1;
+  const aid = chargeConstellationAid(state, stars);
+  if (aid.gained) {
+    events.push({ type: 'constellationCharge', gained: aid.gained, charge: aid.charge, needed: D.TACTICS.constellationAid.chargeNeeded });
+    if (aid.becameReady) events.push({ type: 'constellationReady', charge: aid.charge, needed: D.TACTICS.constellationAid.chargeNeeded });
+  }
   recordTacticMemory(state, {
     route, kind, size: stars,
     heal: Math.max(0, state.castleHp - castleBefore),
