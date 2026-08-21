@@ -36,7 +36,7 @@ export function restoreRunMemory(raw) {
   const size = count(raw.largest?.size);
   const kind = KINDS.includes(raw.largest?.kind) ? raw.largest.kind : null;
   const lane = [0, 1, 2].includes(raw.largest?.lane) ? raw.largest.lane : null;
-  if (size >= 3 && kind && lane != null) memory.largest = { size: Math.min(5, size), kind, lane };
+  if (size >= 3 && kind && lane != null) memory.largest = { size: Math.min(6, size), kind, lane };
   memory.biggestHeal = count(raw.biggestHeal);
   memory.biggestPush = count(raw.biggestPush);
   memory.lowestCastleHp = Number.isFinite(raw.lowestCastleHp) ? count(raw.lowestCastleHp) : null;

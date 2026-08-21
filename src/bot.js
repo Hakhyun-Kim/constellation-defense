@@ -11,7 +11,7 @@
  * ===================================================== */
 import * as D from './data.js';
 import * as E from './engine.js';
-import { findLegalSwaps, laneForGroup } from './tactics/board.js';
+import { findLegalSwaps, laneForGroup, tacticSizeForGroup } from './tactics/board.js';
 
 /* 결정적 난수 — 같은 시드는 같은 판을 만든다 */
 export function mulberry32(a) {
@@ -219,9 +219,12 @@ function lanePressure(state, lane) {
 function groupScore(state, cells, group) {
   const type = cells[group[0]];
   const lane = laneForGroup(group);
-  const stars = Math.min(5, group.length);
+  const stars = tacticSizeForGroup(group);
   const pressure = lanePressure(state, lane);
-  if (type === 'flare') return pressure * (D.TACTICS.flare.targetCount[stars] + stars * 0.5);
+  if (type === 'flare') {
+    const targetCount = D.TACTICS.flare.targetCount[stars];
+    return pressure * ((Number.isFinite(targetCount) ? targetCount : 8) + stars * 0.5);
+  }
   if (type === 'tide') return pressure * (1.4 + stars * 0.35);
   const missingHp = state.castleMax - state.castleHp;
   return pressure * (0.8 + stars * 0.2) + missingHp / 18;

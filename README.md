@@ -11,9 +11,12 @@ linked to that color:
 - **Flare** damages enemies on that road and charges Arin/Sera actives.
 - **Tide** slows that road's enemy line and charges Luna/Yuna actives.
 - **Bloom** restores the citadel, pushes danger back, and charges Doyun's active.
-- Four-star matches add one constellation mark and five-star matches add two.
-  Complete three marks, then bank the **Constellation Guardian** until a boss or
-  critical lane needs its focused support fire.
+- A straight five-star line keeps the existing large tactic. A five-star
+  corner, T, or cross becomes a **Hero Sigil**: it sharply advances the linked
+  hero actives and completes all three constellation marks at once.
+- Four-star matches add one constellation mark and straight five-star matches
+  add two. Complete three marks, then bank the **Constellation Guardian** until
+  a boss or critical lane needs its focused support fire.
 
 The player’s choices are deliberately focused: choose a route and companions on the expedition, position the recruited heroes, select their specializations and castle upgrades between battles, then react with tactical swaps during the fight. Random summoning, duplicate heroes, rank combinations, and rarity collection are not part of the current game.
 
@@ -51,6 +54,9 @@ The design decisions were human-led: matching must map to a visible road, each t
 - `src/engine/` is DOM- and renderer-free, enabling deterministic Node checks.
 - `src/balance/` is the single source for tactical and squad-growth numbers.
 - `src/app/tacticflow.js` owns board input and cascades; `src/engine/tactics.js` resolves their commands into combat events.
+- Hero-Sigil geometry remains pure in `src/tactics/board.js`; it promotes a
+  corner/T/cross group to semantic tactic tier 6 without exposing board shape
+  to the defense engine.
 - The release uses a single CC0 Quaternius character/monster family and compact CC0 Kenney combat samples, with procedural terrain, VFX, and synthesized fallbacks.
 - `?art=procedural` runs without requesting the external-asset manifest. Every bundled asset has recorded provenance and must pass the initial-download, integrity, and rendering-performance gates.
 - The 📊 toolbar button exports up to 40 locally stored play-session records for duration testing. No identifier or play telemetry is sent over the network.

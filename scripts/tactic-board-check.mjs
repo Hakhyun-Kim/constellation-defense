@@ -58,6 +58,32 @@ const cross = Array.from({ length: 36 }, (_, index) => `cell-${index}`);
 [1, 6, 7, 8, 13].forEach(index => { cross[index] = 'bloom'; });
 const crossGroups = Board.findMatchGroups(cross);
 check(crossGroups.length === 1 && crossGroups[0].length === 5, 'cross-shaped match is one connected group');
+check(Board.matchShape(crossGroups[0]) === 'sigil' && Board.isHeroSigilGroup(crossGroups[0]),
+  'a cross-shaped five-match is classified as a Hero Sigil');
+check(Board.tacticSizeForGroup(crossGroups[0]) === 6,
+  'a Hero Sigil promotes the standard tactic command to semantic tier six');
+
+const corner = Array.from({ length: 36 }, (_, index) => `cell-${index}`);
+[0, 1, 2, 6, 12].forEach(index => { corner[index] = 'flare'; });
+const cornerGroup = Board.findMatchGroups(corner)[0];
+check(cornerGroup?.length === 5 && Board.matchShape(cornerGroup) === 'sigil'
+  && Board.tacticSizeForGroup(cornerGroup) === 6, 'an L-shaped five-match is a Hero Sigil');
+
+const line = [0, 1, 2, 3, 4];
+check(Board.matchShape(line) === 'line' && !Board.isHeroSigilGroup(line)
+  && Board.tacticSizeForGroup(line) === 5, 'a straight five-match remains the existing tier five tactic');
+check(Board.matchShape([0, 1, 6, 7, 12]) === 'cluster'
+  && Board.tacticSizeForGroup([0, 1, 6, 7, 12]) === 5,
+  'a compact cluster without intersecting three-cell runs is not promoted');
+
+const sigilSource = Array.from({ length: 36 }, (_, index) => `cell-${index}`);
+[2, 8, 13, 15, 20].forEach(index => { sigilSource[index] = 'tide'; });
+const sigilMove = Board.findLegalSwaps(sigilSource).find(move => move.from === 14 && move.to === 20);
+const sigilMoveGroup = sigilMove?.groups.find(group => Board.tacticSizeForGroup(group) === 6);
+check(!!sigilMoveGroup && sigilMoveGroup.length === 5,
+  'one legal adjacent swap can complete a T-shaped Hero Sigil');
+check(sigilMove && describeTacticMove(sigilMove) === '🌌 가운데 길 · 서리 영웅 성좌 문양',
+  'spectator copy names the Hero Sigil created by the real legal swap');
 
 const refilled = Board.refillCells(source, [0, 5], () => 0);
 check(source[0] === 'cell-0' && source[5] === 'cell-5', 'refill does not mutate the source board');

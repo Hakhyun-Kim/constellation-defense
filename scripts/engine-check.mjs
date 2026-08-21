@@ -644,8 +644,10 @@ function tacticState(route = 0, count = 1) {
 
   const flare4 = tacticState(0, 6);
   const flare5 = tacticState(0, 6);
+  const flare6 = tacticState(0, 6);
   const f4 = E.castTactic(flare4, 0, 'flare', 4);
   const f5 = E.castTactic(flare5, 0, 'flare', 5);
+  const f6 = E.castTactic(flare6, 0, 'flare', 6);
   const aid = tacticState(1, 2);
   const aid4 = E.castTactic(aid, 1, 'tide', 4);
   const aid5 = E.castTactic(aid, 1, 'tide', 5);
@@ -670,10 +672,38 @@ function tacticState(route = 0, count = 1) {
     && dismissEvents.some((event) => event.type === 'constellationAidDismiss'));
   ok('전술: 4매치는 Flare 대상을 다섯까지 넓힌다', f4.ok && f4.events.filter(e => e.type === 'starfall').length === 5);
   ok('전술: 5매치는 Flare 대상을 전부 넓힌다', f5.ok && f5.events.filter(e => e.type === 'starfall').length === 6);
+  ok('영웅 문양: Flare는 전 대상을 더 강하게 타격하고 6단계를 기록한다', f6.ok
+    && f6.events.filter(e => e.type === 'starfall').length === 6
+    && f6.events.find(e => e.type === 'starfall').dmg > f5.events.find(e => e.type === 'starfall').dmg
+    && E.summarizeRun(flare6).largest.size === 6);
+  const restoredSigilMemory = E.deserialize(JSON.parse(JSON.stringify(E.serialize(flare6))));
+  ok('영웅 문양: 6단계 수호 기록이 저장·불러오기 뒤에도 유지된다',
+    E.summarizeRun(restoredSigilMemory).largest.size === 6);
+
+  const sigilLinked = tacticState(0, 2);
+  sigilLinked.field = [
+    { id: 94, heroKey: 'arin', name: '아린', activeCd: 12, x: 140, y: 190 },
+    { id: 95, heroKey: 'sera', name: '세라', activeCd: 6, x: 210, y: 190 },
+  ];
+  const sigilLinkCast = E.castTactic(sigilLinked, 0, 'flare', 6);
+  ok('영웅 문양: 연결 영웅 액티브를 8초 충전하고 준비 완료를 알린다', sigilLinkCast.ok
+    && sigilLinked.field[0].activeCd === 4 && sigilLinked.field[1].activeCd === 0
+    && sigilLinkCast.events.some(event => event.type === 'tacticHeroLink' && event.heroKey === 'sera' && event.ready));
+
+  const sigilAid = tacticState(1, 2);
+  const sigilAidCast = E.castTactic(sigilAid, 1, 'tide', 6);
+  ok('영웅 문양: 한 번에 성좌 수호자 인장 세 칸을 완성한다', sigilAidCast.ok
+    && sigilAid.constellationAid.charge === D.TACTICS.constellationAid.chargeNeeded
+    && sigilAidCast.events.some(event => event.type === 'constellationReady'));
 
   const tide = tacticState(1, 2);
   const tr = E.castTactic(tide, 1, 'tide', 5);
   ok('전술: Tide가 전 적을 강하게 감속한다', tr.ok && tide.enemies.every(e => e.slowMul === 0.18 && e.slowT === 4.5));
+
+  const sigilTide = tacticState(1, 3);
+  const sigilTideCast = E.castTactic(sigilTide, 1, 'tide', 6);
+  ok('영웅 문양: Tide는 전 적에게 전용 감속 강도와 지속시간을 적용한다', sigilTideCast.ok
+    && sigilTide.enemies.every(e => e.slowMul === 0.12 && e.slowT === 5.5));
 
   const bloom = tacticState(2, 2);
   bloom.castleHp = bloom.castleMax - 30;
@@ -689,6 +719,18 @@ function tacticState(route = 0, count = 1) {
     && bloomMemory.biggestPush === 2 && bloomMemory.lowestCastleHp === bloom.castleMax - 30);
   ok('전술: Bloom이 성을 회복하고 적을 밀어낸다', br.ok && bloom.castleHp > bloom.castleMax - 30
     && bloom.enemies.every((e, i) => e.s < beforeS[i]) && br.events.filter(e => e.type === 'tacticPush').length === 2);
+
+  const sigilBloom = tacticState(2, 6);
+  sigilBloom.castleHp = sigilBloom.castleMax - 50;
+  sigilBloom.enemies.forEach((enemy) => {
+    enemy.s = 200;
+    const point = D.routePoint(enemy.route, enemy.s);
+    enemy.x = point.x; enemy.y = point.y;
+  });
+  const sigilBloomCast = E.castTactic(sigilBloom, 2, 'bloom', 6);
+  ok('영웅 문양: Bloom은 해당 길의 모든 적을 크게 후퇴시킨다', sigilBloomCast.ok
+    && sigilBloomCast.events.filter(event => event.type === 'tacticPush').length === 6
+    && sigilBloom.enemies.every(enemy => enemy.s === 80));
 
   const empty = tacticState(0, 1);
   const none = E.castTactic(empty, 1, 'tide', 3);

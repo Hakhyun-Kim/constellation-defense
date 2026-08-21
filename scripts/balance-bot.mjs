@@ -10,7 +10,7 @@
 import * as D from '../src/data.js';
 import * as E from '../src/engine.js';
 import * as Bot from '../src/bot.js';
-import { createStableBoard, findLegalSwaps, findMatchGroups, laneForGroup, refillCells } from '../src/tactics/board.js';
+import { createStableBoard, findLegalSwaps, findMatchGroups, laneForGroup, refillCells, tacticSizeForGroup } from '../src/tactics/board.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -78,13 +78,14 @@ export function resolveTacticSwap(state, move, onCast = null) {
     for (const group of groups) {
       const kind = cells[group[0]];
       const route = laneForGroup(group);
-      const result = E.castTactic(state, route, kind, Math.min(5, group.length));
+      const size = tacticSizeForGroup(group);
+      const result = E.castTactic(state, route, kind, size);
       if (result.ok) casts++;
       onCast?.({
         cascade: cascade + 1,
         kind,
         route,
-        size: Math.min(5, group.length),
+        size,
         ok: result.ok,
         reason: result.reason || null,
       });
@@ -100,6 +101,7 @@ export function playRun(profileName, difficulty, seed, options = {}) {
   const chapterCap = Math.max(1, Math.min(D.JOURNEY_CHAPTERS.length, options.chapterCap ?? 1));
   const tacticPolicy = options.tacticPolicy ?? 'threat';
   const trace = options.trace ? [] : null;
+  let heroSigils = 0;
   const profile = Bot.PROFILES[profileName];
   const state = E.createGame({ rng: Bot.mulberry32(seed), difficulty });
 
@@ -161,7 +163,10 @@ export function playRun(profileName, difficulty, seed, options = {}) {
           decision.swap = { from: swap.from, to: swap.to };
           decision.casts = [];
         }
-        board = resolveTacticSwap(state, swap, cast => decision?.casts.push(cast)).cells;
+        board = resolveTacticSwap(state, swap, cast => {
+          if (cast.ok && cast.size === 6) heroSigils++;
+          decision?.casts.push(cast);
+        }).cells;
       }
       if (decision) trace.push(decision);
 
@@ -187,6 +192,7 @@ export function playRun(profileName, difficulty, seed, options = {}) {
     wave: Math.min(state.wave, waveCap + 1),
     survived: (!!state.journey?.complete && finalChapterIndex + 1 >= chapterCap) || state.wave > waveCap,
     tactics: state.tacticCasts,
+    heroSigils,
     blueprints: state.blueprintCasts || 0,
     constellationAids: state.constellationAidCasts || 0,
     chapter: state.journey?.chapter || null,
@@ -207,6 +213,7 @@ export function runProfile(profile, difficulty, runs, options = {}) {
   const waves = [];
   const survived = [];
   const tactics = [];
+  const heroSigils = [];
   const blueprints = [];
   const constellationAids = [];
   const reachedAct2 = [];
@@ -216,6 +223,7 @@ export function runProfile(profile, difficulty, runs, options = {}) {
     waves.push(result.wave);
     survived.push(result.survived ? 1 : 0);
     tactics.push(result.tactics);
+    heroSigils.push(result.heroSigils);
     blueprints.push(result.blueprints);
     constellationAids.push(result.constellationAids);
     reachedAct2.push(result.reachedAct2 ? 1 : 0);
@@ -234,6 +242,7 @@ export function runProfile(profile, difficulty, runs, options = {}) {
     reachedAct2Rate,
     reachedAct2Pct: `${(reachedAct2Rate * 100).toFixed(0)}%`,
     tacticMean: average(tactics).toFixed(1),
+    heroSigilMean: average(heroSigils).toFixed(1),
     blueprintMean: average(blueprints).toFixed(1),
     constellationAidMean: average(constellationAids).toFixed(1),
     nodeCounts,
@@ -277,7 +286,8 @@ for (const difficulty of difficulties) {
     const check = checks.length ? `  ${checks.join(' · ')}` : '';
     console.log(`[${D.DIFFICULTIES[difficulty].name}] ${result.profile} 평균 ${result.mean}웨이브`
       + ` (p25 ${result.p25} / 중앙 ${result.p50} / p75 ${result.p75}) 범위 ${result.min}~${result.max}`
-      + ` · 첫 원정 완수 ${result.survivedPct} · 평균 전술 ${result.tacticMean}회${check}`);
+      + ` · 첫 원정 완수 ${result.survivedPct} · 평균 전술 ${result.tacticMean}회`
+      + ` · 영웅 문양 ${result.heroSigilMean}회${check}`);
   }
   console.log('');
 }

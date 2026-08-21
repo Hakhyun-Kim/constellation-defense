@@ -316,6 +316,15 @@ body {
   text-shadow: 0 0 12px #ffdf75;
 }
 .tactic-impact[data-match-size="5"] .tactic-impact-copy small { color: #fff; font-size: 12px; }
+.tactic-impact[data-match-size="6"] {
+  min-width: 290px;
+  border: 2px solid #fff1a8;
+  background: linear-gradient(115deg, rgba(35, 20, 84, .97), rgba(137, 54, 118, .95));
+  box-shadow: 0 0 0 2px #ffffff66, 0 0 38px #d489ffcc, inset 0 0 24px #ffe9a833;
+}
+.tactic-impact[data-match-size="6"] .tactic-impact-icon { width: 52px; height: 52px; font-size: 35px; }
+.tactic-impact[data-match-size="6"] .tactic-impact-copy b { color: #fff0a8; font-size: 20px; letter-spacing: 1px; text-shadow: 0 0 14px #ffd76a; }
+.tactic-impact[data-match-size="6"] .tactic-impact-copy small { color: #fff; font-size: 12px; }
 @keyframes tactic-impact-in { 0% { opacity: 0; transform: translateY(-12px) scale(.78); } 65% { opacity: 1; transform: translateY(1px) scale(1.07); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes tactic-impact-out { to { opacity: 0; transform: translateY(-7px) scale(.96); } }
 
@@ -2569,6 +2578,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .tactic-beam.bloom { background: linear-gradient(90deg, #efffcf, #76d98e); box-shadow: 0 0 6px #efffcf, 0 0 16px #6ddf89; }
 .tactic-beam::after { content: ''; position: absolute; right: -4px; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: #fff; transform: translateY(-50%); box-shadow: 0 0 10px 4px currentColor; }
 .tactic-key { display: flex; justify-content: space-around; margin-top: 5px; color: #615e85; font-size: 9px; font-weight: 700; }
+.tactic-sigil-hint { margin-top: 3px; color: #65438f; text-align: center; font-size: 8.5px; font-weight: 850; letter-spacing: -.1px; }
 .tactic-status { margin-top: 4px; min-height: 17px; border-radius: 7px; padding: 3px 6px; background: #e7e8f8; color: #59567a; text-align: center; font-size: 9.5px; font-weight: 700; }
 
 /* Five separate edge buttons caused long eye travel.  One consistent strip
@@ -2613,6 +2623,8 @@ body.judge-mode #coachChip,
 body.judge-mode #diffRow { display: none !important; }
 .tactic-card[data-match-size="4"] .tactic-status { background: #fff0bf; color: #81591e; }
 .tactic-card[data-match-size="5"] .tactic-status { background: #ffdce8; color: #8c3159; box-shadow: 0 0 14px #ff8ebd88; }
+.tactic-card[data-match-size="6"] .tactic-status { background: #fff0b8; color: #6d397f; box-shadow: 0 0 17px #bd76edaa; }
+.tactic-card[data-match-size="6"] .tactic-board { outline-width: 3px; box-shadow: inset 0 2px 6px #07071d77, 0 0 17px #c77df099; }
 @keyframes tacticmatch { 0% { transform: scale(.76); filter: brightness(1); } 58% { transform: scale(1.25); filter: brightness(1.7); } 100% { transform: scale(1.08); filter: brightness(1.35); } }
 @keyframes tacticroute { 0% { filter: brightness(.8); } 55% { filter: brightness(1.45); } 100% { filter: brightness(1); } }
 @keyframes tacticbeam { 0% { opacity: 0; transform: rotate(var(--beam-angle)) scaleX(0); } 22% { opacity: 1; } 76% { opacity: 1; transform: rotate(var(--beam-angle)) scaleX(1); } 100% { opacity: 0; transform: rotate(var(--beam-angle)) scaleX(1.08); } }

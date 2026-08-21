@@ -332,11 +332,13 @@ export const SFX = {
   match(kind, size = 3) {
     if (limit(`match-${kind}`, 90)) return;
     const boosted = size >= 5;
+    const sigil = size >= 6;
     const big = size >= 4;
     const notes = kind === 'flare' ? [740, 988]
       : kind === 'tide' ? [660, 880] : [523, 698];
-    flowTone(boosted ? [...notes, notes[1] * 1.5] : notes, 0, boosted ? 0.16 : big ? 0.12 : 0.08,
-      kind === 'tide' ? 'sine' : 'triangle', boosted ? 0.085 : 0.055,
+    const phrase = sigil ? [...notes, notes[1] * 1.5, notes[1] * 2] : boosted ? [...notes, notes[1] * 1.5] : notes;
+    flowTone(phrase, 0, sigil ? 0.2 : boosted ? 0.16 : big ? 0.12 : 0.08,
+      kind === 'tide' ? 'sine' : 'triangle', sigil ? 0.09 : boosted ? 0.085 : 0.055,
       { filterSweep: kind === 'tide' ? [4400, 2400] : [1700, 5200] });
   },
 
@@ -344,7 +346,7 @@ export const SFX = {
    * "맞췄다"와 "효과가 적용됐다"가 서로 다른 순간으로 읽힌다. */
   tactic(kind, size = 3) {
     if (limit(`tactic-${kind}`, 120)) return;
-    const bonus = size >= 5 ? 2 : size === 4 ? 1 : 0;
+    const bonus = size >= 6 ? 3 : size === 5 ? 2 : size === 4 ? 1 : 0;
     const amp = 0.07 + bonus * 0.018;
     triggerDuck(0.20 + bonus * 0.06, 0.28 + bonus * 0.06);
     if (kind === 'flare') {

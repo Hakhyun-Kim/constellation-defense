@@ -228,7 +228,7 @@ export const fxMethods = {
   /* Flare만은 피해 숫자를 판정 순간이 아니라 유성이 닿는 프레임에 낸다.
    * "보드에서 맞췄다 → 하늘에서 날아온다 → 적이 맞고 숫자가 뜬다"가 한 문장으로 읽힌다. */
   _tacticFlareImpact(x3, z3, impact) {
-    const bonus = impact.stars >= 5 ? 2 : impact.stars === 4 ? 1 : 0;
+    const bonus = impact.stars >= 6 ? 3 : impact.stars === 5 ? 2 : impact.stars === 4 ? 1 : 0;
     this._shockRing(x3, z3, 1.55 + bonus * 0.32, 0xffa253, 0.42 + bonus * 0.05);
     this.burst(x3, 0.85, z3, 0xffad5c, 18 + bonus * 9, 4.8 + bonus, { grav: 3.2, ttl: 0.42 });
     this.burst(x3, 1.04, z3, 0xffffff, 9 + bonus * 4, 3.1, { grav: 1.6, ttl: 0.3, size: 0.75 });
@@ -345,13 +345,13 @@ export const fxMethods = {
       || ev.type === 'castleHeal' || ev.type === 'tacticPush');
     const logical = mark ? { x: mark.x, y: mark.y } : D.routePoint(route, D.ROUTE_LENS[route] * 0.52);
     const x = wx(logical.x), z = wz(logical.y);
-    const jackpot = size >= 5 ? 2 : size === 4 ? 1 : 0;
+    const jackpot = size >= 6 ? 3 : size === 5 ? 2 : size === 4 ? 1 : 0;
 
     if (kind === 'flare') {
       this._shockRing(x, z, 1.35 + jackpot * 0.55, 0xff9a62, 0.34 + jackpot * 0.08);
       this.burst(x, 1.1, z, 0xffa05d, 16 + jackpot * 14, 4.6 + jackpot, { grav: 2.1, ttl: 0.38 });
       if (jackpot) this._lightPillar(x, z, jackpot + 1);
-      this.showNumber(x, 2.55, z, size >= 5 ? '☄ 별똥별!' : size === 4 ? '☄ 노바!' : '☄ 유성!', '#ffe1a5', 1 + jackpot * 0.18);
+      this.showNumber(x, 2.55, z, size === 6 ? '✦ 영웅 문양!' : size === 5 ? '☄ 별똥별!' : size === 4 ? '☄ 노바!' : '☄ 유성!', '#ffe1a5', 1 + jackpot * 0.18);
       this.addShake(0.12 + jackpot * 0.12);
     } else if (kind === 'tide') {
       const targets = (state?.enemies || []).filter(e => !e.dead && e.route === route).slice(0, 6);
@@ -361,13 +361,13 @@ export const fxMethods = {
         this.burst(tx, 0.72, tz, 0xc8f9ff, 5 + jackpot * 3, 2.2, { grav: -0.8, ttl: 0.4, size: 0.65 });
       }
       this._shockRing(x, z, 1.6 + jackpot * 0.45, 0x65cfff, 0.42 + jackpot * 0.08);
-      this.showNumber(x, 2.45, z, size >= 5 ? '❄ 빙결 폭풍!' : size === 4 ? '❄ 서리 폭발!' : '❄ 서리 결계!', '#dcfbff', 1 + jackpot * 0.16);
+      this.showNumber(x, 2.45, z, size === 6 ? '✦ 영웅 문양!' : size === 5 ? '❄ 빙결 폭풍!' : size === 4 ? '❄ 서리 폭발!' : '❄ 서리 결계!', '#dcfbff', 1 + jackpot * 0.16);
     } else if (kind === 'bloom') {
       const cx = wx(D.CASTLE_POS.x), cz = wz(D.CASTLE_POS.y);
       this._shockRing(cx, cz, 2.2 + jackpot * 0.45, 0x88ed97, 0.48 + jackpot * 0.08, 0.32);
       this.burst(cx, 1.55, cz, 0x9cff9d, 15 + jackpot * 12, 2.7, { grav: -1.1, ttl: 0.5 });
       this._shockRing(x, z, 1.25 + jackpot * 0.35, 0xbaffad, 0.38);
-      this.showNumber(cx, 3.1, cz, size >= 5 ? '🛡 별의 수호!' : size === 4 ? '🛡 수호 폭발!' : '🛡 수호 성좌!', '#c9ffb6', 1 + jackpot * 0.16);
+      this.showNumber(cx, 3.1, cz, size === 6 ? '✦ 영웅 문양!' : size === 5 ? '🛡 별의 수호!' : size === 4 ? '🛡 수호 폭발!' : '🛡 수호 성좌!', '#c9ffb6', 1 + jackpot * 0.16);
     }
   },
 

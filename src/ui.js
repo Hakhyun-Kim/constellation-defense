@@ -888,7 +888,8 @@ export class UI {
         ? english ? 'Constellation complete · hold it for a boss'
           : '성좌 완성 · 보스가 올 때까지 보류할 수 있어요'
         : charge < spec.chargeNeeded
-          ? english ? '4-match +1 · 5-match +2 marks' : '4매치 +1 · 5매치 +2 인장'
+          ? english ? '4-match +1 · straight 5 +2 · Hero Sigil +3'
+            : '4매치 +1 · 직선 5매치 +2 · 영웅 문양 +3 인장'
           : status.reason === 'none' ? english ? 'It will assist the most threatened lane' : '적이 나타나면 가장 위급한 길을 돕습니다'
             : english ? 'The guardian can only be called in battle' : '전투 중에만 별자리 수호자를 부를 수 있어요';
     el.combatConstellationBtn.disabled = !status.ok;
@@ -899,8 +900,8 @@ export class UI {
         : charge >= spec.chargeNeeded ? english ? 'Awaiting enemy' : '적 대기'
           : english ? `Marks ${charge}/${spec.chargeNeeded}` : `성좌 ${charge}/${spec.chargeNeeded}`;
     el.combatConstellationBtn.title = english
-      ? 'A charged Constellation Guardian can be held for a boss.'
-      : '4·5매치로 충전한 별자리 수호자는 보스까지 아껴 둘 수 있습니다.';
+      ? 'A Guardian charged by large matches or a Hero Sigil can be held for a boss.'
+      : '큰 매치나 영웅 문양으로 충전한 별자리 수호자는 보스까지 아껴 둘 수 있습니다.';
   }
 
   setWaveUI(state, autoStartSeconds = null) {

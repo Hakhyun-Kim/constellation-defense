@@ -10,7 +10,7 @@
  * 데모 전용 지름길을 만들면 데모에서만 되는 버그가 생긴다.
  * ===================================================== */
 import * as Bot from './bot.js';
-import { laneForGroup } from './tactics/board.js';
+import { laneForGroup, tacticSizeForGroup } from './tactics/board.js';
 
 const TACTIC_LABEL = { flare: '유성', tide: '서리', bloom: '수호' };
 const LANE_LABEL = ['왼쪽', '가운데', '오른쪽'];
@@ -20,7 +20,7 @@ const LANE_LABEL = ['왼쪽', '가운데', '오른쪽'];
 export const DEMO_TOUR = Object.freeze([
   Object.freeze({ duration: 2.6, text: 'CONSTELLATION DEFENSE · 실시간 방어와 별자리 퍼즐이 한 전장에서 이어집니다' }),
   Object.freeze({ duration: 2.8, text: '① 별을 누르거나 밀어 3개를 연결하면, 색에 맞는 영웅 전술이 선택한 길에 발동됩니다' }),
-  Object.freeze({ duration: 2.8, text: '② 4·5매치는 영웅 액티브를 빠르게 충전하고, 완성한 성좌는 보스전까지 저장할 수 있습니다' }),
+  Object.freeze({ duration: 2.8, text: '② ㄱ·T·십자 5매치는 영웅 성좌 문양이 되어 액티브와 성좌 수호자를 크게 충전합니다' }),
 ]);
 
 /* 관전자는 봇의 실제 판단을 읽을 수 있어야 한다. 이 함수는 이미 고른 합법 스왑을
@@ -31,7 +31,8 @@ export function describeTacticMove(move) {
   const kind = move.cells[group[0]];
   const lane = laneForGroup(group);
   const extra = move.groups.length > 1 ? ` + ${move.groups.length - 1}연쇄` : '';
-  return `🌌 ${LANE_LABEL[lane]} 길 · ${TACTIC_LABEL[kind] || '별자리'} ${group.length}매치${extra}`;
+  const match = tacticSizeForGroup(group) === 6 ? '영웅 성좌 문양' : `${group.length}매치`;
+  return `🌌 ${LANE_LABEL[lane]} 길 · ${TACTIC_LABEL[kind] || '별자리'} ${match}${extra}`;
 }
 
 /* 사람이 보기 좋은 속도. 너무 빠르면 뭘 하는지 안 보이고, 느리면 지루하다 */

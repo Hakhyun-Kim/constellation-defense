@@ -1,4 +1,4 @@
-/* A bankable four/five-match reward. This module deliberately knows nothing
+/* A bankable four/five-match and Hero-Sigil reward. This module deliberately knows nothing
  * about the match board or presentation: callers only receive engine events
  * and a standard projectile. */
 import * as D from '../data.js';
@@ -22,7 +22,7 @@ export function constellationAidTargetRoute(state) {
 
 export function chargeConstellationAid(state, size) {
   const spec = D.TACTICS.constellationAid;
-  const gained = spec.marks[Math.min(5, Math.max(3, Math.round(size)))] || 0;
+  const gained = spec.marks[Math.min(6, Math.max(3, Math.round(size)))] || 0;
   const aid = state.constellationAid || (state.constellationAid = { charge: 0 });
   const before = aid.charge || 0;
   aid.charge = Math.min(spec.chargeNeeded, before + gained);

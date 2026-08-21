@@ -1,6 +1,6 @@
 # Cross-machine continuation guide
 
-Last updated: 2026-08-14
+Last updated: 2026-08-21
 
 This document is the starting point for a developer or Codex session picking
 up `Constellation Defense` on another computer.
@@ -8,13 +8,13 @@ up `Constellation Defense` on another computer.
 ## Current handoff state
 
 - Branch: `main`
-- Latest feature/fix commit: run `git log -1 --oneline`; the current local
-  follow-up adds defense pacing, bankable constellation support, and an
-  embedded-GLB texture decode workaround.
-- Working tree at handoff: contains that local feature/fix until it is reviewed
-  and committed. Preserve it when taking the next task.
+- Latest feature/fix commit: run `git log -1 --oneline`. The current feature
+  connects a five-star corner/T/cross **Hero Sigil** to the existing tactic and
+  named-hero active systems without changing the engine command contract.
+- Working tree at handoff: expected clean after the feature commit. Always
+  verify with `git status --short` before editing.
 - Latest deterministic gates: `npm.cmd run check` and
-  `node scripts/balance-check.mjs 60` passed locally on 2026-08-14. The
+  `node scripts/balance-check.mjs 60` passed locally on 2026-08-21. The
   first-expedition and full two-chapter 60-run balance policies use real
   match-3, hero-active, blueprint, and constellation-support commands.
 
@@ -53,6 +53,13 @@ commits:
   live runtime actor in a short cut-in, and demo mode opens with timed
   explanation subtitles. See
   [hero-linked-puzzle-and-cinematic-demo.md](design/hero-linked-puzzle-and-cinematic-demo.md).
+
+- The 2026-08-21 puzzle follow-up promotes any matched five-or-more group with
+  a horizontal/vertical junction to semantic tactic tier 6. This Hero Sigil
+  returns eight seconds of linked-hero cooldown, uses stronger Flare/Tide/Bloom
+  numbers, and completes the three bankable Guardian marks. Straight five-star
+  lines retain the existing tier. Pure board, engine, real bot, HUD/VFX/SFX,
+  demo captions, and deterministic tests share the same rule.
 
 - `b2206ad` keeps daily difficulty measurement, town feel, phase flow, hero
   agency, and eye comfort as persistent project priorities.
@@ -145,7 +152,7 @@ Before presenting or submitting a visual change, manually confirm:
    work inside the interaction radius.
 5. Leave to the map, start a defense stage, and confirm the normal defense
    renderer returns without console errors.
-6. Repeat the first swap, all three tactics, 4/5 matches, wave clear, defeat
+6. Repeat the first swap, all three tactics, 4/5 matches, a Hero Sigil, wave clear, defeat
    reset, and a town facility visit at desktop and mobile widths.
 
 On 2026-08-12, the local judge route was visually checked at 1280×720 and

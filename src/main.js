@@ -2136,6 +2136,6 @@ window.__game = {
   gold(n) { state.gold += n; refreshAll(); },
   jump(w) { state.wave = w; refreshAll(); },
   hurt(n) { state.castleHp = Math.max(0, state.castleHp - n); if (state.castleHp <= 0) { state.phase = 'over'; state.shardsEarned = D.shardReward(state.wave, state.bossKills); onGameOver(); } },
-  /* 규칙·상태는 바꾸지 않는 시각 연출 훅. 예: __game.previewTactic('tide', 1, 5) */
+  /* 규칙·상태는 바꾸지 않는 시각 연출 훅. 6은 영웅 문양 미리보기다. */
   previewTactic(kind = 'flare', lane = 1, size = 3) { return tactics.preview(kind, lane, size); },
 };

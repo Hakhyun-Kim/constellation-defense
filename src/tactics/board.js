@@ -64,6 +64,45 @@ export function findMatchGroups(cells, size = BOARD_SIZE) {
   return groups;
 }
 
+/* A Hero Sigil is a five-or-more-cell match whose valid horizontal and
+ * vertical runs meet at a junction.  It stays a board-only geometry decision;
+ * the defense engine still receives only the promoted tactic size. */
+export function matchShape(group, size = BOARD_SIZE) {
+  if (!Array.isArray(group) || group.length < 3) return 'none';
+  const occupied = new Set(group);
+  const has = (row, col) => row >= 0 && row < size && col >= 0 && col < size
+    && occupied.has(cellIndex(row, col, size));
+  const rows = new Set(group.map(index => cellRow(index, size)));
+  const cols = new Set(group.map(index => cellCol(index, size)));
+  if (rows.size === 1 || cols.size === 1) return 'line';
+  const span = (row, col, rowStep, colStep) => {
+    let length = 1;
+    for (const direction of [-1, 1]) {
+      let nextRow = row + rowStep * direction;
+      let nextCol = col + colStep * direction;
+      while (has(nextRow, nextCol)) {
+        length++;
+        nextRow += rowStep * direction;
+        nextCol += colStep * direction;
+      }
+    }
+    return length;
+  };
+  for (const index of group) {
+    const row = cellRow(index, size), col = cellCol(index, size);
+    if (span(row, col, 1, 0) >= 3 && span(row, col, 0, 1) >= 3) return 'sigil';
+  }
+  return 'cluster';
+}
+
+export const isHeroSigilGroup = (group, size = BOARD_SIZE) =>
+  Array.isArray(group) && group.length >= 5 && matchShape(group, size) === 'sigil';
+
+/* Size 6 is a semantic tier, not a sixth required cell.  This preserves the
+ * engine command contract while making a corner/T/cross stronger than a line. */
+export const tacticSizeForGroup = (group, size = BOARD_SIZE) =>
+  isHeroSigilGroup(group, size) ? 6 : Math.min(5, group?.length || 0);
+
 export function areNeighbors(a, b, size = BOARD_SIZE) {
   const ar = cellRow(a, size), ac = cellCol(a, size);
   const br = cellRow(b, size), bc = cellCol(b, size);

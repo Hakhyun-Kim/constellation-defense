@@ -28,11 +28,12 @@ Every successful puzzle color now belongs to squad members:
 
 | Puzzle | Heroes | Defense effect | Active cooldown returned |
 | --- | --- | --- | --- |
-| Flare | Arin, Sera | focused damage | 0.8 / 2 / 4 seconds |
-| Tide | Luna, Yuna | lane-wide slow | 0.8 / 2 / 4 seconds |
-| Bloom | Doyun | heal and push | 0.8 / 2 / 4 seconds |
+| Flare | Arin, Sera | focused damage | 0.8 / 2 / 4 / 8 seconds |
+| Tide | Luna, Yuna | lane-wide slow | 0.8 / 2 / 4 / 8 seconds |
+| Bloom | Doyun | heal and push | 0.8 / 2 / 4 / 8 seconds |
 
-The three values correspond to 3-, 4-, and 5-star matches. The pure defense
+The first three values correspond to 3-, 4-, and straight 5-star matches; the
+fourth is the Hero-Sigil tier described below. The pure defense
 engine changes cooldown state and emits `tacticHeroLink`; the board only emits
 `{ route, kind, size }`. The renderer shows a local effect on the linked hero,
 and the tactic HUD reports the hero and the returned cooldown. This keeps a
@@ -50,31 +51,48 @@ The Quaternius hero models author their forward axis opposite the logical
 route-facing axis. Every hero slot now declares a `Math.PI` yaw correction, and
 the art selection check locks that contract.
 
-## Puzzle directions considered
+## Implemented puzzle follow-up: Hero Sigils
 
-The hero link is the smallest safe first improvement because it uses the real
-combat command and existing balance bot. The following variants are good
-follow-ups, in this order:
+A connected group of at least five matched stars becomes a Hero Sigil when its
+valid horizontal and vertical runs meet at a junction. This covers corner, T,
+and cross silhouettes. A straight group remains the existing five-star tactic,
+so ordinary match goals and learned controls do not change.
 
-1. **Hero sigils** — a short encounter asks for a line, corner, or cross in a
-   hero's color. Completing it empowers that named active; ordinary matches
-   remain valid. This reuses the current connected-match groups and is the best
-   next prototype.
-2. **Orbit rings** — rotate one of three concentric constellation rings to align
+The pure board helper classifies the geometry and promotes a sigil to semantic
+size 6. The defense engine still receives only `{ route, kind, size }`; it does
+not import board cells or shape names. Tier 6 has four visible rewards:
+
+- eight seconds returned to the linked named heroes' active cooldowns;
+- a stronger color-specific lane effect than the straight five-star tactic;
+- all three Constellation Guardian marks completed at once, which the player
+  can still hold for the chosen boss moment;
+- a local `HERO SIGIL` board/HUD/world hit treatment and a distinct short audio
+  phrase, without a battlefield-wide flash or camera-palette change.
+
+The real legal-swap test includes a T-shaped sigil. The browser demo and
+headless balance bot both call the same geometry helper, so this reward cannot
+exist only in presentation or use information unavailable to a player.
+Across the 2026-08-21 60-seed gate, the nine difficulty/profile cohorts made an
+average of 1.8–13.5 sigils per first expedition (roughly 12–17% of their tactic
+casts), while every completion-rate and median-wave baseline still passed.
+
+## Remaining puzzle directions considered
+
+1. **Orbit rings** — rotate one of three concentric constellation rings to align
    stars with the three lanes. It is visually distinctive, but needs a new
    legal-move search and a bot before replacing match-3.
-3. **Route drawing** — connect stars without crossing an enemy corruption line.
+2. **Route drawing** — connect stars without crossing an enemy corruption line.
    This is strong for boss armor phases but is slower under real-time pressure,
    so it should appear as a short boss sub-puzzle rather than the permanent
    board.
-4. **Hold-and-release constellations** — bank one completed hero sigil and fire
+3. **Hold-and-release constellations** — bank one completed hero sigil and fire
    it at the chosen boss phase. The existing Constellation Guardian already
    covers this strategic timing, so another stored meter should not be added
    until playtests show the guardian is insufficient.
 
-The next prototype should be Hero sigils. It adds pattern recognition while
-preserving touch, bot, save, and lane contracts; Orbit rings should remain an
-isolated experiment until it can pass the same deterministic gates.
+Orbit rings should remain an isolated boss-encounter experiment until it has a
+deterministic legal-move search and balance-bot policy. It should not replace
+the permanent board on concept appeal alone.
 
 ## Video demo
 
@@ -83,4 +101,3 @@ the real bot input path. Its action captions describe actual swaps and skills;
 boss spawn replaces the current caption with a cut-in explanation. This makes a
 continuous screen recording understandable without a separate voice track and
 does not create demo-only combat rules.
-

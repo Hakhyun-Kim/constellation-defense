@@ -47,8 +47,8 @@ export function createTacticFeedback() {
 
   function announceMatch(kind, lane, size) {
     const spell = SPELL[kind] || SPELL.flare;
-    const bonus = size >= 5 ? '전장 강타 준비!' : size === 4 ? '강화 준비!' : '길을 조준해요';
-    present(kind, size >= 5 ? `STARFALL · ${spell.name}` : `${size}매치 · ${spell.name}`,
+    const bonus = size === 6 ? '영웅 액티브·성좌 수호자 대폭 충전!' : size === 5 ? '전장 강타 준비!' : size === 4 ? '강화 준비!' : '길을 조준해요';
+    present(kind, size === 6 ? `HERO SIGIL · ${spell.name}` : size === 5 ? `STARFALL · ${spell.name}` : `${size}매치 · ${spell.name}`,
       `${LANE[lane] || LANE[1]} 길 ${bonus}`, true, size);
   }
 
@@ -63,24 +63,24 @@ export function createTacticFeedback() {
     if (kind === 'flare') {
       const hits = events.filter(event => event.type === 'enemyHit' && event.tactic === 'flare');
       const total = hits.reduce((sum, event) => sum + (event.dmg || 0), 0);
-      present(kind, size >= 5 ? `☄ STARFALL!` : `${SPELL.flare.name}!`,
+      present(kind, size === 6 ? `✦ HERO SIGIL!` : size === 5 ? `☄ STARFALL!` : `${SPELL.flare.name}!`,
         `${laneName} 길 · ${hits.length}명 · ${total} 피해${linkText}`, false, size);
     } else if (kind === 'tide') {
       const slowed = events.filter(event => event.type === 'enemyHit' && event.kind === 'slow').length;
-      present(kind, size >= 5 ? `❄ ABSOLUTE ZERO!` : `${SPELL.tide.name}!`,
+      present(kind, size === 6 ? `✦ HERO SIGIL!` : size === 5 ? `❄ ABSOLUTE ZERO!` : `${SPELL.tide.name}!`,
         `${laneName} 길 · ${slowed}명 감속${linkText}`, false, size);
     } else {
       const healed = events.find(event => event.type === 'castleHeal')?.amount || 0;
       const pushed = events.filter(event => event.type === 'tacticPush').length;
-      present(kind, size >= 5 ? `🛡 CELESTIAL AEGIS!` : `${SPELL.bloom.name}!`,
+      present(kind, size === 6 ? `✦ HERO SIGIL!` : size === 5 ? `🛡 CELESTIAL AEGIS!` : `${SPELL.bloom.name}!`,
         `성 +${healed} · ${pushed}명 후퇴${linkText}`, false, size);
     }
   }
 
   function showPreview(kind, lane, size) {
     const spell = SPELL[kind] || SPELL.flare;
-    present(kind, size >= 5 ? `STARFALL · ${spell.name}` : `테스트 · ${spell.name}`,
-      `${LANE[lane] || LANE[1]} 길 · ${size}매치 연출`, true, size);
+    present(kind, size === 6 ? `HERO SIGIL · ${spell.name}` : size === 5 ? `STARFALL · ${spell.name}` : `테스트 · ${spell.name}`,
+      `${LANE[lane] || LANE[1]} 길 · ${size === 6 ? 'ㄱ·T·십자 문양' : `${size}매치`} 연출`, true, size);
   }
 
   function reset() {

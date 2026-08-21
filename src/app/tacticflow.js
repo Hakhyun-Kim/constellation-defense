@@ -16,6 +16,7 @@ import {
   refillCells,
   swipeNeighbor,
   swapCells,
+  tacticSizeForGroup,
 } from '../tactics/board.js';
 
 const ICON = { flare: '✦', tide: '✧', bloom: '❋' };
@@ -224,9 +225,9 @@ export function createTacticFlow({ getPhase, random, resolveTactic, onCast, onMa
     resolving = true;
     const type = cells[hit[0]];
     const lane = laneForGroup(hit, BOARD_SIZE, 3);
-    const size = Math.min(5, hit.length);
+    const size = tacticSizeForGroup(hit, BOARD_SIZE);
     try {
-      status.textContent = `${ROUTE_LABEL[lane]} 길 · ${LABEL[type]} ${size >= 5 ? '별똥별 준비!' : size === 4 ? '강화 준비!' : '연결!'}`;
+      status.textContent = `${ROUTE_LABEL[lane]} 길 · ${LABEL[type]} ${size === 6 ? '영웅 성좌 문양 준비!' : size === 5 ? '별똥별 준비!' : size === 4 ? '강화 준비!' : '연결!'}`;
       showMatch(hit, type, lane, size);
       onMatch?.(type, lane, size);
     } catch (error) {
@@ -245,7 +246,7 @@ export function createTacticFlow({ getPhase, random, resolveTactic, onCast, onMa
         } else cells = refillCells(cells, hit, random);
         clearVisuals();
         if (result.ok) {
-          status.textContent = `${ROUTE_LABEL[lane]} 길 · ${LABEL[type]} ${size >= 5 ? '별똥별!' : size === 4 ? '강화!' : '발동!'}`;
+          status.textContent = `${ROUTE_LABEL[lane]} 길 · ${LABEL[type]} ${size === 6 ? '영웅 성좌 문양!' : size === 5 ? '별똥별!' : size === 4 ? '강화!' : '발동!'}`;
           onCast(result, type, lane, size);
         } else {
           status.textContent = '별자리는 이어졌지만 그 길에 적이 없어요.';
@@ -270,15 +271,18 @@ export function createTacticFlow({ getPhase, random, resolveTactic, onCast, onMa
   function preview(type = 'flare', lane = 1, size = 3) {
     if (!STAR_TYPES.includes(type) || resolving) return false;
     const safeLane = Math.max(0, Math.min(2, Math.round(lane)));
-    const safeSize = Math.max(3, Math.min(5, Math.round(size)));
-    const hit = Array.from({ length: safeSize }, (_, row) => ix(row, safeLane * 2));
+    const safeSize = Math.max(3, Math.min(6, Math.round(size)));
+    const centerCol = Math.min(4, safeLane * 2 + 1);
+    const hit = safeSize === 6
+      ? [ix(1, centerCol), ix(2, centerCol - 1), ix(2, centerCol), ix(2, centerCol + 1), ix(3, centerCol)]
+      : Array.from({ length: safeSize }, (_, row) => ix(row, safeLane * 2));
     const originalCells = cells;
     const token = generation;
     resolving = true;
     cells = [...cells];
     hit.forEach(index => { cells[index] = type; });
     draw();
-    status.textContent = `테스트 · ${ROUTE_LABEL[safeLane]} 길 ${LABEL[type]} ${safeSize}개`;
+    status.textContent = `테스트 · ${ROUTE_LABEL[safeLane]} 길 ${LABEL[type]} ${safeSize === 6 ? '영웅 성좌 문양' : `${safeSize}개`}`;
     showMatch(hit, type, safeLane, safeSize);
     later(() => {
       if (token !== generation) return;

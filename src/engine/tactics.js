@@ -10,7 +10,7 @@ import { squadTacticMods } from './squad.js';
 import { recordTacticMemory } from './run-memory.js';
 import { chargeConstellationAid } from './constellation-aid.js';
 
-const validSize = (size) => (size >= 5 ? 5 : size === 4 ? 4 : 3);
+const validSize = (size) => (size >= 6 ? 6 : size === 5 ? 5 : size === 4 ? 4 : 3);
 
 function linkHeroActives(state, kind, stars, events) {
   const linkedKeys = D.TACTIC_HERO_LINKS[kind] || [];
