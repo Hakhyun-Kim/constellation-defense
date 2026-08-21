@@ -24,13 +24,19 @@ The redesign decisions and verification gates are recorded in [docs/design/journ
 The current pacing and bankable-constellation rule is documented in
 [docs/design/constellation-aid-and-defense-pacing.md](docs/design/constellation-aid-and-defense-pacing.md).
 The touch layout, hero-link rule, live-actor boss cut-in, puzzle prototypes, and
-video-ready demo subtitles are documented in
+guided live-demo subtitles are documented in
 [docs/design/hero-linked-puzzle-and-cinematic-demo.md](docs/design/hero-linked-puzzle-and-cinematic-demo.md).
 For a fresh setup or handoff to another computer, start with [docs/CONTINUATION.md](docs/CONTINUATION.md).
 
 ## Play
 
 [Play in the browser](https://hakhyun-kim.github.io/constellation-defense/)
+
+[Watch the guided live demo](https://hakhyun-kim.github.io/constellation-defense/?demo=1)
+— a real deterministic bot run with two-line explanations for lane/color
+mapping, Hero Sigils, linked hero actives, held Guardian timing, phase flow,
+boss cut-ins, and expedition growth. The teaching Hero Sigil is still made by
+a legal adjacent swap and resolved through the normal combat engine.
 
 Use `?lang=en` for the English build, or change **Language** from the in-game ⚙️ settings panel.
 

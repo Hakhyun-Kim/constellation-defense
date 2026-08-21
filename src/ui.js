@@ -1870,12 +1870,17 @@ export class UI {
     this.el.demoDetail.textContent = on
       ? '설명형 자동 플레이 · 실제 스왑 · 실제 전술 · 실제 방어 규칙'
       : '밸런스 봇과 같은 실제 플레이 규칙';
-    if (on && profile) this.setDemoCaption(`🤖 ${profile} AI 관전 중`);
+    if (on && profile) this.setDemoCaption(`🤖 ${profile} AI 관전 중`,
+      '잠시 후 핵심 규칙을 설명한 뒤 실제 게임을 계속 플레이합니다.', 'guide');
   }
-  setDemoCaption(text) {
+  setDemoCaption(title, detail = '', tone = 'action') {
     const el = this.el.demoCaption;
-    if (el.textContent === text) return;      // 같은 글자를 다시 넣어 애니메이션을 재시작하지 않는다
-    el.textContent = text;
+    const root = this.el.demoBar;
+    if (el.textContent === title && this.el.demoDetail.textContent === detail
+      && root.dataset.tone === tone) return;
+    el.textContent = title;
+    this.el.demoDetail.textContent = detail || '실제 플레이 규칙으로 진행 중';
+    root.dataset.tone = tone;
     el.classList.remove('pop');
     void el.offsetWidth;
     el.classList.add('pop');

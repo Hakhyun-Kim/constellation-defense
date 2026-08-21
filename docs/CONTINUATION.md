@@ -61,6 +61,14 @@ commits:
   lines retain the existing tier. Pure board, engine, real bot, HUD/VFX/SFX,
   demo captions, and deterministic tests share the same rule.
 
+- The live `?demo=1` route now uses deterministic seed 3 and opens with four
+  concise two-line guide cards. Its first board offers a real legal T-shaped
+  Hero Sigil; the demo waits for an enemy on that mapped lane, performs the
+  normal adjacent swap, then returns to the standard threat policy. Mid-run
+  guides explain the first tactic, Sigil reward, linked hero active, held
+  Guardian, automatic phase flow, boss cut-in, and expedition growth without
+  pausing combat. `demo:check` locks this contract.
+
 - `b2206ad` keeps daily difficulty measurement, town feel, phase flow, hero
   agency, and eye comfort as persistent project priorities.
 - `5fff739` eases the opening enemy curve and adds a daily GitHub Actions job

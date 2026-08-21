@@ -96,8 +96,31 @@ the permanent board on concept appeal alone.
 
 ## Video demo
 
-Demo mode begins with three timed explanation subtitles, then continues through
-the real bot input path. Its action captions describe actual swaps and skills;
-boss spawn replaces the current caption with a cut-in explanation. This makes a
-continuous screen recording understandable without a separate voice track and
-does not create demo-only combat rules.
+The `?demo=1` live route now uses a deterministic presentation seed. Its first
+stable board contains a legal T-shaped Hero Sigil opportunity. The teaching
+policy preserves that opportunity until its mapped lane has a living enemy,
+then performs the same adjacent swap and `{ route, kind, size }` command as a
+player. Once the Sigil has been shown, the normal threat-scored tactic policy
+resumes. No enemy, cooldown, mark, or board state is granted directly.
+
+The opening has four short two-line cards: battlefield/board continuity,
+lane-and-color mapping, hero links, and the Hero-Sigil reward. During play,
+milestone cards appear once and remain readable while combat continues:
+
+- expedition route and fixed-party growth;
+- preparation and the automatic defense transition;
+- the first real tactic and the first Hero Sigil;
+- a named hero active and a strategically held Guardian summon;
+- the live-actor boss cut-in and the run-memory recap.
+
+Normal action captions still identify the actual lane, color, effect, linked
+heroes, active cooldown return, and cascade count. Important explanations have
+a short hold priority so rapid bot actions cannot replace them immediately.
+The bottom overlay stays local to the battlefield and uses tone-specific border
+and copy colors; it does not flash, shake, or recolor the whole scene.
+
+The demo now calls `nextConstellationAid()` just like the balance bot, so a
+Sigil-completed Guardian is held for a boss or critical castle state and then
+summoned through the public command. The deterministic check locks the opening
+legal Sigil, rich card fields, caption hold behavior, and all mid-run guide
+milestones.

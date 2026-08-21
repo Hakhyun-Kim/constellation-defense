@@ -1940,12 +1940,21 @@ button { font-family: inherit; }
   z-index: 9;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
   max-width: 92%;
+  border: 1px solid rgba(159, 197, 255, .36);
+  transition: border-color .18s, background-color .18s;
 }
 #demoBar.hidden { display: none; }
+#demoBar[data-tone="guide"] { border-color: rgba(139, 205, 255, .75); background: rgba(18, 38, 64, .92); }
+#demoBar[data-tone="sigil"] { border-color: rgba(255, 229, 133, .9); background: rgba(55, 30, 78, .94); }
+#demoBar[data-tone="hero"] { border-color: rgba(255, 186, 105, .85); background: rgba(52, 35, 56, .93); }
+#demoBar[data-tone="boss"] { border-color: rgba(255, 137, 122, .88); background: rgba(62, 28, 42, .94); }
 .demo-bot { flex: none; font-size: 20px; filter: drop-shadow(0 1px 3px #0008); }
-.demo-copy { min-width: 0; display: grid; gap: 1px; }
+.demo-copy { min-width: 0; display: grid; flex: 1; gap: 2px; }
 #demoCaption { overflow: hidden; font-size: 13px; font-weight: 900; line-height: 1.25; word-break: keep-all; }
-#demoDetail { color: #b9d5ff; font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#demoDetail { color: #c8ddff; font-size: 10px; font-weight: 700; line-height: 1.25; word-break: keep-all; }
+#demoBar[data-tone="sigil"] #demoDetail { color: #ffe9ac; }
+#demoBar[data-tone="hero"] #demoDetail { color: #ffd6af; }
+#demoBar[data-tone="boss"] #demoDetail { color: #ffc4ba; }
 #demoCaption.pop { animation: demopop 0.35s cubic-bezier(0.2, 1.5, 0.4, 1); }
 @keyframes demopop {
   0%   { transform: translateY(5px); opacity: 0.3; }
@@ -2616,6 +2625,13 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
   color: #513600;
   box-shadow: 0 2px 0 #ac6c1c;
   cursor: pointer;
+}
+@media (max-width: 720px) {
+  #demoBar { bottom: 8px; width: 94%; max-width: 94%; gap: 6px; padding: 7px 8px; align-items: flex-start; }
+  .demo-bot { font-size: 17px; }
+  #demoCaption { font-size: 11.5px; }
+  #demoDetail { font-size: 9px; }
+  #demoExit { padding: 4px 6px; font-size: 10px; }
 }
 body:not(.combat-focus) .combat-skill-dock { display: none; }
 body.judge-opening .tactic-status { background: #302a61; color: #fff4b5; font-size: 13px; box-shadow: 0 0 18px #8e72ff66; }

@@ -12,7 +12,7 @@ import { UI } from './ui.js';
 import { SFX, toggleSfx, toggleMusic, toggleAll, isSfxMuted, isMusicMuted, forceMute, getAc, getMaster, registerDucker, updateAudioFlow, registerSfxAssets, prepareSfxSamples, sfxSampleSnapshot } from './sfx.js';
 import { music } from './music.js';
 import * as Story from './story.js';
-import { demo } from './demo.js';
+import { DEMO_SEED, demo } from './demo.js';
 import {
   store, heroName,
   codex, earned, codexAddHero, codexAddKill, flushRecords, markDirty,
@@ -44,6 +44,7 @@ installDocumentLocalization(locale);
 /* URL로 강제 지정 가능: ?gfx=high|lite|min (min은 테스트/초저사양용) */
 const urlGfx = urlParams.get('gfx');
 const judgeMode = urlParams.has('judge');
+const demoRoute = urlParams.has('demo');
 const previewBlueprint = urlParams.has('blueprint');
 const previewChapter = urlParams.get('chapter') === '2' || previewBlueprint ? 'beyond-page' : null;
 const weeklyChallenge = urlParams.has('weekly') ? createWeeklyChallenge(urlParams.get('weekly')) : null;
@@ -404,7 +405,8 @@ function newGame(difficulty, opts = {}) {
   state = E.createGame({
     difficulty,
     metaLevels: store.meta,
-    rng: weeklyChallenge ? seededRandom(weeklyChallenge.seed) : undefined,
+    rng: weeklyChallenge ? seededRandom(weeklyChallenge.seed)
+      : demoRoute ? seededRandom(DEMO_SEED) : undefined,
     journeyChapter: opts.journeyChapter || previewChapter,
   });
   if (previewBlueprint && state.journey?.chapter === 'beyond-page') {
@@ -614,7 +616,7 @@ function doConstellationAid() {
   const result = E.castConstellationAid(state);
   if (!result.ok) {
     if (result.reason === 'phase') ui.toast('✦ 별자리 수호자는 전투 중에만 부를 수 있어요.', 'bad');
-    else if (result.reason === 'charge') ui.toast(`✦ 성좌 인장 ${result.charge || 0}/${D.TACTICS.constellationAid.chargeNeeded} · 4매치 +1, 5매치 +2`, 'bad');
+    else if (result.reason === 'charge') ui.toast(`✦ 성좌 인장 ${result.charge || 0}/${D.TACTICS.constellationAid.chargeNeeded} · 4매치 +1, 직선 5매치 +2, 영웅 문양 +3`, 'bad');
     else if (result.reason === 'active') ui.toast('✦ 별자리 수호자가 이미 길을 지키고 있어요.');
     else if (result.reason === 'none') ui.toast('✦ 적이 나타나면 가장 위급한 길에 수호자를 보낼 수 있어요.');
     return false;
@@ -980,9 +982,7 @@ function handleEvents(events) {
         if (ev.tier === 'great') SFX.bossRoar();
         else SFX.midBossRoar();
         ui.showBossBanner(ev.tier, ev.name, ev.emoji);
-        if (demo.active) demo.say(ev.tier === 'great'
-          ? `③ 컷신 뒤 보스전 · 저장한 성좌 지원과 충전된 영웅 액티브를 한꺼번에 사용합니다`
-          : `③ 지휘관 컷신 · 퍼즐로 충전한 영웅 기술을 지금 직접 확인합니다`);
+        if (demo.active) demo.guide('boss');
         break;
       case 'bossEnrage':
         SFX.bossEnrage();
@@ -996,6 +996,7 @@ function handleEvents(events) {
         autoSave();                      // 매 웨이브가 이어하기 지점이 된다
         checkAchievements();
         refreshAll();
+        if (demo.active) demo.guide('waveFlow');
         /* 클리어 토스트/효과음과 겹치지 않게 살짝 늦춘다. 준비 단계라 시뮬레이션 손실은 없다 */
         if (!hasVictory && !state.journey) {
           const key = Story.beatForWave(ev.wave);
@@ -1998,6 +1999,7 @@ tactics = createTacticFlow({
     renderer.onEvents(state, result.events);
     handleEvents(result.events);
     tacticFeedback.showCast(result, type, lane, size);
+    demo.onTacticCast(type, lane, size);
     ui.toast(`${['☄️ 유성', '❄️ 서리', '🛡️ 수호'][['flare','tide','bloom'].indexOf(type)]} 성좌 ${size}개 — ${['왼쪽','가운데','오른쪽'][lane]} 길 전술 발동!`, 'good');
     refreshAll();
   },
@@ -2086,6 +2088,7 @@ demo.attach({
   heroSkill(heroId, key) { handlers.onHeroSkill(heroId, key); },
   heroActive: doHeroActive,
   monsterBlueprint: doMonsterBlueprint,
+  constellationAid: doConstellationAid,
   feast: doFeast,
   journeyTravel(id) { handlers.onJourneyTravel(id); },
   journeyRecruit(key) { handlers.onJourneyRecruit(key); },
@@ -2098,7 +2101,7 @@ demo.attach({
     ? `${D.CLASSES[c.cls].name} ${D.TIERS[c.resultTier].name}`
     : `${D.CLASSES[c.result].name}`),
   heroLabel: (h) => `${h.name || D.CLASSES[h.cls].name} · Lv ${h.level || 1}`,
-  onCaption: (text) => ui.setDemoCaption(text),
+  onCaption: (title, detail, tone) => ui.setDemoCaption(title, detail, tone),
   getTacticBoard: () => tactics ? tactics.getBoard() : [],
   tacticSwap(from, to) { return tactics ? tactics.swap(from, to) : false; },
   onStart(profile) {
