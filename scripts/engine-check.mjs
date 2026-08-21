@@ -630,6 +630,18 @@ function tacticState(route = 0, count = 1) {
     .every(e => e.tactic === 'flare' && e.dmg > 0 && [3, 4, 5].includes(e.stars)));
   ok('전술: 성공한 시전만 전술 기록에 남는다', flare.tacticCasts === 1);
 
+  const linked = tacticState(0, 2);
+  linked.field = [
+    { id: 91, heroKey: 'arin', name: '아린', activeCd: 5, x: 140, y: 190 },
+    { id: 92, heroKey: 'sera', name: '세라', activeCd: 1.5, x: 210, y: 190 },
+    { id: 93, heroKey: 'luna', name: '루나', activeCd: 5, x: 280, y: 190 },
+  ];
+  const linkedCast = E.castTactic(linked, 0, 'flare', 4);
+  ok('전술 영웅 연계: Flare 퍼즐이 아린·세라 액티브를 충전한다', linkedCast.ok
+    && linked.field[0].activeCd === 3 && linked.field[1].activeCd === 0 && linked.field[2].activeCd === 5
+    && linkedCast.events.filter((event) => event.type === 'tacticHeroLink').length === 2
+    && linkedCast.events.some((event) => event.type === 'tacticHeroLink' && event.heroKey === 'sera' && event.ready));
+
   const flare4 = tacticState(0, 6);
   const flare5 = tacticState(0, 6);
   const f4 = E.castTactic(flare4, 0, 'flare', 4);

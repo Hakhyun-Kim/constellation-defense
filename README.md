@@ -4,11 +4,13 @@
 
 Constellation Defense is a 3D kingdom-defense game framed as a compact constellation expedition. Every run begins with Arin the knight and Luna the constellation mage. The player follows an authored star-map, clears short defense encounters, and chooses which towns and companions to pursue. Doyun, Sera, and Yuna can join the party; a party holds up to five heroes and each hero gains experience and specializations.
 
-During battle, swap neighboring stars on the 6×6 board. Each match targets the matching road:
+During battle, tap two neighboring stars or swipe one toward a neighbor on the
+6×6 board. Each match targets the matching road and advances the named heroes
+linked to that color:
 
-- **Flare** damages enemies on that road.
-- **Tide** slows that road's enemy line.
-- **Bloom** restores the citadel and pushes danger back.
+- **Flare** damages enemies on that road and charges Arin/Sera actives.
+- **Tide** slows that road's enemy line and charges Luna/Yuna actives.
+- **Bloom** restores the citadel, pushes danger back, and charges Doyun's active.
 - Four-star matches add one constellation mark and five-star matches add two.
   Complete three marks, then bank the **Constellation Guardian** until a boss or
   critical lane needs its focused support fire.
@@ -18,6 +20,9 @@ The player’s choices are deliberately focused: choose a route and companions o
 The redesign decisions and verification gates are recorded in [docs/design/journey-campaign-redesign.md](docs/design/journey-campaign-redesign.md).
 The current pacing and bankable-constellation rule is documented in
 [docs/design/constellation-aid-and-defense-pacing.md](docs/design/constellation-aid-and-defense-pacing.md).
+The touch layout, hero-link rule, live-actor boss cut-in, puzzle prototypes, and
+video-ready demo subtitles are documented in
+[docs/design/hero-linked-puzzle-and-cinematic-demo.md](docs/design/hero-linked-puzzle-and-cinematic-demo.md).
 For a fresh setup or handoff to another computer, start with [docs/CONTINUATION.md](docs/CONTINUATION.md).
 
 ## Play

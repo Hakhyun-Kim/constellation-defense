@@ -55,20 +55,25 @@ export function createTacticFeedback() {
   function showCast(result, kind, lane, size) {
     const events = result?.events || [];
     const laneName = LANE[lane] || LANE[1];
+    const link = events.find(event => event.type === 'tacticHeroLink' && event.primary)
+      || events.find(event => event.type === 'tacticHeroLink');
+    const linkText = link
+      ? ` · ${link.heroName || '영웅'} ${link.ready ? `${link.emoji} 준비 완료` : link.reduction > 0 ? `액티브 -${link.reduction.toFixed(1)}초` : '연계'}`
+      : '';
     if (kind === 'flare') {
       const hits = events.filter(event => event.type === 'enemyHit' && event.tactic === 'flare');
       const total = hits.reduce((sum, event) => sum + (event.dmg || 0), 0);
       present(kind, size >= 5 ? `☄ STARFALL!` : `${SPELL.flare.name}!`,
-        `${laneName} 길 · ${hits.length}명 · ${total} 피해`, false, size);
+        `${laneName} 길 · ${hits.length}명 · ${total} 피해${linkText}`, false, size);
     } else if (kind === 'tide') {
       const slowed = events.filter(event => event.type === 'enemyHit' && event.kind === 'slow').length;
       present(kind, size >= 5 ? `❄ ABSOLUTE ZERO!` : `${SPELL.tide.name}!`,
-        `${laneName} 길 · ${slowed}명 감속`, false, size);
+        `${laneName} 길 · ${slowed}명 감속${linkText}`, false, size);
     } else {
       const healed = events.find(event => event.type === 'castleHeal')?.amount || 0;
       const pushed = events.filter(event => event.type === 'tacticPush').length;
       present(kind, size >= 5 ? `🛡 CELESTIAL AEGIS!` : `${SPELL.bloom.name}!`,
-        `성 +${healed} · ${pushed}명 후퇴`, false, size);
+        `성 +${healed} · ${pushed}명 후퇴${linkText}`, false, size);
     }
   }
 

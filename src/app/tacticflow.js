@@ -14,6 +14,7 @@ import {
   findMatchGroups,
   laneForGroup,
   refillCells,
+  swipeNeighbor,
   swapCells,
 } from '../tactics/board.js';
 
@@ -30,6 +31,8 @@ export function createTacticFlow({ getPhase, random, resolveTactic, onCast, onMa
   let resolving = false;
   let openingRefill = null;
   let generation = 0;
+  let gesture = null;
+  let suppressClickUntil = 0;
   const timers = new Set();
   const ix = (row, col) => cellIndex(row, col, BOARD_SIZE);
 
@@ -55,10 +58,43 @@ export function createTacticFlow({ getPhase, random, resolveTactic, onCast, onMa
     board.innerHTML = cells.map((type, index) =>
       `<button class="tactic-star ${type}${selected === index ? ' picked' : ''}" data-i="${index}" aria-label="${LABEL[type]}">${ICON[type]}</button>`
     ).join('');
-    board.querySelectorAll('button').forEach(button =>
-      button.addEventListener('click', () => choose(Number(button.dataset.i)))
-    );
   }
+
+  /* A tap still selects two adjacent stars, while a short swipe exchanges the
+   * touched star with the neighbour in that direction. Pointer events keep the
+   * same path for mouse, pen, and touch without duplicating board rules. */
+  board.addEventListener('click', (event) => {
+    if (performance.now() < suppressClickUntil) return;
+    const button = event.target.closest('button[data-i]');
+    if (button) choose(Number(button.dataset.i));
+  });
+  board.addEventListener('pointerdown', (event) => {
+    const button = event.target.closest('button[data-i]');
+    if (!button || resolving) return;
+    gesture = { pointerId: event.pointerId, index: Number(button.dataset.i), x: event.clientX, y: event.clientY };
+    button.setPointerCapture?.(event.pointerId);
+  });
+  board.addEventListener('pointercancel', () => { gesture = null; });
+  board.addEventListener('pointerup', (event) => {
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const start = gesture;
+    gesture = null;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 14) return;
+    suppressClickUntil = performance.now() + 320;
+    if (getPhase() !== 'wave') {
+      toast('전술 보드는 웨이브 중에만 사용할 수 있어요.', 'warn');
+      return;
+    }
+    const target = swipeNeighbor(start.index, dx, dy, BOARD_SIZE);
+    if (target == null) return;
+    if (!attemptSwap(start.index, target)) {
+      status.textContent = '별자리가 이어지지 않았어요. 다른 방향으로 밀어 보세요.';
+      selected = null;
+      draw();
+    }
+  });
 
   function clearVisuals() {
     board.classList.remove('casting');

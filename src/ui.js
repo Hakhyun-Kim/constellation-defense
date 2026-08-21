@@ -104,7 +104,7 @@ export class UI {
       'summonBtn', 'benchHint', 'bench', 'combineRows', 'sfxBtn', 'bgmBtn', 'effectsBtn',
       'placeBar', 'placeBarText', 'placeBarCancel',
       'castleRows', 'heroPanel', 'hpTitle', 'hpInfo', 'heroActiveBtn', 'recallBtn', 'sellBtn', 'moveHint',
-      'combatHeroBar', 'combatHeroName', 'combatHeroRole', 'combatHeroActiveBtn',
+      'combatHeroBar', 'combatHeroName', 'combatHeroRole', 'combatHeroActiveBtn', 'combatSkillDock',
       'combatBlueprintBar', 'combatBlueprintName', 'combatBlueprintRole', 'combatBlueprintBtn',
       'combatConstellationBar', 'combatConstellationName', 'combatConstellationRole', 'combatConstellationBtn', 'lanePressure',
       'diffRow',
@@ -147,7 +147,7 @@ export class UI {
     this.el.helpBox.innerHTML = `
       <p>🛡️ <b>영웅단</b> 아린과 루나로 시작해 원정 중 동료를 영입합니다. 영웅 카드를 눌러 선택한 뒤 빈 발판이나 다른 영웅을 눌러 위치를 옮기거나 교환하세요.</p>
       <p>✦ <b>성장</b> 처치와 웨이브 완료로 영웅 경험치를 얻습니다. 레벨업 포인트가 생기면 <b>영웅 성장</b> 탭에서 그 영웅의 전문화를 고르세요. <b data-shortcut="squad">S</b> 키로 바로 열 수 있어요.</p>
-      <p>☄️ <b>별자리 전술</b> 전투 중 6×6 보드에서 이웃 별을 바꾸세요. Flare는 공격, Tide는 감속, Bloom은 회복·후퇴를 맡고, 맞춘 열이 대상 길을 정합니다.</p>
+      <p>☄️ <b>별자리 전술</b> 전투 중 6×6 보드에서 이웃 별을 두 번 누르거나 손가락으로 미세요. 유성은 아린·세라, 서리는 루나·유나, 수호는 도윤의 전술과 액티브를 충전하고, 맞춘 열이 대상 길을 정합니다.</p>
       <p>🌠 <b>영웅 액티브</b> 전투 중 영웅 카드를 누른 뒤 용사 패널의 큰 기술 버튼을 누르세요. 다섯 영웅이 서로 다른 처형·폭발·저지·연사·감속 기술을 씁니다.</p>
       <p>👺 <b>몬스터 청사진</b> 2막 지하 시장에서 기록하면 방어마다 한 번, 가장 위험한 길에 고블린 김대리를 소환할 수 있습니다. 버튼 또는 <b data-shortcut="blueprint">G</b>를 누르세요. <b data-shortcut="spectate">D</b>는 밸런스 봇 관전, <b data-shortcut="codex">B</b>는 기록입니다.</p>`;
     document.body.insertAdjacentHTML('beforeend', `
@@ -681,6 +681,10 @@ export class UI {
     el.sellBtn.addEventListener('click', () => h.onSell());
     el.heroActiveBtn.addEventListener('click', () => h.onHeroActive(Number(el.heroActiveBtn.dataset.heroId)));
     el.combatHeroActiveBtn.addEventListener('click', () => h.onHeroActive(Number(el.combatHeroActiveBtn.dataset.heroId)));
+    el.combatSkillDock.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-hero-id]');
+      if (button) h.onHeroActive(Number(button.dataset.heroId));
+    });
     el.combatBlueprintBtn.addEventListener('click', () => h.onMonsterBlueprint());
     el.combatConstellationBtn.addEventListener('click', () => h.onConstellationAid());
     /* 저장/불러오기 — "간단한 파일" 하나로 오간다 */
@@ -1421,6 +1425,30 @@ export class UI {
     el.sellBtn.classList.add('hidden');
   }
 
+  /* The live-defense dock is intentionally independent from card selection.
+   * Selecting is for inspection/placement; casting should remain one tap. */
+  renderCombatSkillDock(state) {
+    const dock = this.el.combatSkillDock;
+    const heroes = state.field.filter((hero) => D.heroActiveSpec(hero.heroKey));
+    const hasTarget = state.enemies.some((enemy) => !enemy.dead);
+    const wave = state.phase === 'wave';
+    const signature = `${wave}|${hasTarget}|${heroes.map((hero) => `${hero.id}:${Math.ceil(Math.max(0, hero.activeCd || 0) * 10)}`).join(',')}`;
+    if (signature === this._combatSkillSignature) return;
+    this._combatSkillSignature = signature;
+    dock.classList.toggle('hidden', !wave || !heroes.length);
+    if (!heroes.length) { dock.innerHTML = ''; return; }
+    dock.style.setProperty('--skill-count', String(heroes.length));
+    dock.innerHTML = heroes.map((hero) => {
+      const active = D.heroActiveSpec(hero.heroKey);
+      const left = Math.max(0, hero.activeCd || 0);
+      const ready = wave && hasTarget && left <= 0;
+      const stateLabel = left > 0 ? `${left.toFixed(1)}초` : hasTarget ? '발동 가능' : '적 대기';
+      return `<button type="button" data-hero-id="${hero.id}" class="${ready ? 'ready' : ''}" ${ready ? '' : 'disabled'} title="${active.name} · ${active.desc}">
+        <b>${active.emoji} ${hero.name}</b><small>${stateLabel}</small>
+      </button>`;
+    }).join('');
+  }
+
   /* ---------- 상세 정보 툴팁 ---------- */
   showTooltip(hero, state, cx, cy, preview) {
     const tt = this.el.tooltip;
@@ -1496,15 +1524,25 @@ export class UI {
   /* 보스 등장/분노 배너 */
   showBossBanner(tier, name, emoji) {
     const el = this.el.bossBanner;
+    const stage = this.el.scene3d.closest('.stage');
     const great = tier === 'great';
-    el.textContent = great ? `${emoji} ${name} 등장!!` : `${emoji} ${name} 등장!`;
+    el.innerHTML = `<small>${great ? 'REGIONAL BOSS' : 'COMMANDER'}</small><b>${name}</b><span>${great ? '지역 결전 개시' : '호위대와 함께 진군'}</span>`;
+    el.setAttribute('aria-label', `${emoji} ${name} 등장`);
     el.classList.toggle('mid', !great);
+    el.classList.add('cutscene-title');
+    stage?.classList.add('boss-cutscene');
     el.classList.remove('hidden');
     clearTimeout(this._bossT);
-    this._bossT = setTimeout(() => el.classList.add('hidden'), 2400);
+    this._bossT = setTimeout(() => {
+      el.classList.add('hidden');
+      el.classList.remove('cutscene-title');
+      stage?.classList.remove('boss-cutscene');
+    }, great ? 2600 : 2150);
   }
   showEnrage(name) {
     const el = this.el.bossBanner;
+    this.el.scene3d.closest('.stage')?.classList.remove('boss-cutscene');
+    el.classList.remove('cutscene-title');
     el.textContent = `🔥 ${name} 분노!! 더 빨라졌어요!`;
     el.classList.remove('mid');
     el.classList.remove('hidden');
@@ -1829,7 +1867,7 @@ export class UI {
       : '🎬 AI 관전 <span>D</span>';
     document.body.classList.toggle('demo-on', !!on);
     this.el.demoDetail.textContent = on
-      ? '실제 스왑 · 실제 전술 · 실제 방어 규칙'
+      ? '설명형 자동 플레이 · 실제 스왑 · 실제 전술 · 실제 방어 규칙'
       : '밸런스 봇과 같은 실제 플레이 규칙';
     if (on && profile) this.setDemoCaption(`🤖 ${profile} AI 관전 중`);
   }

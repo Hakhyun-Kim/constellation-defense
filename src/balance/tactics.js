@@ -39,3 +39,13 @@ export const TACTICS = {
 };
 
 export const tacticPower = (size) => (size >= 5 ? 1.9 : size === 4 ? 1.35 : 1);
+
+/* Puzzle colors belong to named heroes instead of floating above the cast.
+ * A successful match advances the linked heroes' active timing; larger shapes
+ * are worth holding because they return a signature skill much sooner. */
+export const TACTIC_HERO_LINKS = Object.freeze({
+  flare: Object.freeze(['arin', 'sera']),
+  tide: Object.freeze(['luna', 'yuna']),
+  bloom: Object.freeze(['doyun']),
+});
+export const TACTIC_LINK_COOLDOWN = Object.freeze({ 3: .8, 4: 2, 5: 4 });

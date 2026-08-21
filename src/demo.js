@@ -15,6 +15,14 @@ import { laneForGroup } from './tactics/board.js';
 const TACTIC_LABEL = { flare: '유성', tide: '서리', bloom: '수호' };
 const LANE_LABEL = ['왼쪽', '가운데', '오른쪽'];
 
+/* Video-ready opening cards.  They explain the real loop before the bot takes
+ * control, so a submitted recording remains understandable without voiceover. */
+export const DEMO_TOUR = Object.freeze([
+  Object.freeze({ duration: 2.6, text: 'CONSTELLATION DEFENSE · 실시간 방어와 별자리 퍼즐이 한 전장에서 이어집니다' }),
+  Object.freeze({ duration: 2.8, text: '① 별을 누르거나 밀어 3개를 연결하면, 색에 맞는 영웅 전술이 선택한 길에 발동됩니다' }),
+  Object.freeze({ duration: 2.8, text: '② 4·5매치는 영웅 액티브를 빠르게 충전하고, 완성한 성좌는 보스전까지 저장할 수 있습니다' }),
+]);
+
 /* 관전자는 봇의 실제 판단을 읽을 수 있어야 한다. 이 함수는 이미 고른 합법 스왑을
  * 설명할 뿐, 점수나 결과를 바꾸지 않는다. */
 export function describeTacticMove(move) {
@@ -42,6 +50,8 @@ export const demo = {
   api: null,
   caption: '',
   overSeen: false,
+  tourIndex: -1,
+  tourT: 0,
 
   /* main.js가 자기 함수들을 넘겨 준다 — 데모는 게임 내부를 직접 만지지 않는다 */
   attach(api) { this.api = api; },
@@ -64,14 +74,18 @@ export const demo = {
     this.t = 0.6;
     this.midT = 0;
     this.overSeen = false;
+    this.tourIndex = 0;
+    this.tourT = DEMO_TOUR[0].duration;
     this.api.onStart(this.profileName, Bot.PROFILES[this.profileName]);
-    this.say(`🎬 데모 — ${this.profileName} 플레이어가 대신 플레이합니다`);
+    this.say(DEMO_TOUR[0].text);
     return true;
   },
 
   stop() {
     if (!this.active) return;
     this.active = false;
+    this.tourIndex = -1;
+    this.tourT = 0;
     this.api.onStop();
   },
 
@@ -89,6 +103,25 @@ export const demo = {
     const state = A.getState();
     const P = Bot.PROFILES[this.profileName];
     this.t -= dt;
+
+    /* The explanatory opening behaves like subtitles over the live engine.
+     * Gameplay starts only after the viewer has had time to read each card. */
+    if (this.tourIndex >= 0) {
+      this.tourT -= dt;
+      if (this.tourT <= 0) {
+        this.tourIndex++;
+        if (this.tourIndex >= DEMO_TOUR.length) {
+          this.tourIndex = -1;
+          this.t = .6;
+          this.say(`🎬 ${this.profileName} 플레이어의 실제 규칙 자동 플레이를 시작합니다`);
+        } else {
+          const scene = DEMO_TOUR[this.tourIndex];
+          this.tourT = scene.duration;
+          this.say(scene.text);
+        }
+      }
+      return;
+    }
 
     /* ① 막간 이야기가 떠 있으면 읽고 넘긴다 (이야기가 열려 있으면 웨이브가 시작되지 않는다) */
     if (A.isStoryOpen()) {

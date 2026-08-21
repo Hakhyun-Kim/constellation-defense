@@ -1,4 +1,4 @@
-import { demo } from '../src/demo.js';
+import { DEMO_TOUR, demo } from '../src/demo.js';
 
 let failures = 0;
 const check = (condition, message) => {
@@ -20,6 +20,9 @@ demo.attach({
 });
 
 demo.start('초보');
+check(caption.includes('CONSTELLATION DEFENSE') && demo.tourIndex === 0, 'video demo opens with an explanatory title card');
+for (const scene of DEMO_TOUR) demo.step(scene.duration + .01);
+check(demo.tourIndex === -1 && caption.includes('실제 규칙 자동 플레이'), 'video demo explains puzzle, hero link, and stored boss support before play');
 demo.step(0.1);
 check(restarts === 0 && demo.overSeen && demo.t === 12, 'game over starts a full twelve-second recap window');
 check(caption.includes('결과를 확인'), 'recap caption asks the viewer to inspect the result');

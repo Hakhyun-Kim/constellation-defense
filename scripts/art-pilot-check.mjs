@@ -25,7 +25,9 @@ assert.equal(new Set(ART_REGIONS).size, ART_REGIONS.length);
 for (const region of ART_REGIONS) {
   assert.equal(supportsArtRegion(region), true);
   for (const [heroKey, asset] of Object.entries(HERO_ASSETS)) {
-    assert.equal(heroPilotSlot(region, { heroKey })?.id, asset);
+    const slot = heroPilotSlot(region, { heroKey });
+    assert.equal(slot?.id, asset);
+    assert.equal(slot?.yawOffset, Math.PI, `${heroKey} model forward axis must follow movement/attack targets`);
     selectedAssets.add(asset);
   }
   selectedAssets.add(enemyPilotSlot(region, { type: 'goblin' })?.id);

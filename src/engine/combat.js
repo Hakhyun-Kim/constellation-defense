@@ -165,8 +165,8 @@ function spawnEnemy(state, type, events, presetRoute, spawn = {}) {
   };
   state.enemies.push(e);
   events.push({ type: 'spawn', etype: type, x: e.x, y: e.y, boss: e.boss, midBoss: e.midBoss });
-  if (e.boss) events.push({ type: 'bossSpawn', tier: 'great', name: E.name, emoji: E.emoji });
-  else if (e.midBoss && !spawn.silentBossBanner) events.push({ type: 'bossSpawn', tier: 'mid', name: E.name, emoji: E.emoji });
+  if (e.boss) events.push({ type: 'bossSpawn', tier: 'great', name: E.name, emoji: E.emoji, x: e.x, y: e.y, enemyId: e.id });
+  else if (e.midBoss && !spawn.silentBossBanner) events.push({ type: 'bossSpawn', tier: 'mid', name: E.name, emoji: E.emoji, x: e.x, y: e.y, enemyId: e.id });
 }
 
 function firstInRange(state, x, y, range) {

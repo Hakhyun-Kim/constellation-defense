@@ -33,6 +33,7 @@ export class Renderer3D {
     /* 발판 클릭 허용 반경(PAD_RADIUS 배수). 터치는 넉넉하게. */
     this.padSlop = opts.touch ? 2.4 : 1.5;
     this.time = 0;
+    this.cameraCutscene = null;
 
     const r = new THREE.WebGLRenderer({
       antialias: this.quality !== 'min',
@@ -1063,6 +1064,17 @@ export class Renderer3D {
           this.burst(x3, .62, z3, 0x8aa69a, 6, 1.4, { grav: .5, ttl: .35 });
           break;
         }
+        case 'tacticHeroLink': {
+          const view = this.heroViews.get(ev.heroId);
+          if (view) {
+            view.attackT = Math.max(view.attackT || 0, .55);
+            this.burst(view.holder.position.x, .9, view.holder.position.z,
+              ev.kind === 'flare' ? 0xffb05c : ev.kind === 'tide' ? 0x77d9ff : 0x8fe39c,
+              ev.ready ? 10 : 5, ev.ready ? 2.4 : 1.5, { grav: -1, ttl: .45 });
+            if (ev.primary) this.showBubble(ev.x, ev.y, ev.ready ? `${ev.emoji} 준비 완료!` : `${ev.ability} 연계`, 1.3);
+          }
+          break;
+        }
         case 'constellationAidSummon': {
           this._shockRing(x3, z3, 1.12, 0xd8b4ff, .5, .16);
           this.burst(x3, .85, z3, 0xd8b4ff, 14, 2.5, { grav: .7, ttl: .46 });
@@ -1162,6 +1174,15 @@ export class Renderer3D {
           /* 포탈이 붉게 요동친다 */
           this.burst(0, 1.0, wz(430), ev.tier === 'great' ? 0xff2222 : 0xff9a3d, ev.tier === 'great' ? 26 : 14, 3.2, { grav: -1 });
           this.addShake(ev.tier === 'great' ? 0.22 : 0.12);
+          break;
+        case 'bossSpawn':
+          /* The cut-in uses the live GLB/fallback actor already entering the
+           * simulation, so the appearance can never drift from gameplay art. */
+          this.cameraCutscene = {
+            t: ev.tier === 'great' ? 2.6 : 2.15,
+            duration: ev.tier === 'great' ? 2.6 : 2.15,
+            target: new THREE.Vector3(x3, ev.tier === 'great' ? 1.35 : 1.05, z3),
+          };
           break;
         case 'bossEnrage':
           this.burst(x3, 1.2, z3, 0xff2200, 36, 5.5, { grav: 2 });
@@ -1485,6 +1506,19 @@ export class Renderer3D {
      * 생동감 설정은 착탄 지점의 국소 파티클 밀도만 바꾼다. */
     this.camera.position.copy(this.camBase);
     this.camera.lookAt(this.camLook);
+    if (this.cameraCutscene) {
+      const cut = this.cameraCutscene;
+      cut.t = Math.max(0, cut.t - dt);
+      const progress = 1 - cut.t / cut.duration;
+      const ramp = Math.min(1, progress / .16, (1 - progress) / .2);
+      const eased = Math.max(0, ramp) ** 2 * (3 - 2 * Math.max(0, ramp));
+      const amount = eased * (this.reducedEffects ? .28 : 1);
+      const close = cut.target.clone().add(new THREE.Vector3(2.2, 3.8, 5.6));
+      const look = this.camLook.clone().lerp(cut.target, amount);
+      this.camera.position.lerp(close, amount);
+      this.camera.lookAt(look);
+      if (cut.t <= 0) this.cameraCutscene = null;
+    }
 
     this.renderer.render(this.scene, this.camera);
   }

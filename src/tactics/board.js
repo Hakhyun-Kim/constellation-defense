@@ -70,6 +70,17 @@ export function areNeighbors(a, b, size = BOARD_SIZE) {
   return Math.abs(ar - br) + Math.abs(ac - bc) === 1;
 }
 
+/* Convert a pointer swipe into one orthogonal board neighbour.  Keeping this
+ * coordinate decision pure makes touch input testable without a browser. */
+export function swipeNeighbor(index, dx, dy, size = BOARD_SIZE) {
+  if (!Number.isInteger(index) || !Number.isFinite(dx) || !Number.isFinite(dy)) return null;
+  const row = cellRow(index, size), col = cellCol(index, size);
+  const nextRow = row + (Math.abs(dy) > Math.abs(dx) ? Math.sign(dy) : 0);
+  const nextCol = col + (Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0);
+  if (nextRow < 0 || nextRow >= size || nextCol < 0 || nextCol >= size) return null;
+  return cellIndex(nextRow, nextCol, size);
+}
+
 /* 반환값은 새 배열이다. 화면 어댑터가 스왑 전 보드를 되돌리거나 미리보기 할 때
  * 원본 상태를 잃지 않게 한다. */
 export function swapCells(cells, a, b) {

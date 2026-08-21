@@ -182,6 +182,43 @@ body {
 }
 @keyframes bossin { from { transform: translateX(-50%) scale(0.3); opacity: 0; } }
 
+/* Boss arrival is framed around the live 3D actor, not a separate stale image. */
+.stage::before,
+.stage::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 7;
+  height: 10%;
+  background: rgba(9, 10, 22, .78);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease;
+}
+.stage::before { top: 0; }
+.stage::after { bottom: 0; }
+.stage.boss-cutscene::before,
+.stage.boss-cutscene::after { opacity: 1; }
+#bossBanner.cutscene-title {
+  top: auto;
+  bottom: 5.2%;
+  display: grid;
+  min-width: min(72%, 480px);
+  gap: 1px;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 18px 8px;
+  background: rgba(12, 12, 28, .92);
+  color: #fff;
+  text-align: left;
+  box-shadow: 0 0 0 1px #f0cf7166;
+}
+#bossBanner.cutscene-title small { color: #f0cf71; font-size: 9px; letter-spacing: .2em; }
+#bossBanner.cutscene-title b { font-size: 23px; line-height: 1; }
+#bossBanner.cutscene-title span { color: #d6d8e6; font-size: 10px; }
+#bossBanner.cutscene-title.mid b { font-size: 19px; }
+
 /* 등장 예고 경고 배너 */
 #bossWarnBanner {
   position: absolute;
@@ -1725,6 +1762,7 @@ button { font-family: inherit; }
   .topbar        { order: 1; }
   .castlebar-wrap { order: 2; }
   .stage         { order: 3; }
+  .combat-skill-dock { order: 4; }
   #placeBar      { order: 4; }
   #tacticCard    { order: 5; }
   #benchCard     { order: 6; }
@@ -1885,8 +1923,9 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
+  width: min(88%, 720px);
+  padding: 9px 12px;
+  border-radius: 12px;
   background: rgba(20, 32, 50, 0.88);
   color: #fff;
   z-index: 9;
@@ -1896,7 +1935,7 @@ button { font-family: inherit; }
 #demoBar.hidden { display: none; }
 .demo-bot { flex: none; font-size: 20px; filter: drop-shadow(0 1px 3px #0008); }
 .demo-copy { min-width: 0; display: grid; gap: 1px; }
-#demoCaption { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 900; }
+#demoCaption { overflow: hidden; font-size: 13px; font-weight: 900; line-height: 1.25; word-break: keep-all; }
 #demoDetail { color: #b9d5ff; font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #demoCaption.pop { animation: demopop 0.35s cubic-bezier(0.2, 1.5, 0.4, 1); }
 @keyframes demopop {
@@ -2435,17 +2474,15 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 }
 .loopchip.hidden { display: none; }
 
-/* ===== Constellation Defense — 전장 바로 아래의 전술판 ===== */
-.left > #tacticCard {
-  width: min(100%, 500px);
+/* ===== Constellation Defense — 오른쪽 손 영역의 전술판 ===== */
+#tacticCard {
+  width: 100%;
   flex: 0 0 auto;
-  align-self: center;
-  margin: 8px auto 0;
 }
-.tactic-card { position: relative; overflow: hidden; padding: 10px 12px 11px; background: linear-gradient(145deg, #f7f4ff, #eff6ff); border: 1px solid #c9c5e9; }
+.tactic-card { position: relative; overflow: hidden; padding: 8px 9px 9px; background: linear-gradient(145deg, #f7f4ff, #eff6ff); border: 1px solid #c9c5e9; }
 .tactic-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.tactic-head h2 { margin: 0; font-size: 16px; color: #403279; }
-.tactic-head span { display: block; margin-top: 2px; color: #7a7899; font-size: 11px; }
+.tactic-head h2 { margin: 0; font-size: 15px; color: #403279; }
+.tactic-head span { display: block; margin-top: 1px; color: #7a7899; font-size: 9.5px; }
 .tactic-actions { display: flex; align-items: center; gap: 5px; flex: none; }
 .tactic-spectate { padding: 5px 7px; border: 1px solid #b8a8e8; border-radius: 8px; background: #fff; color: #574182; font-family: inherit; font-size: 10px; font-weight: 900; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 2px #8979c333; }
 .tactic-spectate:hover { background: #eee8ff; transform: translateY(-1px); }
@@ -2454,7 +2491,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .tactic-spectate.on span { background: #ffd0d0; color: #a33; }
 .tactic-lanes { display: flex; gap: 3px; color: #7652b8; font-size: 15px; }
 .tactic-lanes b { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 8px; background: #e5d9ff; }
-.combat-hero-bar { display: flex; align-items: center; gap: 8px; min-height: 42px; margin-top: 7px; padding: 5px 6px 5px 9px; border: 1px solid #b9b1dc; border-radius: 10px; background: #fff; box-shadow: inset 3px 0 #7252b8; }
+.combat-hero-bar { display: none; align-items: center; gap: 8px; min-height: 42px; margin-top: 7px; padding: 5px 6px 5px 9px; border: 1px solid #b9b1dc; border-radius: 10px; background: #fff; box-shadow: inset 3px 0 #7252b8; }
 .combat-hero-copy { display: grid; min-width: 0; flex: 1; }
 .combat-hero-copy b, .combat-hero-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .combat-hero-copy b { color: #403279; font-size: 12px; }
@@ -2469,7 +2506,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .combat-blueprint-copy small { color: #5d7c70; font-size: 9.5px; }
 .combat-blueprint-bar > button { flex: none; min-width: 83px; border: 1px solid #9eafa7; border-radius: 8px; padding: 6px 8px; background: #e4ece8; color: #718078; font-size: 11px; font-weight: 900; cursor: default; }
 .combat-blueprint-bar > button.ready { border-color: #248d67; background: linear-gradient(180deg, #8af0c1, #43bd8c); color: #103f30; box-shadow: 0 2px 0 #197454; cursor: pointer; }
-.combat-constellation-bar { display: flex; align-items: center; gap: 8px; min-height: 42px; margin-top: 6px; padding: 5px 6px 5px 9px; border: 1px solid #bca5ec; border-radius: 10px; background: #faf6ff; box-shadow: inset 3px 0 #8057cc; }
+.combat-constellation-bar { display: flex; align-items: center; gap: 6px; min-height: 34px; margin-top: 5px; padding: 3px 4px 3px 8px; border: 1px solid #bca5ec; border-radius: 9px; background: #faf6ff; box-shadow: inset 3px 0 #8057cc; }
 .combat-constellation-copy { display: grid; min-width: 0; flex: 1; }
 .combat-constellation-copy b, .combat-constellation-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .combat-constellation-copy b { color: #57358e; font-size: 12px; }
@@ -2494,7 +2531,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .tactic-routes span.active.flare { background: #d66656; box-shadow: 0 0 13px #f4a159; }
 .tactic-routes span.active.tide { background: #4e84c5; box-shadow: 0 0 13px #8de6ff; }
 .tactic-routes span.active.bloom { background: #4c9b72; box-shadow: 0 0 13px #aef58f; }
-.tactic-board { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; padding: 5px; border-radius: 11px; background: linear-gradient(135deg, #2a2255, #151938); box-shadow: inset 0 2px 6px #07071d77; }
+.tactic-board { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; width: min(100%, 286px); margin-inline: auto; padding: 5px; border-radius: 11px; background: linear-gradient(135deg, #2a2255, #151938); box-shadow: inset 0 2px 6px #07071d77; touch-action: none; user-select: none; overscroll-behavior: contain; }
 .tactic-board.casting { outline: 2px solid var(--tactic-glow, #d8b4ff); outline-offset: 1px; }
 .tactic-star { position: relative; z-index: 2; min-width: 0; aspect-ratio: 1; border: 1px solid #ffffff55; border-radius: 8px; cursor: pointer; font-size: clamp(15px, 2.1vw, 23px); line-height: 1; transition: transform .13s, filter .13s, outline .13s; background: #4d4185; }
 .tactic-star:hover { transform: translateY(-2px); filter: brightness(1.15); }
@@ -2531,8 +2568,46 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .tactic-beam.tide { background: linear-gradient(90deg, #ecffff, #64cfff); box-shadow: 0 0 6px #e5ffff, 0 0 16px #5abcf9; }
 .tactic-beam.bloom { background: linear-gradient(90deg, #efffcf, #76d98e); box-shadow: 0 0 6px #efffcf, 0 0 16px #6ddf89; }
 .tactic-beam::after { content: ''; position: absolute; right: -4px; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: #fff; transform: translateY(-50%); box-shadow: 0 0 10px 4px currentColor; }
-.tactic-key { display: flex; justify-content: space-around; margin-top: 7px; color: #615e85; font-size: 10.5px; font-weight: 700; }
-.tactic-status { margin-top: 6px; min-height: 18px; border-radius: 7px; padding: 4px 7px; background: #e7e8f8; color: #59567a; text-align: center; font-size: 10.5px; font-weight: 700; }
+.tactic-key { display: flex; justify-content: space-around; margin-top: 5px; color: #615e85; font-size: 9px; font-weight: 700; }
+.tactic-status { margin-top: 4px; min-height: 17px; border-radius: 7px; padding: 3px 6px; background: #e7e8f8; color: #59567a; text-align: center; font-size: 9.5px; font-weight: 700; }
+
+/* Five separate edge buttons caused long eye travel.  One consistent strip
+ * below the battlefield keeps every hero active within the same thumb path. */
+.combat-skill-dock {
+  display: grid;
+  grid-template-columns: repeat(var(--skill-count, 5), minmax(0, 1fr));
+  gap: 5px;
+  flex: 0 0 auto;
+  margin-top: 6px;
+  padding: 5px;
+  border: 1px solid #b9b1dc;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8f5ff, #edf5ff);
+  box-shadow: 0 3px 10px #34456b22;
+}
+.combat-skill-dock button {
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid #bbb4d2;
+  border-radius: 9px;
+  padding: 4px 3px;
+  background: #eceaf1;
+  color: #777386;
+  font-family: inherit;
+  line-height: 1.05;
+}
+.combat-skill-dock button b,
+.combat-skill-dock button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combat-skill-dock button b { font-size: 10.5px; }
+.combat-skill-dock button small { margin-top: 3px; font-size: 8.5px; }
+.combat-skill-dock button.ready {
+  border-color: #c77d22;
+  background: linear-gradient(180deg, #ffe17e, #efad43);
+  color: #513600;
+  box-shadow: 0 2px 0 #ac6c1c;
+  cursor: pointer;
+}
+body:not(.combat-focus) .combat-skill-dock { display: none; }
 body.judge-opening .tactic-status { background: #302a61; color: #fff4b5; font-size: 13px; box-shadow: 0 0 18px #8e72ff66; }
 body.judge-mode #coachChip,
 body.judge-mode #diffRow { display: none !important; }
@@ -2542,6 +2617,8 @@ body.judge-mode #diffRow { display: none !important; }
 @keyframes tacticroute { 0% { filter: brightness(.8); } 55% { filter: brightness(1.45); } 100% { filter: brightness(1); } }
 @keyframes tacticbeam { 0% { opacity: 0; transform: rotate(var(--beam-angle)) scaleX(0); } 22% { opacity: 1; } 76% { opacity: 1; transform: rotate(var(--beam-angle)) scaleX(1); } 100% { opacity: 0; transform: rotate(var(--beam-angle)) scaleX(1.08); } }
 @media (max-width: 720px) {
+  #tacticCard { width: min(100%, 390px); justify-self: center; margin-inline: auto; }
+  .tactic-board { width: min(100%, 360px); }
   .tactic-star { font-size: 23px; }
   .tactic-head { align-items: flex-start; }
   .tactic-spectate { padding: 4px 5px; font-size: 9px; }
@@ -2573,6 +2650,9 @@ body.combat-focus #benchCard { padding: 7px 8px; }
 body.combat-focus #benchCard .bench { margin-top: 4px; }
 
 @media (max-width: 560px) {
+  .combat-skill-dock { gap: 3px; padding: 4px; }
+  .combat-skill-dock button { min-height: 45px; padding-inline: 2px; }
+  .combat-skill-dock button b { font-size: 9px; }
   body.combat-focus .hero-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   body.combat-focus .hero-card-name { font-size: 13px; }
   body.combat-focus .hero-card-role { font-size: 8px; }

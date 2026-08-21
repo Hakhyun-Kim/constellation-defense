@@ -29,6 +29,9 @@ check(swapped[0] === 'cell-1' && swapped[1] === 'cell-0', 'swap exchanges reques
 check(Board.areNeighbors(0, 1), 'horizontal neighbors are accepted');
 check(Board.areNeighbors(0, 6), 'vertical neighbors are accepted');
 check(!Board.areNeighbors(0, 2), 'non-neighbors are rejected');
+check(Board.swipeNeighbor(7, 28, 3) === 8, 'right swipe selects the adjacent board cell');
+check(Board.swipeNeighbor(7, -4, 30) === 13, 'vertical swipe follows its dominant direction');
+check(Board.swipeNeighbor(0, -24, 1) === null, 'swipes cannot leave the board edge');
 
 const legalSource = Array.from({ length: 36 }, (_, index) => `cell-${index}`);
 legalSource[0] = 'flare'; legalSource[1] = 'tide'; legalSource[2] = 'flare'; legalSource[7] = 'flare';

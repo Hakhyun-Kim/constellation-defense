@@ -12,6 +12,23 @@ import { chargeConstellationAid } from './constellation-aid.js';
 
 const validSize = (size) => (size >= 5 ? 5 : size === 4 ? 4 : 3);
 
+function linkHeroActives(state, kind, stars, events) {
+  const linkedKeys = D.TACTIC_HERO_LINKS[kind] || [];
+  const reduction = D.TACTIC_LINK_COOLDOWN[stars] || 0;
+  const linked = state.field.filter((hero) => linkedKeys.includes(hero.heroKey) && D.heroActiveSpec(hero.heroKey));
+  linked.forEach((hero, index) => {
+    const before = Math.max(0, hero.activeCd || 0);
+    hero.activeCd = Math.max(0, before - reduction);
+    const spec = D.heroActiveSpec(hero.heroKey);
+    events.push({
+      type: 'tacticHeroLink', kind, stars, primary: index === 0,
+      heroId: hero.id, heroKey: hero.heroKey, heroName: hero.name,
+      ability: spec.name, emoji: spec.emoji, x: hero.x, y: hero.y,
+      reduction: Math.min(before, reduction), ready: before > 0 && hero.activeCd <= 0,
+    });
+  });
+}
+
 export function castTactic(state, route, kind, size = 3) {
   if (state.phase !== 'wave') return { ok: false, reason: 'phase' };
   const rule = D.TACTICS[kind];
@@ -57,6 +74,7 @@ export function castTactic(state, route, kind, size = 3) {
     }
   }
   state.tacticCasts = (state.tacticCasts || 0) + 1;
+  linkHeroActives(state, kind, stars, events);
   const aid = chargeConstellationAid(state, stars);
   if (aid.gained) {
     events.push({ type: 'constellationCharge', gained: aid.gained, charge: aid.charge, needed: D.TACTICS.constellationAid.chargeNeeded });

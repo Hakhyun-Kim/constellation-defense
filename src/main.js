@@ -478,6 +478,7 @@ function refreshPanels() {
   ui.renderSquadGrowth(state);
   ui.renderCastlePanel(state);
   ui.renderHeroPanel(state, selHero);
+  ui.renderCombatSkillDock(state);
 }
 function refreshAll() {
   const journeyBattle = E.journeyBattleProgress(state);
@@ -591,6 +592,7 @@ function doHeroActive(heroId) {
   handleEvents(r.events);
   sessionMeter?.action('heroActives');
   ui.renderHeroPanel(state, heroId);
+  ui.renderCombatSkillDock(state);
 }
 function doMonsterBlueprint() {
   const result = E.castMonsterBlueprint(state);
@@ -978,6 +980,9 @@ function handleEvents(events) {
         if (ev.tier === 'great') SFX.bossRoar();
         else SFX.midBossRoar();
         ui.showBossBanner(ev.tier, ev.name, ev.emoji);
+        if (demo.active) demo.say(ev.tier === 'great'
+          ? `③ 컷신 뒤 보스전 · 저장한 성좌 지원과 충전된 영웅 액티브를 한꺼번에 사용합니다`
+          : `③ 지휘관 컷신 · 퍼즐로 충전한 영웅 기술을 지금 직접 확인합니다`);
         break;
       case 'bossEnrage':
         SFX.bossEnrage();
@@ -1956,6 +1961,7 @@ function frame(now) {
     panelT = 0;
     ui.renderCastlePanel(state);
     if (selHero != null) ui.renderHeroPanel(state, selHero);
+    ui.renderCombatSkillDock(state);
   }
 
   if (ui.isVillageActive()) {

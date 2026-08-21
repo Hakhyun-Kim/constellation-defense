@@ -23,27 +23,27 @@ const GATE_LANDMARK = Object.freeze({
 
 const HERO_MODELS = Object.freeze({
   arin: Object.freeze({
-    id: 'quaternius-warrior', height: 1.72,
+    id: 'quaternius-warrior', height: 1.72, yawOffset: Math.PI,
     idle: ['Idle_Attacking', 'Idle_Weapon', 'Idle'],
     attack: ['Sword_Attack', 'Sword_Attack2', 'Punch'],
   }),
   luna: Object.freeze({
-    id: 'quaternius-wizard', height: 1.70,
+    id: 'quaternius-wizard', height: 1.70, yawOffset: Math.PI,
     idle: ['Idle_Attacking', 'Idle_Weapon', 'Idle'],
     attack: ['Spell1', 'Staff_Attack', 'Spell2'],
   }),
   doyun: Object.freeze({
-    id: 'quaternius-monk', height: 1.76,
+    id: 'quaternius-monk', height: 1.76, yawOffset: Math.PI,
     idle: ['Idle_Attacking', 'Idle'],
     attack: ['Attack', 'Attack2'],
   }),
   sera: Object.freeze({
-    id: 'quaternius-ranger', height: 1.68,
+    id: 'quaternius-ranger', height: 1.68, yawOffset: Math.PI,
     idle: ['Idle_Attacking', 'Idle_Weapon', 'Idle'],
     attack: ['Bow_Shoot', 'Bow_Draw', 'Punch'],
   }),
   yuna: Object.freeze({
-    id: 'quaternius-cleric', height: 1.69,
+    id: 'quaternius-cleric', height: 1.69, yawOffset: Math.PI,
     idle: ['Idle_Weapon', 'Idle'],
     attack: ['Spell1', 'Staff_Attack', 'Punch'],
   }),

@@ -46,6 +46,14 @@ The prize-focused presentation pass now also includes:
 The 2026-08-13 pass translated direct player feedback into six independent
 commits:
 
+- The current combat UX follow-up moves the constellation board into the right
+  combat column, adds touch swipe swaps, and places all deployed hero actives
+  in one quick strip below the enlarged battlefield. Flare/Tide/Bloom matches
+  now return cooldown to their named linked heroes, boss arrivals focus the
+  live runtime actor in a short cut-in, and demo mode opens with timed
+  explanation subtitles. See
+  [hero-linked-puzzle-and-cinematic-demo.md](design/hero-linked-puzzle-and-cinematic-demo.md).
+
 - `b2206ad` keeps daily difficulty measurement, town feel, phase flow, hero
   agency, and eye comfort as persistent project priorities.
 - `5fff739` eases the opening enemy curve and adds a daily GitHub Actions job
