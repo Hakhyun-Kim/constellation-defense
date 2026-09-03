@@ -11,6 +11,8 @@ const EN = new Map(Object.entries({
   '도감': 'Codex',
   '도감·기록': 'Codex & Records',
   '별의 축복': 'Star Blessings',
+  '별빛 상점': 'Celestial Store',
+  '별빛 개척자 깃발': 'Celestial Pioneer Banner',
   'AI 관전': 'AI Spectate',
   '관전 끝내기': 'End Spectate',
   '보스 접근!': 'Boss approaching!',
