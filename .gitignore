@@ -9,6 +9,8 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 /out/
+/.data/
+.env
 
 # 에디터
 .vscode/
