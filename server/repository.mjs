@@ -85,8 +85,9 @@ export class JsonRepository {
       const pending = data.checkouts[event.externalReferenceId];
       if (!pending) throw new PermanentRejection('unknown checkout reference');
       /* 같은 이벤트의 재전송은 위에서 걸린다. 여기까지 온 것은 "다른 이벤트가
-       * 이미 지급된 결제 의도를 또 가리키는" 경우라 두 번 주면 안 된다. */
-      if (pending.status === 'fulfilled') throw new PermanentRejection('checkout already fulfilled');
+       * 이미 처리된 결제 의도를 또 가리키는" 경우다. refunded 도 막아야 하는데,
+       * 환불 웹훅이 지급 웹훅보다 먼저 도착하면 뒤늦은 지급이 회수를 되돌린다. */
+      if (pending.status !== 'pending') throw new PermanentRejection(`checkout is already ${pending.status}`);
       if (pending.accountId !== event.accountId) throw new PermanentRejection('account does not match checkout');
       if (pending.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
       if (event.quantity !== 1) throw new PermanentRejection('unexpected quantity');
@@ -117,6 +118,45 @@ export class JsonRepository {
 
   async pendingCheckout(reference) {
     return (await this.load()).checkouts[reference] || null;
+  }
+
+  /* 환불 이벤트는 externalReferenceId 가 null 로 오고(문서의 예시가 그렇다),
+   * 분쟁 이벤트는 purchaseId 하나만 싣는다. 그래서 결제 의도를 되찾는 길이
+   * 두 개여야 한다. */
+  findCheckout(data, { externalReferenceId, purchaseId }) {
+    if (externalReferenceId && data.checkouts[externalReferenceId]) return data.checkouts[externalReferenceId];
+    if (!purchaseId) return null;
+    return Object.values(data.checkouts).find((record) => record.purchaseId === purchaseId) || null;
+  }
+
+  /* 환불은 지급의 거울상이다 — 같은 멱등성 원장, 같은 의도 대조, 반대 방향.
+   * 구매 기록은 지우지 않고 표시만 한다. 감사 흔적이 사라지면 안 된다. */
+  async revoke(event) {
+    return this.mutate((data) => {
+      if (data.processedEvents[event.eventId]) return { duplicate: true };
+      const checkout = this.findCheckout(data, event);
+      if (!checkout) throw new PermanentRejection('unknown checkout reference');
+      if (event.accountId && checkout.accountId !== event.accountId) {
+        throw new PermanentRejection('account does not match checkout');
+      }
+      if (event.sku && checkout.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
+      if (checkout.status === 'refunded') throw new PermanentRejection('checkout is already refunded');
+
+      const at = new Date(this.now()).toISOString();
+      const granted = checkout.status === 'fulfilled';
+      if (granted) {
+        const player = data.players[checkout.accountId];
+        delete player?.entitlements?.[checkout.entitlement];
+        const purchase = player?.purchases?.find((entry) => entry.purchaseId === checkout.purchaseId);
+        if (purchase) { purchase.refundedAt = at; purchase.refundId = event.refundId || null; }
+      }
+      /* 아직 pending 이어도 refunded 로 넘긴다. 그래야 뒤늦게 도착한 지급
+       * 웹훅이 fulfill 에서 거절되고, 환불된 결제가 되살아나지 않는다. */
+      checkout.status = 'refunded';
+      checkout.refundedAt = at;
+      data.processedEvents[event.eventId] = { refundId: event.refundId || null, at };
+      return { duplicate: false, revoked: granted };
+    });
   }
 
   async recentCheckoutCount(accountId, windowMs) {

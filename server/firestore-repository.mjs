@@ -7,6 +7,9 @@
  *
  * 환경(sandbox/production)으로 네임스페이스를 나눈다. 웹훅에서 isSandbox 를
  * 확인하는 것과 같은 이유로, 데이터도 섞이면 안 된다. */
+/* 이 모듈은 팩토리에서 동적 import 로만 불린다 — JSON 경로와 브라우저 번들은
+ * @google-cloud/firestore 를 아예 건드리지 않는다. */
+import { FieldPath, FieldValue } from '@google-cloud/firestore';
 import { PermanentRejection } from './repository.mjs';
 
 /* Neon 의 재시도 창(36시간)보다 훨씬 길게 잡는다. TTL 정책을 켜면 Firestore 가
@@ -55,7 +58,9 @@ export class FirestoreRepository {
       if (seen.exists) return { duplicate: true };
       if (!pendingSnapshot.exists) throw new PermanentRejection('unknown checkout reference');
       const pending = pendingSnapshot.data();
-      if (pending.status === 'fulfilled') throw new PermanentRejection('checkout already fulfilled');
+      /* refunded 도 막는다 — 환불 웹훅이 지급 웹훅보다 먼저 도착하면
+       * 뒤늦은 지급이 회수를 되돌려 버린다. */
+      if (pending.status !== 'pending') throw new PermanentRejection(`checkout is already ${pending.status}`);
       if (pending.accountId !== event.accountId) throw new PermanentRejection('account does not match checkout');
       if (pending.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
       if (event.quantity !== 1) throw new PermanentRejection('unexpected quantity');
@@ -92,6 +97,53 @@ export class FirestoreRepository {
   async pendingCheckout(reference) {
     const snapshot = await this.checkouts.doc(String(reference || '')).get();
     return snapshot.exists ? snapshot.data() : null;
+  }
+
+  /* 환불은 지급의 거울상이다 — 같은 트랜잭션, 같은 멱등성 원장, 반대 방향.
+   *
+   * 결제 의도를 되찾는 길이 두 개인 이유: 환불 이벤트의 externalReferenceId 는
+   * null 로 올 수 있고(문서 예시가 그렇다), 분쟁 이벤트는 purchaseId 하나만
+   * 싣는다. purchaseId 질의는 단일 필드 동등 비교라 복합 색인이 필요 없다. */
+  async revoke(event) {
+    const eventRef = this.events.doc(event.eventId);
+    return this.db.runTransaction(async (tx) => {
+      const seen = await tx.get(eventRef);
+      if (seen.exists) return { duplicate: true };
+
+      let checkoutSnapshot = null;
+      if (event.externalReferenceId) {
+        const direct = await tx.get(this.checkouts.doc(event.externalReferenceId));
+        if (direct.exists) checkoutSnapshot = direct;
+      }
+      if (!checkoutSnapshot && event.purchaseId) {
+        const found = await tx.get(this.checkouts.where('purchaseId', '==', event.purchaseId).limit(1));
+        if (!found.empty) [checkoutSnapshot] = found.docs;
+      }
+      if (!checkoutSnapshot) throw new PermanentRejection('unknown checkout reference');
+
+      const checkout = checkoutSnapshot.data();
+      if (event.accountId && checkout.accountId !== event.accountId) {
+        throw new PermanentRejection('account does not match checkout');
+      }
+      if (event.sku && checkout.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
+      if (checkout.status === 'refunded') throw new PermanentRejection('checkout is already refunded');
+
+      const at = new Date(this.now()).toISOString();
+      const granted = checkout.status === 'fulfilled';
+      if (granted) {
+        const playerRef = this.players.doc(checkout.accountId);
+        /* 권리 키에 점이 들어 있다(cosmetic.celestial_banner). 문자열 경로로
+         * 쓰면 중첩 필드로 해석되므로 FieldPath 로 감싸야 한다. */
+        tx.update(playerRef, new FieldPath('entitlements', checkout.entitlement), FieldValue.delete());
+        tx.set(playerRef.collection('purchases').doc(checkout.purchaseId), {
+          refundedAt: at, refundId: event.refundId || null,
+        }, { merge: true });
+      }
+      /* 아직 pending 이어도 refunded 로 넘긴다 — 뒤늦은 지급 웹훅을 fulfill 이 거절한다. */
+      tx.update(checkoutSnapshot.ref, { status: 'refunded', refundedAt: at });
+      tx.set(eventRef, { refundId: event.refundId || null, at, expiresAt: new Date(this.now() + EVENT_TTL_MS) });
+      return { duplicate: false, revoked: granted };
+    });
   }
 
   /* checkouts 를 accountId+createdAt 으로 질의하면 복합 색인이 필요하고, 색인

@@ -131,7 +131,9 @@ async function runSuite(repository, label) {
     assert.equal(unknownReference.response.status, 200, '모르는 결제 참조는 재시도를 부르지 않는다');
     assert.equal(unknownReference.payload.ignored, 'unknown checkout reference');
 
-    const otherType = await deliver(purchaseEvent({ id: 'event-refund', type: 'refund.processed' }));
+    /* 구독·인보이스·퍼널 이벤트는 이 통합과 무관하다. Console 에서 실수로 켜도
+     * 36시간 재시도가 돌지 않도록 2xx 로 받아 삼킨다. */
+    const otherType = await deliver(purchaseEvent({ id: 'event-subscription', type: 'subscription.activated' }));
     assert.equal(otherType.response.status, 200, '처리하지 않는 이벤트도 2xx로 받는다');
     assert.match(otherType.payload.ignored, /unhandled type/);
 
@@ -191,8 +193,86 @@ async function runSuite(repository, label) {
       { id: 'purchase-2', accountId: pending.accountId, externalReferenceId: reference },
     ));
     assert.equal(replayNewId.response.status, 200);
-    assert.equal(replayNewId.payload.ignored, 'checkout already fulfilled');
+    assert.equal(replayNewId.payload.ignored, 'checkout is already fulfilled');
     assert.equal((await repository.purchases(pending.accountId)).length, 1);
+
+    /* --- 환불 회수 ---
+     * 문서의 환불 예시는 externalReferenceId 가 null 이다. 그래서 purchaseId 로
+     * 결제 의도를 되찾는 경로가 실제 경로이고, 여기서 그걸 먼저 검증한다. */
+    function refundEvent(overrides = {}, refundOverrides = {}) {
+      return {
+        id: 'refund-1', type: 'refund.processed', version: 2, isSandbox: true,
+        ...overrides,
+        data: { refund: {
+          id: 'rf_1', purchaseId: 'purchase-x', accountId: null, externalReferenceId: null,
+          currency: 'KRW', totalAmount: PRODUCTS.CELESTIAL_BANNER.prices.KRW,
+          items: [{ sku: 'CELESTIAL_BANNER', quantity: 1, price: PRODUCTS.CELESTIAL_BANNER.prices.KRW }],
+          ...refundOverrides,
+        } },
+      };
+    }
+
+    async function boughtOnce(tag) {
+      const buyer = sessionCookie(await call('/api/store/catalog?locale=ko'));
+      const opened = await openCheckout(buyer);
+      const buyerReference = referenceOf((await opened.json()).redirectUrl);
+      const record = await repository.pendingCheckout(buyerReference);
+      await deliver(purchaseEvent(
+        { id: `buy-${tag}` },
+        { id: `purchase-${tag}`, accountId: record.accountId, externalReferenceId: buyerReference },
+      ));
+      assert.equal(await ownsBanner(buyer), true, `${tag}: 구매 후 보유`);
+      return { cookie: buyer, reference: buyerReference, accountId: record.accountId, purchaseId: `purchase-${tag}` };
+    }
+
+    const refunded = await boughtOnce('a');
+    const revoke = await deliver(refundEvent({ id: 'refund-a' }, { id: 'rf_a', purchaseId: refunded.purchaseId }));
+    assert.equal(revoke.response.status, 200);
+    assert.equal(revoke.payload.revoked, true, 'externalReferenceId 가 null 이어도 purchaseId 로 찾아낸다');
+    assert.equal(await ownsBanner(refunded.cookie), false, '환불하면 치장품이 회수된다');
+    assert.equal((await repository.pendingCheckout(refunded.reference)).status, 'refunded');
+
+    // 구매 기록은 지우지 않고 표시만 한다 — 감사 흔적이 남아야 한다.
+    const history = await repository.purchases(refunded.accountId);
+    assert.equal(history.length, 1, '환불해도 구매 기록은 사라지지 않는다');
+    assert.ok(history[0].refundedAt, '구매 기록에 환불 시각이 남는다');
+
+    const refundReplay = await deliver(refundEvent({ id: 'refund-a' }, { id: 'rf_a', purchaseId: refunded.purchaseId }));
+    assert.equal(refundReplay.response.status, 200);
+    assert.equal(refundReplay.payload.duplicate, true, '환불 재전송은 무해하다');
+
+    const secondRefund = await deliver(refundEvent({ id: 'refund-a2' }, { id: 'rf_a2', purchaseId: refunded.purchaseId }));
+    assert.equal(secondRefund.payload.ignored, 'checkout is already refunded', '두 번 회수하지 않는다');
+
+    /* 환불이 지급보다 먼저 도착하는 경우. 뒤늦은 지급 웹훅이 회수를 되돌리면
+     * 환불된 결제가 되살아난다 — fulfill 이 pending 이 아닌 것을 거절해야 한다. */
+    const lateGrant = await deliver(purchaseEvent(
+      { id: 'late-grant' },
+      { id: 'purchase-late', accountId: refunded.accountId, externalReferenceId: refunded.reference },
+    ));
+    assert.equal(lateGrant.payload.ignored, 'checkout is already refunded', '환불된 결제는 뒤늦게도 지급되지 않는다');
+    assert.equal(await ownsBanner(refunded.cookie), false);
+
+    // 참조가 실려 오면 그 경로도 동작한다.
+    const byReference = await boughtOnce('b');
+    const revokeByReference = await deliver(refundEvent(
+      { id: 'refund-b' },
+      { id: 'rf_b', purchaseId: byReference.purchaseId, externalReferenceId: byReference.reference },
+    ));
+    assert.equal(revokeByReference.payload.revoked, true, 'externalReferenceId 가 있으면 그것으로 찾는다');
+    assert.equal(await ownsBanner(byReference.cookie), false);
+
+    const unknownRefund = await deliver(refundEvent({ id: 'refund-nowhere' }, { id: 'rf_x', purchaseId: 'purchase-nowhere' }));
+    assert.equal(unknownRefund.response.status, 200, '모르는 환불도 재시도를 부르지 않는다');
+    assert.equal(unknownRefund.payload.ignored, 'unknown checkout reference');
+
+    const strangerRefund = await boughtOnce('c');
+    const wrongOwner = await deliver(refundEvent(
+      { id: 'refund-c' },
+      { id: 'rf_c', purchaseId: strangerRefund.purchaseId, accountId: '33333333-3333-4333-8333-333333333333' },
+    ));
+    assert.equal(wrongOwner.payload.ignored, 'account does not match checkout', '남의 계정으로 회수할 수 없다');
+    assert.equal(await ownsBanner(strangerRefund.cookie), true, '거절된 환불은 아무것도 건드리지 않는다');
 
     /* --- 신원: 쿠키 없이 Bearer 토큰만으로 ---
      * Unity·Unreal 에는 쿠키 항아리가 없고, 게임이 CDN 에 있고 API 가 다른
@@ -318,7 +398,7 @@ async function runSuite(repository, label) {
       assert.equal((await incomplete.checkout(buyer)).status, 500, 'redirectUrl 없는 응답은 성공으로 치지 않는다');
     } finally { await incomplete.close(); }
 
-    console.log(`  ✅ ${label}: 카탈로그·국가 해석·가격 계약·서명·재전송·환경·속도 제한·실호출 경로`);
+    console.log(`  ✅ ${label}: 카탈로그·국가 해석·가격 계약·서명·재전송·환경·속도 제한·환불 회수·실호출 경로`);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

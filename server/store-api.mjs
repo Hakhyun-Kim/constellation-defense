@@ -122,14 +122,39 @@ export function verifyWebhook(raw, signature, secret) {
   return received.length === expected.length && timingSafeEqual(Buffer.from(received), Buffer.from(expected));
 }
 
-/* 처리 가능한 이벤트면 {purchase}, 아니면 {ignored:사유}. 사유가 붙는 경우는
- * 전부 "재시도해도 달라지지 않는" 상황이라 호출부가 2xx로 받아 삼킨다. */
+/* 처리 가능한 이벤트면 {purchase} 또는 {refund}, 아니면 {ignored:사유}.
+ * 사유가 붙는 경우는 전부 "재시도해도 달라지지 않는" 상황이라 호출부가 2xx로
+ * 받아 삼킨다 — Neon 은 비-2xx 를 36시간 재시도한다. */
 export function classifyEvent(event, environment) {
-  if (event?.type !== 'purchase.completed') return { ignored: `unhandled type: ${event?.type || 'unknown'}` };
+  const type = event?.type;
+  if (type !== 'purchase.completed' && type !== 'refund.processed') {
+    return { ignored: `unhandled type: ${type || 'unknown'}` };
+  }
   if (event.version !== 2) return { ignored: `unsupported version: ${event.version}` };
-  /* 샌드박스 이벤트가 운영 원장에 지급되면 안 된다 (그 반대도 마찬가지). */
+  /* 샌드박스 이벤트가 운영 원장에 닿으면 안 된다 (그 반대도 마찬가지). */
   const sandboxEvent = event.isSandbox === true;
   if (sandboxEvent !== (environment === 'sandbox')) return { ignored: `environment mismatch: isSandbox=${sandboxEvent}` };
+
+  if (type === 'refund.processed') {
+    const refund = event.data?.refund;
+    if (!event.id || !refund?.id || !refund.purchaseId) return { ignored: 'missing required identifiers' };
+    /* 문서의 예시에서 externalReferenceId 가 null 이다. 그래서 purchaseId 가
+     * 결제 의도를 되찾는 실질적인 열쇠이고, 참조는 있으면 쓰는 쪽이다. */
+    const item = refund.items?.length === 1 ? refund.items[0] : null;
+    return {
+      refund: {
+        eventId: event.id,
+        refundId: refund.id,
+        purchaseId: refund.purchaseId,
+        accountId: refund.accountId || null,
+        externalReferenceId: refund.externalReferenceId || null,
+        sku: item?.sku || null,
+        currency: refund.currency || null,
+        totalAmount: refund.totalAmount ?? null,
+      },
+    };
+  }
+
   const purchase = event.data?.purchase;
   if (purchase?.status !== 'complete') return { ignored: `purchase status: ${purchase?.status}` };
   if (!event.id || !purchase.id || !purchase.accountId || !purchase.externalReferenceId) {
@@ -160,17 +185,17 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
   /* HTTPS 뒤에서는 Secure를 붙인다. PUBLIC_URL이 비어 있으면 요청 오리진으로 판단한다. */
   const cookieOptionsFor = (req) => ({ secure: String(config.publicUrl || requestOrigin(req) || '').startsWith('https://') });
 
-  async function fulfillOrIgnore(res, purchase, source) {
+  async function applyOrIgnore(res, run, { eventId, describe, source }) {
     try {
-      const result = await repository.fulfill(purchase);
-      log.info?.(`[store] ${source} fulfilled ${purchase.sku} for ${purchase.accountId}${result.duplicate ? ' (duplicate, no-op)' : ''}`);
-      return json(res, 200, { received: true, duplicate: result.duplicate });
+      const result = await run();
+      log.info?.(`[store] ${source} ${describe(result)}${result.duplicate ? ' (duplicate, no-op)' : ''}`);
+      return json(res, 200, { received: true, ...result });
     } catch (error) {
       /* 영구 거절은 200으로 받는다. Neon은 비-2xx를 36시간 재시도하는데,
        * 재시도로 풀릴 수 없는 상황에서 재시도를 부르면 아무도 이득이 없다.
        * 반대로 일시적 실패는 다시 던져서 5xx가 나가야 재시도를 받는다. */
       if (error instanceof PermanentRejection) {
-        log.warn?.(`[store] ${source} rejected: ${error.reason} (event ${purchase.eventId})`);
+        log.warn?.(`[store] ${source} rejected: ${error.reason} (event ${eventId})`);
         return json(res, 200, { received: true, ignored: error.reason });
       }
       throw error;
@@ -268,12 +293,25 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         let event;
         try { event = JSON.parse(raw.toString('utf8')); }
         catch { return json(res, 200, { received: true, ignored: 'malformed json' }); }
-        const { purchase, ignored } = classifyEvent(event, environment);
+        const { purchase, refund, ignored } = classifyEvent(event, environment);
         if (ignored) {
           log.info?.(`[store] webhook ignored: ${ignored}`);
           return json(res, 200, { received: true, ignored });
         }
-        return fulfillOrIgnore(res, purchase, 'webhook');
+        if (refund) {
+          return applyOrIgnore(res, () => repository.revoke(refund), {
+            eventId: refund.eventId,
+            source: 'refund webhook',
+            describe: (result) => (result.revoked
+              ? `revoked ${refund.sku || 'entitlement'} for purchase ${refund.purchaseId}`
+              : `marked purchase ${refund.purchaseId} refunded before it was ever granted`),
+          });
+        }
+        return applyOrIgnore(res, () => repository.fulfill(purchase), {
+          eventId: purchase.eventId,
+          source: 'webhook',
+          describe: () => `fulfilled ${purchase.sku} for ${purchase.accountId}`,
+        });
       }
 
       if (req.method === 'POST' && url.pathname === '/api/store/mock-complete' && config.mock) {
@@ -282,7 +320,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         if (!pending || pending.accountId !== account(req, res, cookieOptionsFor(req))) {
           return json(res, 404, { error: 'checkout not found' });
         }
-        return fulfillOrIgnore(res, {
+        const mockPurchase = {
           eventId: `mock-event-${input.reference}`,
           purchaseId: `mock-purchase-${input.reference}`,
           orderNumber: 'MOCK-DEMO',
@@ -292,7 +330,12 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           quantity: 1,
           price: pending.price,
           currency: pending.currency,
-        }, 'mock');
+        };
+        return applyOrIgnore(res, () => repository.fulfill(mockPurchase), {
+          eventId: mockPurchase.eventId,
+          source: 'mock',
+          describe: () => `fulfilled ${mockPurchase.sku} for ${mockPurchase.accountId}`,
+        });
       }
 
       return json(res, 404, { error: 'not found' });
