@@ -1,0 +1,33 @@
+name: Verification gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run storage:check
+      # dist/game.js 는 커밋되는 산출물이다 (index.html 을 빌드 없이 열 수 있도록).
+      # npm run check 가 방금 다시 빌드했으니, 여기서 diff 가 나오면
+      # 커밋된 번들이 소스보다 낡았다는 뜻이다.
+      - name: Committed bundle matches source
+        run: git diff --exit-code -- dist/
