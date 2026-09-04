@@ -8,16 +8,37 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const POLL_ATTEMPTS = 12;
 const POLL_INTERVAL_MS = 1500;
 const BANNER_ENTITLEMENT = 'cosmetic.celestial_banner';
+const TOKEN_KEY = 'cd_neon_player';
 
-async function request(url, options) {
-  const response = await fetch(url, { credentials: 'same-origin', ...options });
+/* API 가 다른 도메인에 있을 수 있다 — 게임을 정적 호스팅에 두고 결제 API 만
+ * 따로 두는 구성이 흔하다. 비어 있으면 같은 오리진을 쓴다. */
+const API_BASE = (document.querySelector('meta[name="neon-api-base"]')?.content || '').replace(/\/$/, '');
+
+/* 신원 토큰. 같은 오리진이면 서버가 쿠키로도 알아보지만, 교차 오리진이나
+ * 네이티브 클라이언트에서는 이것만 동작한다 — 그래서 항상 같이 보낸다. */
+function playerToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
+}
+
+function rememberPlayer(id) {
+  try { if (id) localStorage.setItem(TOKEN_KEY, id); } catch { /* 사생활 보호 모드 — 쿠키로 버틴다 */ }
+}
+
+async function request(path, options = {}) {
+  const token = playerToken();
+  const headers = { ...(options.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const response = await fetch(`${API_BASE}${path}`, {
+    credentials: API_BASE ? 'omit' : 'same-origin',
+    ...options,
+    headers,
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `Store request failed (${response.status})`);
   return data;
 }
 
-function postJson(url, payload) {
-  return request(url, {
+function postJson(path, payload) {
+  return request(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -119,6 +140,7 @@ export function initNeonStore({ locale = 'ko' } = {}) {
 
   async function loadCatalog() {
     catalog = await request(`/api/store/catalog?locale=${locale}`);
+    rememberPlayer(catalog.playerId);
     render();
   }
 

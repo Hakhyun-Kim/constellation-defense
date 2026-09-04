@@ -29,7 +29,21 @@ function appendCookie(res, name, value, { secure }) {
   res.setHeader('Set-Cookie', existing ? [].concat(existing, cookie) : [cookie]);
 }
 
+/* 신원은 두 가지 방법으로 온다. 쿠키는 같은 오리진 웹에서 편하고, Bearer 토큰은
+ * 그 밖의 모든 클라이언트에서 유일하게 동작한다 — Unity·Unreal 에는 쿠키 항아리가
+ * 없고, 게임이 CDN 에 있고 API 가 다른 도메인이면 SameSite 때문에 쿠키가 끊긴다
+ * (Safari 와 Firefox 는 서드파티 쿠키를 기본 차단한다).
+ *
+ * 둘 다 소지자(bearer) 자격이고 기기에 묶인다는 점에서 위협 모델이 같다. 계정이
+ * 있는 게임이라면 스튜디오의 플레이어 id 와 POST /auth/token 이 이 자리를 대신한다. */
+function bearerToken(req) {
+  const match = /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization || ''));
+  return match && PLAYER_RE.test(match[1]) ? match[1] : null;
+}
+
 function account(req, res, config) {
+  const token = bearerToken(req);
+  if (token) return token;
   const current = cookies(req)[PLAYER_COOKIE];
   if (PLAYER_RE.test(current || '')) return current;
   const id = randomUUID();
@@ -78,6 +92,20 @@ async function body(req, limit = 64 * 1024) {
 function readJson(raw) {
   try { return JSON.parse(raw.toString('utf8') || '{}'); }
   catch { throw Object.assign(new Error('malformed json'), { status: 400 }); }
+}
+
+/* 교차 오리진은 토큰으로만 다닌다. Access-Control-Allow-Credentials 를 일부러
+ * 보내지 않는 이유가 그것이다 — 쿠키를 교차 오리진으로 끌고 가려는 순간
+ * SameSite=None 이 필요해지고, 그건 Safari/Firefox 에서 기본 차단된다. */
+function applyCors(req, res, allowedOrigins) {
+  const origin = req.headers.origin;
+  if (!origin || !allowedOrigins.includes(origin)) return false;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Max-Age', '600');
+  return true;
 }
 
 function json(res, status, value) {
@@ -149,14 +177,24 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
     }
   }
 
+  const allowedOrigins = config.allowedOrigins || [];
+
   return async function handle(req, res, url) {
     if (!url.pathname.startsWith('/api/')) return false;
+    const corsAllowed = applyCors(req, res, allowedOrigins);
+    if (req.method === 'OPTIONS') {
+      res.writeHead(corsAllowed ? 204 : 403).end();
+      return true;
+    }
     try {
       if (req.method === 'GET' && url.pathname === '/api/store/catalog') {
         const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ko';
         const country = resolveCountry(req);
-        account(req, res, cookieOptionsFor(req));
+        /* 토큰으로 다니는 클라이언트(Unity·Unreal·다른 도메인의 웹)는 자기
+         * 신원을 알아야 저장할 수 있다. 쿠키만 쓰는 같은 오리진 웹은 무시하면 된다. */
+        const playerId = account(req, res, cookieOptionsFor(req));
         return json(res, 200, {
+          playerId,
           items: publicCatalog(locale, country),
           country,
           currency: marketFor(country).currency,

@@ -39,6 +39,8 @@ const storeApi = createStoreApi({
     publicUrl,
     environment,
     mock,
+    /* 게임을 CDN 에 두고 API 만 여기에 둘 때 필요하다. 비워 두면 교차 오리진 요청은 거절된다. */
+    allowedOrigins: (process.env.ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean),
   },
 });
 

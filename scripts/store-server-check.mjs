@@ -194,6 +194,54 @@ async function runSuite(repository, label) {
     assert.equal(replayNewId.payload.ignored, 'checkout already fulfilled');
     assert.equal((await repository.purchases(pending.accountId)).length, 1);
 
+    /* --- 신원: 쿠키 없이 Bearer 토큰만으로 ---
+     * Unity·Unreal 에는 쿠키 항아리가 없고, 게임이 CDN 에 있고 API 가 다른
+     * 도메인이면 SameSite 때문에 쿠키가 끊긴다. 토큰 경로가 살아 있어야
+     * 클라이언트 종류가 서버 설계를 제약하지 않는다. */
+    assert.ok(catalog.playerId, '카탈로그가 자기 신원을 알려준다 — 토큰 클라이언트가 저장할 수 있도록');
+    const byToken = await call('/api/store/entitlements', {
+      headers: { authorization: `Bearer ${pending.accountId}` },
+    }).then((r) => r.json());
+    assert.ok(byToken.entitlements['cosmetic.celestial_banner'], '토큰만으로 소유가 확인된다');
+    const strangerToken = await call('/api/store/entitlements', {
+      headers: { authorization: 'Bearer 22222222-2222-4222-8222-222222222222' },
+    }).then((r) => r.json());
+    assert.deepEqual(strangerToken.entitlements, {}, '남의 토큰으로는 아무것도 안 보인다');
+    const garbageToken = await call('/api/store/catalog?locale=ko', { headers: { authorization: 'Bearer not-a-uuid' } });
+    assert.equal(garbageToken.status, 200, '형식이 틀린 토큰은 새 신원으로 취급한다');
+    assert.notEqual((await garbageToken.json()).playerId, 'not-a-uuid');
+
+    // --- CORS: 허용 목록에 있는 오리진만 ---
+    const corsHandler = createStoreApi({
+      repository,
+      config: {
+        mock: true, webhookSecret: secret, publicUrl: 'https://api.example.test', environment: 'sandbox',
+        allowedOrigins: ['https://hakhyun-kim.github.io'],
+      },
+      log: quiet,
+    });
+    const corsServer = createServer(async (req, res) => corsHandler(req, res, new URL(req.url, 'https://api.example.test')));
+    try {
+      await new Promise((resolve) => corsServer.listen(0, '127.0.0.1', resolve));
+      const corsAt = `http://127.0.0.1:${corsServer.address().port}`;
+      const preflight = await fetch(`${corsAt}/api/store/checkout`, {
+        method: 'OPTIONS',
+        headers: { origin: 'https://hakhyun-kim.github.io', 'access-control-request-method': 'POST' },
+      });
+      assert.equal(preflight.status, 204, '허용된 오리진의 프리플라이트는 통과한다');
+      assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://hakhyun-kim.github.io');
+      assert.match(preflight.headers.get('access-control-allow-headers') || '', /Authorization/i, '토큰 헤더가 허용된다');
+      assert.equal(preflight.headers.get('access-control-allow-credentials'), null,
+        '교차 오리진은 토큰으로 다닌다 — 쿠키를 끌고 가면 서드파티 차단에 걸린다');
+      const denied = await fetch(`${corsAt}/api/store/checkout`, {
+        method: 'OPTIONS',
+        headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' },
+      });
+      assert.equal(denied.status, 403, '허용 목록에 없는 오리진은 거절된다');
+      const sameOrigin = await fetch(`${corsAt}/api/store/catalog?locale=ko`);
+      assert.equal(sameOrigin.status, 200, 'Origin 헤더가 없는 요청은 영향을 받지 않는다');
+    } finally { await new Promise((resolve) => corsServer.close(resolve)); }
+
     // --- 체크아웃 생성 속도 제한 ---
     const spammer = sessionCookie(await call('/api/store/catalog?locale=ko'));
     let limited = 0;
