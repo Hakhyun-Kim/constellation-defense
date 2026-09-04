@@ -1,0 +1,32 @@
+# Fly.io 배포. Render 와 달리 flyctl CLI 가 필요하다(= 터미널이 있는 기기).
+#
+#   fly launch --no-deploy --copy-config
+#   fly secrets set NEON_API_KEY=... NEON_WEBHOOK_SECRET=...
+#   fly deploy
+#
+# secrets 는 빌드 이미지가 아니라 런타임 환경에만 주입되므로 저장소에 남지 않는다.
+app = "constellation-defense"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8080"
+  NEON_MOCK_CHECKOUT = "0"
+  NEON_ENVIRONMENT = "sandbox"
+  NEON_API_URL = "https://api.neonpay.com"
+  # PUBLIC_URL 은 비워 둔다 — 서버가 x-forwarded-* 로 오리진을 잡는다.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 40
+    hard_limit = 60

@@ -14,6 +14,10 @@ import { createStoreApi } from '../server/store-api.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.PORT) || 8642;
+/* 기본은 루프백이다 — 개발 서버를 같은 와이파이의 다른 기기에 노출하지 않는다.
+ * 컨테이너 호스트(Render/Fly)는 바깥에서 프로세스로 들어오므로 0.0.0.0 이 필요하고,
+ * 그때는 HOST 로 덮어쓴다. 터널(cloudflared)은 루프백으로 붙으니 그대로 둔다. */
+const host = process.env.HOST || '127.0.0.1';
 /* 비워 두면 요청이 들어온 오리진을 그대로 쓴다 — localhost로 열었는데
  * 127.0.0.1로 돌려보내면 쿠키가 끊긴다. 샌드박스에서는 터널 주소를 지정한다. */
 const publicUrl = process.env.PUBLIC_URL || '';
@@ -85,6 +89,6 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404');
   }
-}).listen(port, '127.0.0.1', () => {
-  console.log(`Constellation Defense → http://localhost:${port}/`);
+}).listen(port, host, () => {
+  console.log(`Constellation Defense → http://${host === '0.0.0.0' ? 'localhost' : host}:${port}/ (bind ${host})`);
 });
