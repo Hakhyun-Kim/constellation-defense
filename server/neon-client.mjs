@@ -4,7 +4,7 @@ export async function createNeonCheckout({ apiKey, apiUrl = DEFAULT_API_URL, pay
   if (!apiKey) throw new Error('NEON_API_KEY is not configured');
   const response = await fetchImpl(`${apiUrl}/checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));

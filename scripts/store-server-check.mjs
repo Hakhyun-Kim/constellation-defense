@@ -198,7 +198,75 @@ try {
   }
   assert.ok(limited > 0, '체크아웃 생성은 무제한이 아니다');
 
-  console.log('store server check: 카탈로그·국가 해석·가격 계약·서명·재전송·환경·속도 제한 통과');
+  /* --- 실제 Neon 호출 경로 ---
+   * 모의 모드는 neon-client 를 통째로 건너뛴다. 그래서 여기서는 mock:false 로
+   * 두고 fetch 만 가짜로 갈아끼워, 샌드박스에서 처음 눌렀을 때 우리 쪽 문제로
+   * 실패하지 않도록 나가는 요청의 모양과 실패 처리를 미리 확인한다. */
+  let sent = null;
+  const stubNeon = (status, payload) => async (url, options) => {
+    sent = { url, options, body: JSON.parse(options.body) };
+    return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  async function liveServer(fetchImpl) {
+    const handler = createStoreApi({
+      repository,
+      config: {
+        mock: false, apiKey: 'test-secret-key', apiUrl: 'https://api.example.test',
+        webhookSecret: secret, publicUrl: 'https://tunnel.example.test', environment: 'sandbox',
+      },
+      fetchImpl, log: quiet,
+    });
+    const live = createServer(async (req, res) => handler(req, res, new URL(req.url, 'https://tunnel.example.test')));
+    await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
+    const at = `http://127.0.0.1:${live.address().port}`;
+    return {
+      at,
+      checkout: (cookie) => fetch(`${at}/api/store/checkout`, {
+        method: 'POST', headers: { cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku: 'CELESTIAL_BANNER', locale: 'ko' }),
+      }),
+      close: () => new Promise((resolve) => live.close(resolve)),
+    };
+  }
+
+  const ok = await liveServer(stubNeon(201, { checkoutId: 'chk_1', redirectUrl: 'https://pay.example.test/chk_1' }));
+  try {
+    const buyer = sessionCookie(await fetch(`${ok.at}/api/store/catalog?locale=ko`));
+    const created = await ok.checkout(buyer);
+    assert.equal(created.status, 201);
+    assert.equal((await created.json()).redirectUrl, 'https://pay.example.test/chk_1');
+
+    assert.equal(sent.url, 'https://api.example.test/checkout');
+    assert.equal(sent.options.headers['X-API-KEY'], 'test-secret-key', 'API 키는 헤더로만 나간다');
+    // Neon 이 요구하는 필드가 모두 실려 있는지 — 하나라도 빠지면 첫 샌드박스 시도가 거절된다
+    for (const field of ['items', 'externalReferenceId', 'accountId', 'languageLocale', 'playerCountry', 'currency', 'storeUrl', 'successUrl', 'cancelUrl']) {
+      assert.ok(sent.body[field] !== undefined, `checkout 요청에 ${field} 가 있다`);
+    }
+    assert.deepEqual(Object.keys(sent.body.items[0]).sort(), ['name', 'price', 'quantity', 'sku', 'subtitle'],
+      '문서에서 확인한 항목 필드만 보낸다');
+    assert.equal(sent.body.items[0].price, PRODUCTS.CELESTIAL_BANNER.prices.KRW);
+    assert.equal(sent.body.currency, 'KRW');
+    assert.equal(sent.body.playerCountry, 'KR');
+    assert.equal(sent.body.languageLocale, 'ko-KR');
+    assert.ok(sent.body.successUrl.startsWith('https://tunnel.example.test/'), 'successUrl 은 공개 주소를 쓴다');
+  } finally { await ok.close(); }
+
+  const rejects = await liveServer(stubNeon(400, { message: 'invalid sku' }));
+  try {
+    const buyer = sessionCookie(await fetch(`${rejects.at}/api/store/catalog?locale=ko`));
+    const failed = await rejects.checkout(buyer);
+    assert.equal(failed.status, 502, 'Neon 이 거절하면 502 로 알린다 — 우리 버그와 구분된다');
+    assert.doesNotMatch(await failed.text(), /test-secret-key/, '오류 응답에 키가 새지 않는다');
+  } finally { await rejects.close(); }
+
+  const incomplete = await liveServer(stubNeon(201, { checkoutId: 'chk_2' }));
+  try {
+    const buyer = sessionCookie(await fetch(`${incomplete.at}/api/store/catalog?locale=ko`));
+    assert.equal((await incomplete.checkout(buyer)).status, 500, 'redirectUrl 없는 응답은 성공으로 치지 않는다');
+  } finally { await incomplete.close(); }
+
+  console.log('store server check: 카탈로그·국가 해석·가격 계약·서명·재전송·환경·속도 제한·실호출 경로 통과');
 } finally {
   await new Promise((resolve) => server.close(resolve));
   await rm(temporary, { recursive: true, force: true });
