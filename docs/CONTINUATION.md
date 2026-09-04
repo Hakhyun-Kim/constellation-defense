@@ -1,22 +1,41 @@
 # Cross-machine continuation guide
 
-Last updated: 2026-08-21
+Last updated: 2026-09-04
 
 This document is the starting point for a developer or Codex session picking
 up `Constellation Defense` on another computer.
 
 ## Current handoff state
 
-- Branch: `main`
-- Latest feature/fix commit: run `git log -1 --oneline`. The current feature
-  connects a five-star corner/T/cross **Hero Sigil** to the existing tactic and
-  named-hero active systems without changing the engine command contract.
+- Branch: `main` for the game. Deployment and payments work continues on
+  `claude/work-progress-next-tasks-d2rw3a`, which is ahead of `main`.
+- Latest feature/fix commit: run `git log -1 --oneline`. The most recent
+  substantial change is not gameplay — it is the **Neon Hosted Checkout**
+  integration (PR #1, merged 2026-09-04), which added the game's first
+  server-authoritative surface. The gameplay feature before it connects a
+  five-star corner/T/cross **Hero Sigil** to the existing tactic and named-hero
+  active systems without changing the engine command contract.
 - Working tree at handoff: expected clean after the feature commit. Always
   verify with `git status --short` before editing.
-- Latest deterministic gates: `npm.cmd run check` and
-  `node scripts/balance-check.mjs 60` passed locally on 2026-08-21. The
-  first-expedition and full two-chapter 60-run balance policies use real
-  match-3, hero-active, blueprint, and constellation-support commands.
+- Latest deterministic gates: `npm.cmd run check` passed on 2026-09-04, and
+  now also runs in CI on every pull request (`.github/workflows/pr-check.yml`)
+  rather than only on the nightly schedule. `node scripts/balance-check.mjs 60`
+  last passed on 2026-08-21. The first-expedition and full two-chapter 60-run
+  balance policies use real match-3, hero-active, blueprint, and
+  constellation-support commands.
+
+### The store is off unless a server is running
+
+The game is still a static build. `npm.cmd run serve` adds the store API to the
+same process; GitHub Pages does not, so there the catalogue request fails and
+the store button hides itself. That is deliberate — existing players see no
+change — so a missing store button on Pages is not a bug to fix.
+
+`NEON_MOCK_CHECKOUT=1` drives the whole purchase flow with no credentials.
+Never put a Neon API key anywhere the browser can read it; the key belongs in
+server-side environment variables only, and `dist/game.js` must stay free of it.
+Deployment configs (`render.yaml`, `Dockerfile`, `fly.toml`) and the sandbox
+steps live with the integration write-up, linked below.
 
 The current campaign is an authored constellation expedition. It starts with
 Arin and Luna, uses a fixed five-hero party, and connects short defense stages
@@ -232,6 +251,16 @@ available on the next computer, continue game work here and leave submission
 material untouched.
 
 ## Suggested next task
+
+The payments track is blocked on one external step: provisioning a Neon
+sandbox API key from the Neon Console, plus confirming whether the
+`CELESTIAL_BANNER` SKU must be registered there and whether KR/KRW is enabled
+on the account. Everything on this side is written and passing. The ordered
+steps are in `docs/07-sandbox-checklist.md` of the `neon-checkout-integration`
+repository, and the session-by-session state is in the private
+`neon-assignment-log` repository.
+
+The game track is unchanged:
 
 Run the documented human campaign/weekly playtest cohort, aggregate its local
 JSON exports with `npm.cmd run playtest:report -- ...`, and then revisit P3-2 and
