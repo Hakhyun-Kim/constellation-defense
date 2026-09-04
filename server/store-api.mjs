@@ -277,7 +277,10 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         await repository.recordCheckout({
           externalReferenceId, accountId, sku: resolved.item.sku, entitlement: resolved.entitlement,
           price: resolved.item.price, currency: resolved.currency, country,
-          status: 'pending', checkoutId: checkout.checkoutId,
+          status: 'pending',
+          /* Neon 은 redirectUrl 과 token 만 돌려준다 — checkoutId 는 없다. JSON 은
+           * undefined 키를 조용히 버리지만 Firestore 는 예외를 던지므로 null 로 고정한다. */
+          checkoutId: checkout.checkoutId ?? null,
         });
         return json(res, 201, { checkoutId: checkout.checkoutId, token: checkout.token, redirectUrl: checkout.redirectUrl });
       }
