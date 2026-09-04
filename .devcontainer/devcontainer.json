@@ -1,0 +1,24 @@
+{
+  "name": "constellation-defense",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+
+  "onCreateCommand": "npm ci",
+
+  // 8642 는 scripts/serve.mjs 의 기본 포트다. Neon 이 웹훅을 보내려면 이
+  // 포트의 visibility 를 Public 으로 바꿔야 한다 — Ports 탭에서 우클릭,
+  // Port Visibility → Public. 그 전까지는 GitHub 인증이 걸려 있어서
+  // Neon 의 POST 가 로그인 페이지를 받는다.
+  "forwardPorts": [8642],
+  "portsAttributes": {
+    "8642": {
+      "label": "game + store api",
+      "onAutoForward": "notify"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint"]
+    }
+  }
+}
