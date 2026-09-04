@@ -130,4 +130,8 @@ export class JsonRepository {
   async entitlements(accountId) {
     return (await this.load()).players[accountId]?.entitlements || {};
   }
+
+  async purchases(accountId) {
+    return (await this.load()).players[accountId]?.purchases || [];
+  }
 }

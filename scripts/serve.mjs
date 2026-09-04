@@ -9,11 +9,14 @@ import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
-import { JsonRepository } from '../server/repository.mjs';
+import { createRepository } from '../server/repository-factory.mjs';
 import { createStoreApi } from '../server/store-api.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.PORT) || 8642;
+/* Cloud Run 같은 컨테이너 환경은 모든 인터페이스에 바인딩해야 트래픽이 들어온다.
+ * 기본값은 로컬 개발이 안전하도록 루프백으로 남겨 둔다. */
+const host = process.env.HOST || '127.0.0.1';
 /* 비워 두면 요청이 들어온 오리진을 그대로 쓴다 — localhost로 열었는데
  * 127.0.0.1로 돌려보내면 쿠키가 끊긴다. 샌드박스에서는 터널 주소를 지정한다. */
 const publicUrl = process.env.PUBLIC_URL || '';
@@ -21,8 +24,14 @@ const publicUrl = process.env.PUBLIC_URL || '';
  * 이 값을 안 바꾸면 아래 경고가 시작할 때 눈에 띄게 남는다. */
 const environment = process.env.NEON_ENVIRONMENT === 'production' ? 'production' : 'sandbox';
 const mock = process.env.NEON_MOCK_CHECKOUT === '1';
+const { repository, backend } = await createRepository({
+  backend: process.env.STORE_BACKEND,
+  dataDir: join(root, '.data'),
+  environment: process.env.NEON_ENVIRONMENT === 'production' ? 'production' : 'sandbox',
+  projectId: process.env.GOOGLE_CLOUD_PROJECT,
+});
 const storeApi = createStoreApi({
-  repository: new JsonRepository(join(root, '.data', 'neon-store.json')),
+  repository,
   config: {
     apiKey: process.env.NEON_API_KEY,
     apiUrl: process.env.NEON_API_URL || 'https://api.neonpay.com',
@@ -85,6 +94,6 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404');
   }
-}).listen(port, '127.0.0.1', () => {
-  console.log(`Constellation Defense → http://localhost:${port}/`);
+}).listen(port, host, () => {
+  console.log(`Constellation Defense → http://localhost:${port}/  (원장: ${backend})`);
 });
