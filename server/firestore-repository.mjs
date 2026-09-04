@@ -161,6 +161,12 @@ export class FirestoreRepository {
     return snapshot.exists ? snapshot.data().entitlements || {} : {};
   }
 
+  /* 준비 상태 점검 — 존재하지 않아도 되는 문서를 한 번 읽어 연결을 확인한다. */
+  async healthy() {
+    await this.root.get();
+    return true;
+  }
+
   async purchases(accountId) {
     const snapshot = await this.players.doc(accountId).collection('purchases').get();
     return snapshot.docs.map((doc) => doc.data());

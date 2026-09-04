@@ -171,6 +171,14 @@ export class JsonRepository {
     return (await this.load()).players[accountId]?.entitlements || {};
   }
 
+  /* 준비 상태 점검. 로컬 파일이라 부팅 이후에는 사실상 항상 참이다 —
+   * 이 백엔드에서 의미 있는 것은 "원장을 열 수 있었다"까지다. 진짜 연결
+   * 상태를 묻는 것은 Firestore 쪽 구현이다. */
+  async healthy() {
+    await this.load();
+    return true;
+  }
+
   async purchases(accountId) {
     return (await this.load()).players[accountId]?.purchases || [];
   }
