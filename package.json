@@ -13,7 +13,7 @@
     "balance": "node scripts/balance-bot.mjs",
     "balance:report": "node scripts/balance-report.mjs",
     "balance:report:check": "node scripts/balance-report-check.mjs",
-    "serve": "node scripts/serve.mjs",
+    "serve": "node --env-file-if-exists=.env scripts/serve.mjs",
     "balance:check": "node scripts/balance-check.mjs 60",
     "engine:check": "node scripts/engine-check.mjs",
     "tactics:check": "node scripts/tactic-board-check.mjs",
@@ -31,6 +31,7 @@
     "i18n:check": "node scripts/i18n-check.mjs",
     "demo:check": "node scripts/demo-check.mjs",
     "storage:check": "node scripts/storage-check.mjs",
+    "store:check": "node scripts/store-server-check.mjs",
     "visual:check": "node scripts/visual-safety-check.mjs",
     "capture:check": "node scripts/visual-capture-check.mjs",
     "evidence:check": "node scripts/art-evidence-check.mjs",
@@ -45,7 +46,7 @@
     "desktop:package": "npm run build && electron-forge package",
     "desktop:make": "npm run build && electron-forge make",
     "audit:runtime": "npm audit --omit=dev",
-    "check": "npm run engine:check && npm run tactics:check && npm run ui:check && npm run combat:ui:check && npm run act2:check && npm run village:check && npm run phase:check && npm run weekly:check && npm run session:check && npm run playtest:check && npm run preferences:check && npm run i18n:check && npm run desktop:check && npm run demo:check && npm run visual:check && npm run capture:check && npm run evidence:check && npm run perf:check && npm run audio:pilot:check && npm run asset:runtime:check && npm run asset:pilot:check && npm run asset:model:check && npm run build && npm run asset:check"
+    "check": "npm run engine:check && npm run tactics:check && npm run ui:check && npm run combat:ui:check && npm run act2:check && npm run village:check && npm run phase:check && npm run weekly:check && npm run session:check && npm run playtest:check && npm run preferences:check && npm run i18n:check && npm run desktop:check && npm run demo:check && npm run storage:check && npm run store:check && npm run visual:check && npm run capture:check && npm run evidence:check && npm run perf:check && npm run audio:pilot:check && npm run asset:runtime:check && npm run asset:pilot:check && npm run asset:model:check && npm run build && npm run asset:check"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",

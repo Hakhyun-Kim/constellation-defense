@@ -30,6 +30,7 @@ import {
   KEY_ACTIONS, actionForCode, defaultBindings, keyCodeLabel, normalizeBindings, rebindAction,
 } from './app/preferences.js';
 import { getLocale, installDocumentLocalization, normalizeLocale } from './app/i18n.js';
+import { initNeonStore } from './app/neon-store.js';
 
 registerDucker((amt, dur) => music.duck(amt, dur));
 
@@ -41,6 +42,7 @@ if (requestedLocale) store.language = locale;
 const ui = new UI();
 const tacticFeedback = createTacticFeedback();
 installDocumentLocalization(locale);
+initNeonStore({ locale });
 /* URL로 강제 지정 가능: ?gfx=high|lite|min (min은 테스트/초저사양용) */
 const urlGfx = urlParams.get('gfx');
 const judgeMode = urlParams.has('judge');

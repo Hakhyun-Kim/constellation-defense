@@ -48,6 +48,78 @@ npm run check
 npm run balance:check
 ```
 
+## Neon checkout demo
+
+The optional **별빛 상점 / Celestial Store** sells one permanent, cosmetic-only
+banner. Pricing and fulfillment are server-owned: the browser sends only a SKU and
+a display language, the server creates a hosted Neon checkout, and the cosmetic is
+granted only after a signed `purchase.completed` webhook. The client polls the
+entitlement endpoint after returning from checkout because the redirect can arrive
+before the webhook.
+
+Run the complete local flow without credentials:
+
+```bash
+cp .env.example .env    # NEON_MOCK_CHECKOUT=1 is already set
+npm run serve
+```
+
+Open `http://127.0.0.1:8642`, choose **별빛 상점**, and buy the banner. Mock mode
+uses the same checkout ledger and the same idempotent fulfillment path, but never
+contacts Neon. For a real sandbox checkout, set the credentials in `.env`:
+
+```ini
+NEON_MOCK_CHECKOUT=0
+NEON_API_KEY=your-sandbox-api-key
+NEON_WEBHOOK_SECRET=the-shared-listener-secret
+NEON_ENVIRONMENT=sandbox
+PUBLIC_URL=https://your-public-tunnel.example
+```
+
+`npm run serve` loads `.env` through Node's own `--env-file-if-exists`, and warns
+at startup about the configurations that silently break a checkout (no API key, no
+webhook secret, a `PUBLIC_URL` Neon cannot reach).
+
+Register `https://your-public-tunnel.example/api/webhooks/neon` for version 2
+`purchase.completed` events in the Neon sandbox Console. The listener validates the
+raw request body with the `x-neon-digest` HMAC-SHA256 signature. Runtime checkout
+and entitlement data is written to the ignored `.data/neon-store.json` file. That
+ledger is deliberately small and readable; a multi-instance deployment should
+replace it with a transactional database while preserving the interface in
+`server/repository.mjs`.
+
+Three details are worth calling out because they are where this kind of
+integration usually goes wrong:
+
+- **Prices are Neon's 100× integers, formatted by `Intl`, never hand-written.**
+  ₩4,900 is sent as `490000` and $4.99 as `499`. The won has no circulating
+  subunit, so the trailing zeros look like a bug to Korean eyes — the multiplier
+  lives in exactly one frozen table and the display string is derived from it.
+- **Billing country is never inferred from the game's language.** It comes from an
+  explicit player choice, then a platform geo header, then the browser's
+  `Accept-Language` region — never from the ko/en toggle, because Neon binds
+  currency to `playerCountry` and a Korean player reading English is still in KR.
+- **Only failures that a retry could fix return a non-2xx.** Neon retries non-2xx
+  responses for up to 36 hours, so unknown references, unhandled event types, and
+  sandbox/production mismatches are acknowledged with `200 {ignored}` and logged.
+  An invalid signature stays a `403` on purpose: that is a misconfiguration that
+  should stay noisy.
+
+Relevant implementation files:
+
+- `server/store-api.mjs` — HTTP routes, session cookie, country resolution, webhook verification.
+- `server/catalog.mjs` — allowlisted SKU, market table, server-owned prices.
+- `server/repository.mjs` — pending checkout, purchase and entitlement ledger.
+- `src/app/neon-store.js` — hosted checkout launch, billing-region picker, post-return polling.
+- `scripts/store-server-check.mjs` — signature, replay, tampering, environment and rate-limit tests.
+
+Run `npm run store:check` for the focused integration test. The implementation
+follows Neon's official [hosted checkout](https://docs.neonpay.com/docs/creating-a-checkout),
+[fulfillment](https://docs.neonpay.com/docs/fulfillment), and
+[webhook](https://docs.neonpay.com/docs/webhooks-and-callbacks) documentation.
+Design notes, decisions, and open questions are collected in the companion
+[neon-checkout-integration](https://github.com/Hakhyun-Kim/neon-checkout-integration) repository.
+
 ## Built with Codex
 
 Codex was used as a development collaborator to evolve an existing 3D defense foundation into a focused match-3 tactics game. It helped separate deterministic simulation rules from presentation, add the tactical board, create the fixed-squad growth system, automate balance runs with real match-3 actions, and retain procedural 3D visuals and synthesized audio.

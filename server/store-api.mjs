@@ -1,0 +1,268 @@
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import {
+  DEFAULT_COUNTRY, checkoutItem, isSupportedCountry, marketFor, MARKETS, PRODUCTS, publicCatalog,
+} from './catalog.mjs';
+import { createNeonCheckout } from './neon-client.mjs';
+import { PermanentRejection } from './repository.mjs';
+
+const PLAYER_COOKIE = 'cd_player';
+const COUNTRY_COOKIE = 'cd_country';
+const PLAYER_RE = /^[a-f0-9-]{36}$/i;
+/* 결제 의도는 원장에 기록되므로 무제한 생성은 저장소 고갈로 이어진다. */
+const CHECKOUT_WINDOW_MS = 10 * 60 * 1000;
+const CHECKOUT_LIMIT = 10;
+/* 플랫폼이 붙여 주는 지리 헤더. 있으면 브라우저 언어보다 신뢰도가 높다. */
+const GEO_HEADERS = ['cf-ipcountry', 'x-vercel-ip-country', 'x-appengine-country', 'x-geo-country'];
+
+function cookies(req) {
+  return Object.fromEntries(
+    String(req.headers.cookie || '')
+      .split(';')
+      .map((part) => part.trim().split('=').map(decodeURIComponent))
+      .filter(([key, value]) => key && value),
+  );
+}
+
+function appendCookie(res, name, value, { secure }) {
+  const cookie = `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure ? '; Secure' : ''}`;
+  const existing = res.getHeader('Set-Cookie');
+  res.setHeader('Set-Cookie', existing ? [].concat(existing, cookie) : [cookie]);
+}
+
+function account(req, res, config) {
+  const current = cookies(req)[PLAYER_COOKIE];
+  if (PLAYER_RE.test(current || '')) return current;
+  const id = randomUUID();
+  appendCookie(res, PLAYER_COOKIE, id, config);
+  return id;
+}
+
+/* 국가는 절대 게임 UI 언어에서 끌어오지 않는다. Neon은 통화를 playerCountry에
+ * 맞춰 강제하므로, 한국어를 영어로 바꿨다는 이유로 US/USD가 나가면 세금과
+ * 결제수단이 통째로 틀어진다. 신뢰도 높은 신호부터 순서대로만 본다. */
+export function resolveCountry(req) {
+  const chosen = String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase();
+  if (isSupportedCountry(chosen)) return chosen;
+  for (const header of GEO_HEADERS) {
+    const value = String(req.headers[header] || '').toUpperCase();
+    if (isSupportedCountry(value)) return value;
+  }
+  for (const tag of String(req.headers['accept-language'] || '').split(',')) {
+    const region = tag.trim().split(';')[0].split('-')[1];
+    if (region && isSupportedCountry(region.toUpperCase())) return region.toUpperCase();
+  }
+  return DEFAULT_COUNTRY;
+}
+
+/* successUrl은 반드시 플레이어가 지금 보고 있는 오리진이어야 한다. 다르면
+ * 결제 후 다른 호스트로 돌아오고, 세션 쿠키가 따라오지 않아 "결제는 됐는데
+ * 내 것이 아니다"가 된다 — localhost와 127.0.0.1처럼 사실상 같아 보이는
+ * 주소에서도 그렇다. 실제로 이 함정을 한 번 밟고 나서 추가했다. */
+function requestOrigin(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || 'http';
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  return host ? `${proto}://${host}` : null;
+}
+
+async function body(req, limit = 64 * 1024) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limit) throw Object.assign(new Error('request too large'), { status: 413 });
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+function readJson(raw) {
+  try { return JSON.parse(raw.toString('utf8') || '{}'); }
+  catch { throw Object.assign(new Error('malformed json'), { status: 400 }); }
+}
+
+function json(res, status, value) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(value));
+  return true;
+}
+
+export function verifyWebhook(raw, signature, secret) {
+  if (!secret || !signature) return false;
+  const expected = createHmac('sha256', secret).update(raw).digest('hex');
+  const received = String(signature).trim().toLowerCase();
+  /* timingSafeEqual은 길이가 다르면 던진다 — 비교 전 길이 확인이 필수. */
+  return received.length === expected.length && timingSafeEqual(Buffer.from(received), Buffer.from(expected));
+}
+
+/* 처리 가능한 이벤트면 {purchase}, 아니면 {ignored:사유}. 사유가 붙는 경우는
+ * 전부 "재시도해도 달라지지 않는" 상황이라 호출부가 2xx로 받아 삼킨다. */
+export function classifyEvent(event, environment) {
+  if (event?.type !== 'purchase.completed') return { ignored: `unhandled type: ${event?.type || 'unknown'}` };
+  if (event.version !== 2) return { ignored: `unsupported version: ${event.version}` };
+  /* 샌드박스 이벤트가 운영 원장에 지급되면 안 된다 (그 반대도 마찬가지). */
+  const sandboxEvent = event.isSandbox === true;
+  if (sandboxEvent !== (environment === 'sandbox')) return { ignored: `environment mismatch: isSandbox=${sandboxEvent}` };
+  const purchase = event.data?.purchase;
+  if (purchase?.status !== 'complete') return { ignored: `purchase status: ${purchase?.status}` };
+  if (!event.id || !purchase.id || !purchase.accountId || !purchase.externalReferenceId) {
+    return { ignored: 'missing required identifiers' };
+  }
+  if (purchase.items?.length !== 1 || !purchase.items[0]?.sku) return { ignored: 'unsupported item shape' };
+  const item = purchase.items[0];
+  return {
+    purchase: {
+      eventId: event.id,
+      purchaseId: purchase.id,
+      orderNumber: purchase.orderNumber || null,
+      accountId: purchase.accountId,
+      externalReferenceId: purchase.externalReferenceId,
+      sku: item.sku,
+      quantity: item.quantity,
+      price: item.price ?? null,
+      /* 플레이어가 결제 페이지에서 국가를 바꿀 수 있으므로, 금액 대조 기준은
+       * 체크아웃을 만든 시점의 통화(initialCurrency)다. */
+      currency: purchase.initialCurrency || purchase.currency || null,
+      settledCurrency: purchase.currency || null,
+    },
+  };
+}
+
+export function createStoreApi({ repository, config, fetchImpl = fetch, log = console }) {
+  const environment = config.environment === 'production' ? 'production' : 'sandbox';
+  /* HTTPS 뒤에서는 Secure를 붙인다. PUBLIC_URL이 비어 있으면 요청 오리진으로 판단한다. */
+  const cookieOptionsFor = (req) => ({ secure: String(config.publicUrl || requestOrigin(req) || '').startsWith('https://') });
+
+  async function fulfillOrIgnore(res, purchase, source) {
+    try {
+      const result = await repository.fulfill(purchase);
+      log.info?.(`[store] ${source} fulfilled ${purchase.sku} for ${purchase.accountId}${result.duplicate ? ' (duplicate, no-op)' : ''}`);
+      return json(res, 200, { received: true, duplicate: result.duplicate });
+    } catch (error) {
+      /* 영구 거절은 200으로 받는다. Neon은 비-2xx를 36시간 재시도하는데,
+       * 재시도로 풀릴 수 없는 상황에서 재시도를 부르면 아무도 이득이 없다.
+       * 반대로 일시적 실패는 다시 던져서 5xx가 나가야 재시도를 받는다. */
+      if (error instanceof PermanentRejection) {
+        log.warn?.(`[store] ${source} rejected: ${error.reason} (event ${purchase.eventId})`);
+        return json(res, 200, { received: true, ignored: error.reason });
+      }
+      throw error;
+    }
+  }
+
+  return async function handle(req, res, url) {
+    if (!url.pathname.startsWith('/api/')) return false;
+    try {
+      if (req.method === 'GET' && url.pathname === '/api/store/catalog') {
+        const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ko';
+        const country = resolveCountry(req);
+        account(req, res, cookieOptionsFor(req));
+        return json(res, 200, {
+          items: publicCatalog(locale, country),
+          country,
+          currency: marketFor(country).currency,
+          markets: Object.entries(MARKETS).map(([code, market]) => ({ code, currency: market.currency })),
+          checkoutMode: config.mock ? 'mock' : 'hosted',
+          environment,
+        });
+      }
+
+      /* 국가는 명시적 선택으로만 바뀐다 — 언어 토글은 여기에 관여하지 않는다. */
+      if (req.method === 'POST' && url.pathname === '/api/store/market') {
+        const input = readJson(await body(req));
+        const country = String(input.country || '').toUpperCase();
+        if (!isSupportedCountry(country)) return json(res, 400, { error: 'unsupported country' });
+        appendCookie(res, COUNTRY_COOKIE, country, cookieOptionsFor(req));
+        return json(res, 200, { country, currency: marketFor(country).currency });
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/store/entitlements') {
+        return json(res, 200, { entitlements: await repository.entitlements(account(req, res, cookieOptionsFor(req))) });
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/store/checkout') {
+        const input = readJson(await body(req));
+        const locale = input.locale === 'en' ? 'en' : 'ko';
+        const country = resolveCountry(req);
+        const resolved = checkoutItem(input.sku, { locale, country });
+        if (!resolved) return json(res, 400, { error: 'unknown product' });
+        const accountId = account(req, res, cookieOptionsFor(req));
+        if (await repository.recentCheckoutCount(accountId, CHECKOUT_WINDOW_MS) >= CHECKOUT_LIMIT) {
+          return json(res, 429, { error: 'too many checkout attempts' });
+        }
+        const externalReferenceId = randomUUID();
+        /* PUBLIC_URL을 명시하지 않았으면 요청이 들어온 오리진을 그대로 쓴다.
+         * 명시했는데 다르면 쿠키를 잃는 구성이므로 시끄럽게 경고한다. */
+        const observed = requestOrigin(req);
+        const origin = String(config.publicUrl || observed || '').replace(/\/$/, '');
+        if (config.publicUrl && observed && !config.publicUrl.startsWith(observed)) {
+          log.warn?.(`[store] PUBLIC_URL(${config.publicUrl})과 요청 오리진(${observed})이 다릅니다 — 결제 후 세션 쿠키를 잃습니다.`);
+        }
+        const payload = {
+          items: [resolved.item],
+          externalReferenceId,
+          accountId,
+          languageLocale: locale === 'ko' ? 'ko-KR' : 'en-US',
+          playerCountry: country,
+          currency: resolved.currency,
+          storeUrl: origin,
+          successUrl: `${origin}/?purchase=return`,
+          cancelUrl: `${origin}/?purchase=cancelled`,
+        };
+        const checkout = config.mock
+          ? { checkoutId: `mock-${externalReferenceId}`, redirectUrl: `${origin}/?purchase=mock&reference=${externalReferenceId}` }
+          : await createNeonCheckout({ apiKey: config.apiKey, apiUrl: config.apiUrl, payload, fetchImpl });
+        await repository.recordCheckout({
+          externalReferenceId, accountId, sku: resolved.item.sku, entitlement: resolved.entitlement,
+          price: resolved.item.price, currency: resolved.currency, country,
+          status: 'pending', checkoutId: checkout.checkoutId,
+        });
+        return json(res, 201, { checkoutId: checkout.checkoutId, token: checkout.token, redirectUrl: checkout.redirectUrl });
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/webhooks/neon') {
+        const raw = await body(req);
+        /* 서명 실패만 비-2xx로 남긴다. 인증되지 않은 요청에 200을 주면
+         * 설정 오류가 조용히 묻힌다 — 여기서는 시끄러운 편이 낫다. */
+        if (!verifyWebhook(raw, req.headers['x-neon-digest'], config.webhookSecret)) {
+          log.warn?.('[store] webhook rejected: invalid signature');
+          return json(res, 403, { error: 'invalid signature' });
+        }
+        let event;
+        try { event = JSON.parse(raw.toString('utf8')); }
+        catch { return json(res, 200, { received: true, ignored: 'malformed json' }); }
+        const { purchase, ignored } = classifyEvent(event, environment);
+        if (ignored) {
+          log.info?.(`[store] webhook ignored: ${ignored}`);
+          return json(res, 200, { received: true, ignored });
+        }
+        return fulfillOrIgnore(res, purchase, 'webhook');
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/store/mock-complete' && config.mock) {
+        const input = readJson(await body(req));
+        const pending = await repository.pendingCheckout(input.reference);
+        if (!pending || pending.accountId !== account(req, res, cookieOptionsFor(req))) {
+          return json(res, 404, { error: 'checkout not found' });
+        }
+        return fulfillOrIgnore(res, {
+          eventId: `mock-event-${input.reference}`,
+          purchaseId: `mock-purchase-${input.reference}`,
+          orderNumber: 'MOCK-DEMO',
+          accountId: pending.accountId,
+          externalReferenceId: input.reference,
+          sku: pending.sku,
+          quantity: 1,
+          price: pending.price,
+          currency: pending.currency,
+        }, 'mock');
+      }
+
+      return json(res, 404, { error: 'not found' });
+    } catch (error) {
+      log.error?.(error);
+      return json(res, error.status || 500, { error: error.status ? error.message : 'store service unavailable' });
+    }
+  };
+}
+
+export { PRODUCTS };

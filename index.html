@@ -20,6 +20,7 @@
         <div class="record shard">✨ <b id="shards">0</b></div>
         <button id="bookBtn" title="도감·업적 (B)">📖 도감<span id="bookDot" class="tabdot hidden"></span></button>
         <button id="metaBtn">🌟 별의 축복</button>
+        <button id="neonStoreBtn" class="hidden">🛍️ 별빛 상점</button>
       </div>
     </header>
 
@@ -61,7 +62,7 @@
       <div id="champChip">
         <button id="champFace" title="옷장 열기 — 이름과 모습을 바꿔요!">🌠</button>
         <div class="champ-mid">
-          <div class="champ-name"><b id="champName">루나</b> <span id="champLv" class="champ-lv">Lv 1</span><span id="champKoTag" class="champ-ko hidden">😵 쓰러짐</span></div>
+          <div class="champ-name"><b id="champName">루나</b> <span id="champLv" class="champ-lv">Lv 1</span><span id="paidCosmeticBadge" class="paid-cosmetic hidden" title="별빛 개척자 깃발">🚩</span><span id="champKoTag" class="champ-ko hidden">😵 쓰러짐</span></div>
           <div class="champ-hp"><div id="champHpFill"></div></div>
           <div class="champ-xp" title="경험치"><div id="champXpFill"></div></div>
         </div>
@@ -284,6 +285,15 @@
 </div>
 
 <!-- ===== 별의 축복 (메타 업그레이드) ===== -->
+<div id="neonStoreModal" class="modal hidden">
+  <div class="modal-card neon-store">
+    <h2 id="neonStoreTitle">✦ 별빛 상점</h2>
+    <div id="neonProduct" class="neon-product"></div>
+    <p id="neonStoreStatus" class="neon-store-status" role="status" aria-live="polite"></p>
+    <button id="neonStoreClose">닫기</button>
+  </div>
+</div>
+
 <div id="metaModal" class="modal hidden">
   <div class="modal-card">
     <h2>🌟 별의 축복</h2>
