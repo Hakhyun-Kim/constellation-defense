@@ -285,6 +285,23 @@
 </div>
 
 <!-- ===== 별의 축복 (메타 업그레이드) ===== -->
+<!-- ===== Neon 안내 투어 — 게임 화면만으로 통합을 설명한다 ===== -->
+<aside id="neonTour" class="hidden" aria-live="polite">
+  <div class="tour-head">
+    <span id="tourStep" class="tour-step">1 / 1</span>
+    <b id="tourTitle"></b>
+  </div>
+  <p id="tourBody"></p>
+  <pre id="tourLive" class="tour-live hidden"></pre>
+  <div id="tourDiagram" class="tour-diagram hidden"></div>
+  <div class="tour-actions">
+    <button id="tourPrev" title="이전">◀</button>
+    <button id="tourPause">⏸ 멈춤</button>
+    <button id="tourNext" title="다음">▶</button>
+    <button id="tourExit" title="투어 끝내기">✕</button>
+  </div>
+</aside>
+
 <div id="neonStoreModal" class="modal hidden">
   <div class="modal-card neon-store">
     <h2 id="neonStoreTitle">✦ 별빛 상점</h2>

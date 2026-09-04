@@ -31,6 +31,7 @@ import {
 } from './app/preferences.js';
 import { getLocale, installDocumentLocalization, normalizeLocale } from './app/i18n.js';
 import { initNeonStore } from './app/neon-store.js';
+import { initNeonTour } from './app/neontour.js';
 
 registerDucker((amt, dur) => music.duck(amt, dur));
 
@@ -42,7 +43,17 @@ if (requestedLocale) store.language = locale;
 const ui = new UI();
 const tacticFeedback = createTacticFeedback();
 installDocumentLocalization(locale);
-initNeonStore({ locale });
+const neonStore = initNeonStore({ locale });
+/* ?tour=neon — 게임이 도는 동안 옆에서 결제 통합을 설명한다. 설명 단계 일부는
+ * 실제로 서버에 요청을 보내므로, 화면의 값은 전부 방금 받은 응답이다. */
+if (urlParams.get('tour') === 'neon') {
+  initNeonTour({
+    locale,
+    openStore: () => neonStore?.open(),
+    closeStore: () => neonStore?.close(),
+    refreshStore: () => neonStore?.refresh(),
+  });
+}
 /* URL로 강제 지정 가능: ?gfx=high|lite|min (min은 테스트/초저사양용) */
 const urlGfx = urlParams.get('gfx');
 const judgeMode = urlParams.has('judge');

@@ -286,6 +286,27 @@ async function runSuite(repository, label) {
     const rebuyAfterRefund = await openCheckout(refunded.cookie);
     assert.equal(rebuyAfterRefund.status, 201, '환불받은 뒤에는 다시 살 수 있다');
 
+    /* --- 모의 환불: 안내 투어가 구매의 수명 전체를 보여주기 위한 경로 ---
+     * 실제 웹훅과 같은 문(revoke)을 지나야 데모가 증거로서 의미가 있다. */
+    const tourBuyer = await boughtOnce('tour');
+    const mockRefund = await call('/api/store/mock-refund', {
+      method: 'POST', headers: { cookie: tourBuyer.cookie, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reference: tourBuyer.reference }),
+    });
+    assert.equal(mockRefund.status, 200);
+    assert.equal((await mockRefund.json()).revoked, true, '모의 환불도 실제 회수 경로를 탄다');
+    assert.equal(await ownsBanner(tourBuyer.cookie), false);
+    const tourHistory = await repository.purchases(tourBuyer.accountId);
+    assert.ok(tourHistory[0].refundedAt, '모의 환불도 감사 기록을 남긴다');
+
+    /* 남의 결제는 모의 환불로도 건드릴 수 없다. */
+    const stranger = sessionCookie(await call('/api/store/catalog?locale=ko'));
+    const notYours = await call('/api/store/mock-refund', {
+      method: 'POST', headers: { cookie: stranger, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reference: strangerRefund.reference }),
+    });
+    assert.equal(notYours.status, 404, '자기 결제만 모의 환불할 수 있다');
+
     /* --- 신원: 쿠키 없이 Bearer 토큰만으로 ---
      * Unity·Unreal 에는 쿠키 항아리가 없고, 게임이 CDN 에 있고 API 가 다른
      * 도메인이면 SameSite 때문에 쿠키가 끊긴다. 토큰 경로가 살아 있어야

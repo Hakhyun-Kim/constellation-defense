@@ -38,6 +38,14 @@ const base = {
   assert.equal(isFatal(dev.problems), false, '개발 서버는 같은 설정으로 죽지 않는다');
   assert.equal(dev.config.host, '127.0.0.1', '개발 기본값은 루프백');
   assert.equal(loadConfig({}, { role: 'service' }).config.host, '0.0.0.0', '서비스 기본값은 모든 인터페이스');
+
+  /* PORT=0 은 "빈 포트를 아무거나"다. 0 을 falsy 로 흘려보내면 기본 포트로
+   * 튀어 이미 쓰는 포트에 부딪히고, listen 이 조용히 멈춘다. 둘 다 실제로
+   * 겪은 실패라 여기 못 박아 둔다. */
+  assert.equal(loadConfig({ PORT: '0' }, { role: 'service' }).config.port, 0, 'PORT=0 은 그대로 0');
+  assert.equal(loadConfig({}, { role: 'service' }).config.port, 8642, '없으면 기본 포트');
+  assert.equal(loadConfig({ PORT: 'nonsense' }, { role: 'service' }).config.port, 8642, '이상한 값은 기본 포트');
+  assert.equal(loadConfig({ PORT: '70000' }, { role: 'service' }).config.port, 8642, '범위 밖도 기본 포트');
 }
 
 // --- 로거: 형식만 바꾸면 수집기가 읽는다 ---

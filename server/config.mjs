@@ -15,9 +15,12 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
   const environment = env.NEON_ENVIRONMENT === 'production' ? 'production' : 'sandbox';
   const backend = env.STORE_BACKEND === 'firestore' ? 'firestore' : 'json';
 
+  /* PORT=0 은 "빈 포트를 아무거나"라는 뜻이고 테스트가 그걸 쓴다. Number(x) || 기본값
+   * 으로 쓰면 0 이 falsy 라 기본 포트로 튀어, 이미 쓰는 포트에 부딪히고 만다. */
+  const rawPort = env.PORT === undefined || env.PORT === '' ? null : Number(env.PORT);
   const config = {
     role,
-    port: Number(env.PORT) || 8642,
+    port: Number.isInteger(rawPort) && rawPort >= 0 && rawPort <= 65535 ? rawPort : 8642,
     /* 컨테이너는 모든 인터페이스에 바인딩해야 트래픽이 들어온다. 로컬 기본값은
      * 루프백으로 둬서 개발 중에 실수로 네트워크에 열리지 않게 한다. */
     host: env.HOST || (role === 'service' ? '0.0.0.0' : '127.0.0.1'),

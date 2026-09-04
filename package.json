@@ -46,9 +46,10 @@
     "desktop:package": "npm run build && electron-forge package",
     "desktop:make": "npm run build && electron-forge make",
     "audit:runtime": "npm audit --omit=dev",
-    "check": "npm run engine:check && npm run tactics:check && npm run ui:check && npm run combat:ui:check && npm run act2:check && npm run village:check && npm run phase:check && npm run weekly:check && npm run session:check && npm run playtest:check && npm run preferences:check && npm run i18n:check && npm run desktop:check && npm run demo:check && npm run storage:check && npm run store:check && npm run service:check && npm run visual:check && npm run capture:check && npm run evidence:check && npm run perf:check && npm run audio:pilot:check && npm run asset:runtime:check && npm run asset:pilot:check && npm run asset:model:check && npm run build && npm run asset:check",
+    "check": "npm run engine:check && npm run tactics:check && npm run ui:check && npm run combat:ui:check && npm run act2:check && npm run village:check && npm run phase:check && npm run weekly:check && npm run session:check && npm run playtest:check && npm run preferences:check && npm run i18n:check && npm run desktop:check && npm run demo:check && npm run storage:check && npm run store:check && npm run service:check && npm run tour:check && npm run visual:check && npm run capture:check && npm run evidence:check && npm run perf:check && npm run audio:pilot:check && npm run asset:runtime:check && npm run asset:pilot:check && npm run asset:model:check && npm run build && npm run asset:check",
     "service": "node --env-file-if-exists=.env server/index.mjs",
-    "service:check": "node scripts/service-check.mjs"
+    "service:check": "node scripts/service-check.mjs",
+    "tour:check": "node scripts/tour-check.mjs"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",

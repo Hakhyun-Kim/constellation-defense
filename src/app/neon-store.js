@@ -200,4 +200,12 @@ export function initNeonStore({ locale = 'ko' } = {}) {
     }
   }
   boot();
+
+  /* 안내 투어가 상점을 실제로 조작할 수 있게 손잡이를 넘긴다 — 투어가
+   * 설명만 하지 않고 같은 코드 경로를 지나게 하기 위해서다. */
+  return {
+    open: () => modal.classList.remove('hidden'),
+    close: () => modal.classList.add('hidden'),
+    refresh: () => refreshEntitlements().catch(() => {}),
+  };
 }

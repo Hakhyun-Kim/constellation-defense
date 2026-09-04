@@ -69,7 +69,18 @@ export async function startService({ env = process.env, out = console } = {}) {
     }
   });
 
-  await new Promise((resolve) => server.listen(config.port, config.host, resolve));
+  /* 바인딩 실패는 즉시 드러나야 한다. 오류 처리 없이 listen 을 기다리면 포트가
+   * 이미 쓰이고 있을 때 프로세스가 조용히 멈춰 선다 — 컨테이너에서는 헬스체크
+   * 시간이 다 지나야 알게 되는 종류의 실패다. */
+  try {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(config.port, config.host, () => { server.off('error', reject); resolve(); });
+    });
+  } catch (error) {
+    log.error(`cannot listen on ${config.host}:${config.port} — ${error.message}`);
+    return { ok: false, problems: [{ level: 'fatal', message: error.message }] };
+  }
   log.info('store service listening', {
     port: server.address().port,
     backend,

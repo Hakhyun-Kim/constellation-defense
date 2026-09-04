@@ -113,6 +113,28 @@ Relevant implementation files:
 - `src/app/neon-store.js` — hosted checkout launch, billing-region picker, post-return polling.
 - `scripts/store-server-check.mjs` — signature, replay, tampering, environment and rate-limit tests.
 
+## Guided tour — the integration explained on the game screen
+
+```bash
+cp .env.example .env    # NEON_MOCK_CHECKOUT=1 is already set
+npm run serve
+```
+
+Then open one of:
+
+- `http://127.0.0.1:8642/?lang=en&demo=expert&tour=neon&mute`
+- `http://127.0.0.1:8642/?demo=%EA%B3%A0%EC%88%98&tour=neon&mute` (Korean)
+
+A bot plays the game through the same inputs a person uses, while a panel walks
+through the integration in ten steps. It is not a slideshow: most steps send a
+real request and print the response, so the price, the entitlement and the refund
+on screen are what the server just returned. The purchase and the refund go
+through the same `repository.fulfill` and `repository.revoke` a signed webhook
+reaches.
+
+The tour refunds its own purchase when it starts, so reloading replays it cleanly
+rather than stopping at the duplicate-purchase guard.
+
 Run `npm run store:check` for the focused integration test. The implementation
 follows Neon's official [hosted checkout](https://docs.neonpay.com/docs/creating-a-checkout),
 [fulfillment](https://docs.neonpay.com/docs/fulfillment), and

@@ -348,6 +348,36 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         });
       }
 
+      /* 모의 환불. 안내 투어가 구매의 수명 전체 — 지급과 회수 — 를 화면에서
+       * 보여줄 수 있어야 하기 때문에 있다. mock-complete 와 같은 규칙을 따른다:
+       * 모의 모드에서만 등록되고, 자기 결제만 건드릴 수 있고, 실제 웹훅과 똑같이
+       * repository.revoke() 라는 같은 문을 지난다. */
+      if (req.method === 'POST' && url.pathname === '/api/store/mock-refund' && config.mock) {
+        const input = readJson(await body(req));
+        const pending = await repository.pendingCheckout(input.reference);
+        if (!pending || pending.accountId !== account(req, res, cookieOptionsFor(req))) {
+          return json(res, 404, { error: 'checkout not found' });
+        }
+        const mockRefund = {
+          eventId: `mock-refund-event-${input.reference}`,
+          refundId: `mock-refund-${input.reference}`,
+          purchaseId: pending.purchaseId,
+          accountId: pending.accountId,
+          /* 문서의 실제 환불 예시가 그렇듯 참조는 비워 둔다 — purchaseId 로
+           * 결제 의도를 되찾는 경로를 데모에서도 그대로 태운다. */
+          externalReferenceId: null,
+          sku: pending.sku,
+          currency: pending.currency,
+        };
+        return applyOrIgnore(res, () => repository.revoke(mockRefund), {
+          eventId: mockRefund.eventId,
+          source: 'mock refund',
+          describe: (result) => (result.revoked
+            ? `revoked ${mockRefund.sku} for ${mockRefund.accountId}`
+            : `marked ${mockRefund.purchaseId} refunded before it was granted`),
+        });
+      }
+
       return json(res, 404, { error: 'not found' });
     } catch (error) {
       log.error?.(error);
