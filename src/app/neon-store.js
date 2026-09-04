@@ -51,13 +51,13 @@ function copy(locale) {
     pending: 'Confirming your purchase…', error: 'The store is temporarily unavailable.',
     cosmetic: 'Cosmetic only · no gameplay advantage', region: 'Billing region',
     slow: 'This is taking longer than usual. Your purchase is safe.', retry: 'Check again',
-    mock: 'Mock mode · no payment is taken',
+    mock: 'Mock mode · no payment is taken', already_owned: 'You already own this.',
   } : {
     title: '별빛 상점', buy: 'Neon으로 구매', owned: '보유 중', close: '닫기',
     pending: '구매 완료를 확인하고 있어요…', error: '상점을 잠시 이용할 수 없어요.',
     cosmetic: '치장 전용 · 전투 능력에 영향 없음', region: '결제 지역',
     slow: '확인이 평소보다 늦어지고 있어요. 구매는 안전하게 기록돼 있어요.', retry: '다시 확인',
-    mock: '모의 모드 · 실제 결제가 일어나지 않아요',
+    mock: '모의 모드 · 실제 결제가 일어나지 않아요', already_owned: '이미 가지고 있어요.',
   };
 }
 
@@ -174,7 +174,7 @@ export function initNeonStore({ locale = 'ko' } = {}) {
       /* 서버로 보내는 것은 SKU와 표시 언어뿐이다. 가격도, 국가도 보내지 않는다. */
       const data = await postJson('/api/store/checkout', { sku: catalog.items[0].sku, locale });
       location.assign(data.redirectUrl);
-    } catch (error) { status.textContent = error.message; }
+    } catch (error) { status.textContent = words[error.message] || error.message; }
   }
 
   async function boot() {
@@ -187,6 +187,7 @@ export function initNeonStore({ locale = 'ko' } = {}) {
       if (outcome === 'mock' && params.get('reference')) {
         await postJson('/api/store/mock-complete', { reference: params.get('reference') });
       }
+      if (params.get('store') === '1') modal.classList.remove('hidden');
       if (outcome === 'mock' || outcome === 'return') {
         modal.classList.remove('hidden');
         history.replaceState({}, '', location.pathname);

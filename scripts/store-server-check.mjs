@@ -274,6 +274,18 @@ async function runSuite(repository, label) {
     assert.equal(wrongOwner.payload.ignored, 'account does not match checkout', '남의 계정으로 회수할 수 없다');
     assert.equal(await ownsBanner(strangerRefund.cookie), true, '거절된 환불은 아무것도 건드리지 않는다');
 
+    /* --- 이중 청구 방지 ---
+     * 상점 버튼은 보유 중이면 비활성이지만 UI 는 신뢰 경계 밖이다. 영구 아이템을
+     * 두 번 팔면 플레이어가 두 번 청구된다 — 결제 통합에서 가장 나쁜 결말. */
+    const repurchase = await openCheckout(strangerRefund.cookie);
+    assert.equal(repurchase.status, 409, '이미 가진 영구 아이템은 다시 팔지 않는다');
+    assert.equal((await repurchase.json()).error, 'already_owned');
+
+    /* 반대로 환불로 권리가 사라졌으면 다시 살 수 있어야 한다 — 기준은 결제
+     * 이력이 아니라 현재 보유다. */
+    const rebuyAfterRefund = await openCheckout(refunded.cookie);
+    assert.equal(rebuyAfterRefund.status, 201, '환불받은 뒤에는 다시 살 수 있다');
+
     /* --- 신원: 쿠키 없이 Bearer 토큰만으로 ---
      * Unity·Unreal 에는 쿠키 항아리가 없고, 게임이 CDN 에 있고 API 가 다른
      * 도메인이면 SameSite 때문에 쿠키가 끊긴다. 토큰 경로가 살아 있어야

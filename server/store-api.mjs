@@ -249,6 +249,13 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         const resolved = checkoutItem(input.sku, { locale, country });
         if (!resolved) return json(res, 400, { error: 'unknown product' });
         const accountId = account(req, res, cookieOptionsFor(req));
+        /* 이미 가진 영구 아이템을 다시 팔지 않는다. 상점 버튼은 비활성이지만
+         * UI 는 신뢰 경계 밖이고, 결제 통합에서 이중 청구는 가장 나쁜 결말이다.
+         * 환불로 권리가 사라지면 여기도 다시 열린다 — 상태가 아니라 보유가 기준. */
+        if (resolved.permanent && (await repository.entitlements(accountId))[resolved.entitlement]) {
+          log.info?.(`[store] checkout refused: ${accountId} already owns ${resolved.entitlement}`);
+          return json(res, 409, { error: 'already_owned' });
+        }
         if (await repository.recentCheckoutCount(accountId, CHECKOUT_WINDOW_MS) >= CHECKOUT_LIMIT) {
           return json(res, 429, { error: 'too many checkout attempts' });
         }

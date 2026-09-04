@@ -23,6 +23,9 @@ export const PRODUCTS = Object.freeze({
   CELESTIAL_BANNER: Object.freeze({
     sku: 'CELESTIAL_BANNER',
     entitlement: 'cosmetic.celestial_banner',
+    /* 영구 아이템은 한 번만 살 수 있다. 소모품을 추가하면 이 값이 false 가 되고
+     * 재구매가 열린다 — 그때 필요한 건 '보유 확인'이 아니라 수량 회계다. */
+    permanent: true,
     names: Object.freeze({ ko: '별빛 개척자 깃발', en: 'Celestial Pioneer Banner' }),
     subtitles: Object.freeze({
       ko: '전투 능력에 영향을 주지 않는 영구 치장품',
@@ -68,5 +71,6 @@ export function checkoutItem(sku, { locale, country }) {
     item: { sku: product.sku, name: product.names[lang], subtitle: product.subtitles[lang], price, quantity: 1 },
     currency,
     entitlement: product.entitlement,
+    permanent: product.permanent === true,
   };
 }
