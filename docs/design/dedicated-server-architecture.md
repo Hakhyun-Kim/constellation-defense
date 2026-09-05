@@ -81,6 +81,24 @@ ask on macOS than `node dedicated/server.mjs`; `dedicated/Dockerfile` and
 `compose.yaml` exist for container-shaped deployments and are marked as not
 yet executed on the development machine.
 
+## Direction — a single client-facing edge
+
+The intended next step is for the dedicated server to become the only surface
+clients talk to: store operations travel over the same WebSocket, and the
+dedicated server brokers them to the payment service server-to-server with
+the player's identity. Payment features then become server-side changes —
+engine clients need no HTTP store client, cookies or per-engine CSP work —
+and entitlements land in the authoritative state every viewer already
+renders. The payment service deliberately stays a separate internal process
+(webhook delivery retried for 36 hours must not depend on game-session
+lifecycle, and payment credentials stay out of the game-server process), and
+Hosted checkout still opens Neon's page in the player's browser. The
+current-vs-target topology is drawn in the companion documentation
+(neon-checkout-integration, doc 13). None of the store messages exist in the
+protocol yet; what exists and is verified are the pieces the migration
+composes — role auth at hello, the command/result path, snapshot broadcast,
+and the payment service's bearer identity.
+
 ## Current limits, stated plainly
 
 - **Viewers watch; they do not play through the server yet.** Player input

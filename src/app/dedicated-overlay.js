@@ -41,9 +41,9 @@ const TEXT = {
       ['done', 'Server-authoritative session; this page renders only snapshots'],
       ['done', 'Viewer/controller roles enforced and covered by the conformance check'],
       ['done', 'Same bot policy as the balance gate drives the hosted demo'],
+      ['next', 'Single client edge: store traffic brokered to the payment service'],
       ['next', 'Player input through the server (web first, then engine clients)'],
       ['next', 'Unity/Unreal viewers grown from the included protocol samples'],
-      ['next', 'Session persistence and multi-session lobby'],
     ],
     decisions: {
       start: (d) => `▶ New session (seed ${d.seed})`,
@@ -106,9 +106,9 @@ const TEXT = {
       ['done', '서버 권위 세션 — 이 화면은 스냅샷만 렌더링'],
       ['done', '뷰어/컨트롤러 역할 강제 + 프로토콜 검증 통과'],
       ['done', '밸런스 게이트와 같은 봇 정책이 데모를 구동'],
+      ['next', '단일 접점: 상점 트래픽을 이 서버가 결제 서비스로 중계'],
       ['next', '서버 경유 플레이어 입력 (웹 → 엔진 클라이언트 순)'],
       ['next', '동봉된 샘플에서 Unity/Unreal 뷰어로 확장'],
-      ['next', '세션 저장과 멀티 세션 로비'],
     ],
     decisions: {
       start: (d) => `▶ 새 세션 시작 (시드 ${d.seed})`,
