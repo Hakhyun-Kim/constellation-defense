@@ -29,7 +29,7 @@ import {
 } from './app/preferences.js';
 import { getLocale, installDocumentLocalization, normalizeLocale } from './app/i18n.js';
 import { CastlePreview } from './gfx/castle-preview.js';
-import { initNeonStore } from './app/neon-store.js';
+import { adoptPlayerIdentity, initNeonStore, knownPlayerToken } from './app/neon-store.js';
 import { startExposedLaneDemo } from './app/neon-scenario.js';
 import { initNeonTour } from './app/neontour.js';
 import { initDedicatedClient } from './app/dedicated-client.js';
@@ -45,16 +45,6 @@ if (requestedLocale) store.language = locale;
 const ui = new UI();
 const tacticFeedback = createTacticFeedback();
 installDocumentLocalization(locale);
-let castlePreview = null;
-const neonStore = initNeonStore({ locale,
-  onPreview: container => { castlePreview = new CastlePreview(container, renderer.castle); },
-  onEntitlements: items => { renderer.cosmetics.setEntitlements(items); castlePreview?.setEntitlements(items); },
-});
-window.addEventListener('pagehide', () => castlePreview?.dispose(), { once: true });
-/* Override graphics with ?gfx=high|lite|min; min is for tests and very slow devices. */
-const urlGfx = urlParams.get('gfx');
-const judgeMode = urlParams.has('judge');
-const demoRoute = urlParams.has('demo');
 /* ?dedicated=1 turns this page into a viewer of the dedicated server; the
  * parameter value may override the ws:// address for remote hosts. */
 const dedicatedRoute = urlParams.has('dedicated');
@@ -62,6 +52,32 @@ const dedicatedUrl = (urlParams.get('dedicated') || '').startsWith('ws')
   ? urlParams.get('dedicated') : `ws://${location.hostname || '127.0.0.1'}:8643`;
 let remoteView = false;
 let dedicatedClient = null;
+/* In dedicated mode every store call travels over the gateway socket; the
+ * store UI stays identical and only the wire changes. The client may boot
+ * before the socket exists, so the transport waits for it briefly. */
+async function gatewayStoreTransport(path, options) {
+  for (let attempt = 0; attempt < 100 && !dedicatedClient; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  if (!dedicatedClient) return { status: 0, ok: false, data: { error: 'gateway unavailable' } };
+  return dedicatedClient.store(path, options);
+}
+let castlePreview = null;
+const neonStore = initNeonStore({ locale,
+  transport: dedicatedRoute ? gatewayStoreTransport : null,
+  onPreview: container => { castlePreview = new CastlePreview(container, renderer.castle); },
+  onEntitlements: items => {
+    /* In dedicated mode the battlefield castle wears the session's shared
+     * cosmetics from snapshots; the store close-up stays personal. */
+    if (!remoteView) renderer.cosmetics.setEntitlements(items);
+    castlePreview?.setEntitlements(items);
+  },
+});
+window.addEventListener('pagehide', () => castlePreview?.dispose(), { once: true });
+/* Override graphics with ?gfx=high|lite|min; min is for tests and very slow devices. */
+const urlGfx = urlParams.get('gfx');
+const judgeMode = urlParams.has('judge');
+const demoRoute = urlParams.has('demo');
 const previewBlueprint = urlParams.has('blueprint');
 const previewChapter = urlParams.get('chapter') === '2' || previewBlueprint ? 'beyond-page' : null;
 const weeklyChallenge = urlParams.has('weekly') ? createWeeklyChallenge(urlParams.get('weekly')) : null;
@@ -2149,6 +2165,7 @@ if (dedicatedRoute) {
     client: { command: (op, args) => dedicatedClient
       ? dedicatedClient.command(op, args)
       : Promise.resolve({ ok: false, error: 'disconnected' }) },
+    onOpenStore: () => { closeStory(); ui.hideOver(); neonStore?.open(); },
     onTryGame: () => {
       remoteView = false;
       dedicatedClient?.disconnect();
@@ -2160,8 +2177,12 @@ if (dedicatedRoute) {
   dedicatedClient = initDedicatedClient({
     url: dedicatedUrl,
     key: urlParams.get('key') || null,
+    playerToken: knownPlayerToken(),
     api: {
       getState: () => state,
+      /* The gateway announces (or switches) the store account for this
+       * connection; persisting it keeps client-mode purchases on it too. */
+      onStoreIdentity: (playerId) => adoptPlayerIdentity(playerId),
       onBoard: (cells) => { if (remoteView) tactics?.setBoard(cells); },
       onPhase: () => {
         if (!remoteView) return;
@@ -2190,6 +2211,11 @@ if (dedicatedRoute) {
       onStatus: (status) => overlay.setStatus(status),
       onSnapshot: (snapshot) => {
         if (!remoteView) return;
+        /* The shared castle wears every cosmetic delivered through this
+         * server's gateway — the same truth for every viewer. */
+        if (Array.isArray(snapshot.cosmetics)) {
+          renderer.cosmetics.setEntitlements(Object.fromEntries(snapshot.cosmetics.map((key) => [key, true])));
+        }
         overlay.setLive({
           wave: snapshot.wave, castleHp: Math.ceil(snapshot.castleHp),
           castleMax: snapshot.castleMax, phase: snapshot.phase,

@@ -41,9 +41,10 @@ bool FDedicatedProtocolSmokeTest::RunTest(const FString& Parameters)
 
     TSharedPtr<IWebSocket> Socket = FWebSocketsModule::Get().CreateWebSocket(Url);
 
-    bool bWelcomeOk = false;      // welcome with protocol 1 and role viewer
+    bool bWelcomeOk = false;      // welcome with protocol 2 and role viewer
     bool bSnapshotOk = false;     // snapshot carrying the documented fields
     bool bForbiddenOk = false;    // command refused without the controller key
+    bool bStoreOk = false;        // store gateway answers a catalog on this socket
     bool bDone = false;
 
     Socket->OnConnected().AddLambda([&]
@@ -59,7 +60,7 @@ bool FDedicatedProtocolSmokeTest::RunTest(const FString& Parameters)
 
         if (Type == TEXT("welcome"))
         {
-            bWelcomeOk = Json->GetIntegerField(TEXT("protocol")) == 1
+            bWelcomeOk = Json->GetIntegerField(TEXT("protocol")) == 2
                 && Json->GetStringField(TEXT("role")) == TEXT("viewer");
         }
         else if (Type == TEXT("snapshot") && !bSnapshotOk)
@@ -75,8 +76,15 @@ bool FDedicatedProtocolSmokeTest::RunTest(const FString& Parameters)
             if (Json->GetStringField(TEXT("code")) == TEXT("forbidden"))
             {
                 bForbiddenOk = true;
-                bDone = true;
+                // Auth boundary proven: now prove the store gateway on the same socket.
+                Socket->Send(TEXT("{\"type\":\"store\",\"id\":1,\"path\":\"/api/store/catalog?locale=en\",\"method\":\"GET\"}"));
             }
+        }
+        else if (Type == TEXT("storeResult"))
+        {
+            bStoreOk = Json->GetIntegerField(TEXT("status")) == 200
+                && Json->GetObjectField(TEXT("data"))->HasField(TEXT("items"));
+            bDone = true;
         }
     });
 
@@ -96,8 +104,9 @@ bool FDedicatedProtocolSmokeTest::RunTest(const FString& Parameters)
     }
     Socket->Close();
 
-    TestTrue(TEXT("welcome carried protocol v1 and viewer role"), bWelcomeOk);
+    TestTrue(TEXT("welcome carried protocol v2 and viewer role"), bWelcomeOk);
     TestTrue(TEXT("snapshot carried the documented schema"), bSnapshotOk);
     TestTrue(TEXT("viewer command was refused (forbidden)"), bForbiddenOk);
-    return bWelcomeOk && bSnapshotOk && bForbiddenOk;
+    TestTrue(TEXT("store gateway answered a catalog on the same socket"), bStoreOk);
+    return bWelcomeOk && bSnapshotOk && bForbiddenOk && bStoreOk;
 }

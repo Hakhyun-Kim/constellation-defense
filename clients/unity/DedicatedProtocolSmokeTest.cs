@@ -43,10 +43,10 @@ public class DedicatedProtocolSmokeTest
 
         await Send(socket, "{\"type\":\"hello\",\"role\":\"viewer\"}", cancel.Token);
 
-        // 1) welcome: protocol v1, role viewer.
+        // 1) welcome: protocol v2, role viewer.
         string welcome = await Receive(socket, cancel.Token);
         StringAssert.Contains("\"type\":\"welcome\"", welcome);
-        StringAssert.Contains("\"protocol\":1", welcome);
+        StringAssert.Contains("\"protocol\":2", welcome);
         StringAssert.Contains("\"role\":\"viewer\"", welcome);
 
         // 2) first snapshot: documented schema fields exist.
@@ -58,6 +58,12 @@ public class DedicatedProtocolSmokeTest
         await Send(socket, "{\"type\":\"command\",\"op\":\"pause\"}", cancel.Token);
         string refusal = await ReceiveOfType(socket, "\"code\":\"forbidden\"", cancel.Token);
         StringAssert.Contains("\"type\":\"error\"", refusal);
+
+        // 4) the store gateway answers on the same socket (identity-scoped, allowed for viewers).
+        await Send(socket, "{\"type\":\"store\",\"id\":1,\"path\":\"/api/store/catalog?locale=en\",\"method\":\"GET\"}", cancel.Token);
+        string catalog = await ReceiveOfType(socket, "\"type\":\"storeResult\"", cancel.Token);
+        StringAssert.Contains("\"status\":200", catalog);
+        StringAssert.Contains("\"items\"", catalog);
 
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", cancel.Token);
     }

@@ -19,7 +19,15 @@ function rememberPlayer(id) {
   try { if (id) localStorage.setItem(TOKEN_KEY, id); } catch { /* Storage unavailable: same-origin cookies remain a fallback. */ }
 }
 
-async function request(path, options = {}) {
+/* The dedicated gateway reuses this identity so purchases made through the
+ * server belong to the same account as client-mode purchases. */
+export const knownPlayerToken = () => playerToken();
+export const adoptPlayerIdentity = (id) => rememberPlayer(id);
+
+/* Default wire: direct HTTP to the payment API. The dedicated viewer swaps
+ * this for a WebSocket transport so the game server is the only endpoint the
+ * client talks to; everything above the transport is unchanged either way. */
+async function httpTransport(path, options = {}) {
   const token = playerToken();
   const headers = { ...(options.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   const response = await fetch(`${API_BASE}${path}`, {
@@ -28,8 +36,15 @@ async function request(path, options = {}) {
     headers,
   });
   const data = await response.json().catch(() => ({}));
-  paymentEvent('request', { path, method: options.method || 'GET', status: response.status, request: options.body ? redactPayment(JSON.parse(options.body)) : null, response: redactPayment(data) });
-  if (!response.ok) throw new Error(data.error || `Store request failed (${response.status})`);
+  return { status: response.status, ok: response.ok, data };
+}
+
+let activeTransport = httpTransport;
+
+async function request(path, options = {}) {
+  const { status, ok, data } = await activeTransport(path, options);
+  paymentEvent('request', { path, method: options.method || 'GET', status, request: options.body ? redactPayment(JSON.parse(options.body)) : null, response: redactPayment(data) });
+  if (!ok) throw new Error(data.error || `Store request failed (${status})`);
   return data;
 }
 
@@ -75,7 +90,8 @@ function element(tag, className, text) {
   return node;
 }
 
-export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPreview = () => {} } = {}) {
+export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPreview = () => {}, transport = null } = {}) {
+  if (transport) activeTransport = transport;
   const button = document.querySelector('#neonStoreBtn');
   const modal = document.querySelector('#neonStoreModal');
   if (!button || !modal) return;

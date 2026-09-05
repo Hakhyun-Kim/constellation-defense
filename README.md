@@ -67,7 +67,11 @@ modes stay separate on purpose: server-mode code is inert without
 
 The same simulation can run in an authoritative server process, with every
 client — this web build, and the Unity/Unreal samples in `clients/` — acting
-as a renderer of its snapshots. No game rule runs client-side in that mode.
+as a renderer of its snapshots. No game rule runs client-side in that mode,
+and the server is also the **store gateway**: store calls ride the same
+WebSocket and are brokered server-to-server to the payment service with the
+connection's account identity, so cosmetics bought from the panel's store
+button appear on the shared castle for every viewer.
 
 `start-dedicated.bat` (Windows) or `./start-dedicated.command` (macOS/Linux)
 starts the dedicated server (`ws://127.0.0.1:8643`) and the web client

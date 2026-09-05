@@ -8,11 +8,16 @@ import * as D from '../data.js';
 const RECONNECT_BASE_MS = 800;
 const RECONNECT_MAX_MS = 8000;
 
-export function initDedicatedClient({ url, key = null, api }) {
+export function initDedicatedClient({ url, key = null, playerToken = null, api }) {
   let socket = null;
   let closedByUs = false;
   let attempts = 0;
   let pendingCommand = null;
+  /* Store calls brokered over this socket: id-matched, queued until welcome. */
+  let storeSequence = 0;
+  const storeWaiters = new Map();
+  const storeQueue = [];
+  let welcomed = false;
   const status = {
     connected: false, role: null, downgraded: null,
     session: null, viewers: 0, tick: 0, lastSnapshotAt: 0,
@@ -57,7 +62,21 @@ export function initDedicatedClient({ url, key = null, api }) {
       status.downgraded = message.downgraded || null;
       status.session = message.session;
       attempts = 0;
+      welcomed = true;
+      while (storeQueue.length) socket.send(storeQueue.shift());
       notify();
+      return;
+    }
+    if (message.type === 'storeResult') {
+      const waiter = storeWaiters.get(message.id);
+      if (waiter) {
+        storeWaiters.delete(message.id);
+        waiter.resolve({ status: message.status, ok: message.status >= 200 && message.status < 300, data: message.data ?? {} });
+      }
+      return;
+    }
+    if (message.type === 'storeIdentity') {
+      api.onStoreIdentity?.(message.playerId);
       return;
     }
     if (message.type === 'snapshot') { applySnapshot(message); notify(); return; }
@@ -79,11 +98,15 @@ export function initDedicatedClient({ url, key = null, api }) {
 
   function connect() {
     closedByUs = false;
+    welcomed = false;
     socket = new WebSocket(url);
     socket.addEventListener('open', () => {
-      socket.send(JSON.stringify(key
+      const hello = key
         ? { type: 'hello', role: 'controller', key }
-        : { type: 'hello', role: 'viewer' }));
+        : { type: 'hello', role: 'viewer' };
+      /* Reusing the client-mode store identity keeps purchases on one account. */
+      if (playerToken) hello.playerToken = playerToken;
+      socket.send(JSON.stringify(hello));
     });
     socket.addEventListener('message', (event) => {
       try { handleMessage(JSON.parse(event.data)); } catch { /* Ignore malformed frames. */ }
@@ -91,6 +114,9 @@ export function initDedicatedClient({ url, key = null, api }) {
     socket.addEventListener('close', () => {
       status.connected = false;
       status.role = null;
+      welcomed = false;
+      for (const waiter of storeWaiters.values()) waiter.resolve({ status: 0, ok: false, data: { error: 'gateway disconnected' } });
+      storeWaiters.clear();
       notify();
       if (closedByUs) return;
       attempts += 1;
@@ -118,6 +144,24 @@ export function initDedicatedClient({ url, key = null, api }) {
         enemy.x = point.x + (-point.dy) * enemy.off;
         enemy.y = point.y + point.dx * enemy.off;
       }
+    },
+    /* Store transport for src/app/neon-store.js: same shape as its HTTP
+     * transport, so the store UI cannot tell which wire it is on. */
+    store(path, options = {}) {
+      return new Promise((resolve) => {
+        const id = ++storeSequence;
+        storeWaiters.set(id, { resolve });
+        const line = JSON.stringify({
+          type: 'store', id, path,
+          method: options.method || 'GET',
+          body: options.body === undefined ? undefined : JSON.parse(options.body),
+        });
+        if (welcomed && socket?.readyState === WebSocket.OPEN) socket.send(line);
+        else storeQueue.push(line);
+        setTimeout(() => {
+          if (storeWaiters.delete(id)) resolve({ status: 0, ok: false, data: { error: 'gateway timeout' } });
+        }, 15000);
+      });
     },
     command(op, args = {}) {
       if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.resolve({ ok: false, error: 'disconnected' });

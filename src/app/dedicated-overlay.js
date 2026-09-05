@@ -14,6 +14,8 @@ const TEXT = {
     live: (v) => `wave ${v.wave} · castle ${v.castleHp}/${v.castleMax} · ${v.phase} · tick ${v.tick} · ${v.viewers} watching`,
     tryGame: '🎮 Try the game yourself',
     tryGameHint: 'Stops watching and starts a fresh local run on this device.',
+    openStore: '🛍 Store — through this server',
+    openStoreHint: 'Every store call travels over this socket; the server brokers it to the payment service. Delivered cosmetics appear on the shared castle for every viewer.',
     backToWatch: '📡 Back to the server demo',
     pause: '⏸ Pause', resume: '▶ Resume', restart: '🔄 Restart session', speed: 'Speed',
     controlDenied: 'The server refused: controller key required.',
@@ -27,6 +29,7 @@ const TEXT = {
       'Snapshots (20 Hz in combat) and events broadcast to every client.',
       'Clients merge snapshots into their scene — rules never run here.',
       'Controller commands (pause/speed/restart) are key-authenticated; viewers are read-only.',
+      'Store calls ride the same socket: the server forwards an allowlisted path set to the payment service with your account identity, and fulfilled cosmetics broadcast to everyone.',
     ],
     code: [
       ['dedicated/server.mjs', 'WebSocket endpoint, hello/auth roles, broadcast'],
@@ -40,8 +43,8 @@ const TEXT = {
     progress: [
       ['done', 'Server-authoritative session; this page renders only snapshots'],
       ['done', 'Viewer/controller roles enforced and covered by the conformance check'],
-      ['done', 'Same bot policy as the balance gate drives the hosted demo'],
-      ['next', 'Single client edge: store traffic brokered to the payment service'],
+      ['done', 'Store gateway: catalog, checkout, fulfil and refund brokered over this socket'],
+      ['done', 'Delivered cosmetics join the authoritative state — shared by every viewer'],
       ['next', 'Player input through the server (web first, then engine clients)'],
       ['next', 'Unity/Unreal viewers grown from the included protocol samples'],
     ],
@@ -79,6 +82,8 @@ const TEXT = {
     live: (v) => `웨이브 ${v.wave} · 성 ${v.castleHp}/${v.castleMax} · ${v.phase} · 틱 ${v.tick} · 관전 ${v.viewers}명`,
     tryGame: '🎮 게임 테스트해보기',
     tryGameHint: '관전을 끄고 이 기기에서 새 로컬 게임을 시작합니다.',
+    openStore: '🛍 상점 — 이 서버 경유',
+    openStoreHint: '모든 상점 호출이 이 소켓을 타고, 서버가 결제 서비스로 중계합니다. 지급된 장식은 모든 관전자의 공유 성에 나타납니다.',
     backToWatch: '📡 서버 데모로 돌아가기',
     pause: '⏸ 일시정지', resume: '▶ 재개', restart: '🔄 세션 재시작', speed: '배속',
     controlDenied: '서버가 거부했습니다: 컨트롤러 키가 필요합니다.',
@@ -92,6 +97,7 @@ const TEXT = {
       '스냅샷(전투 중 20Hz)과 이벤트가 모든 클라이언트로 방송됩니다.',
       '클라이언트는 스냅샷을 장면에 병합합니다 — 규칙은 여기서 돌지 않습니다.',
       '컨트롤러 명령(정지/배속/재시작)은 키 인증, 뷰어는 읽기 전용입니다.',
+      '상점 호출도 같은 소켓을 탑니다: 서버가 허용된 경로만 계정 신원과 함께 결제 서비스로 중계하고, 지급된 장식은 모두에게 방송됩니다.',
     ],
     code: [
       ['dedicated/server.mjs', 'WebSocket 엔드포인트 · hello/역할 인증 · 방송'],
@@ -105,8 +111,8 @@ const TEXT = {
     progress: [
       ['done', '서버 권위 세션 — 이 화면은 스냅샷만 렌더링'],
       ['done', '뷰어/컨트롤러 역할 강제 + 프로토콜 검증 통과'],
-      ['done', '밸런스 게이트와 같은 봇 정책이 데모를 구동'],
-      ['next', '단일 접점: 상점 트래픽을 이 서버가 결제 서비스로 중계'],
+      ['done', '상점 게이트웨이: 카탈로그·결제·지급·환불이 이 소켓으로 중계'],
+      ['done', '지급된 장식이 권위 상태에 합류 — 모든 관전자가 공유'],
       ['next', '서버 경유 플레이어 입력 (웹 → 엔진 클라이언트 순)'],
       ['next', '동봉된 샘플에서 Unity/Unreal 뷰어로 확장'],
     ],
@@ -140,8 +146,8 @@ const TEXT = {
 /* Inline architecture diagram; CSS variables keep it readable on the game background. */
 function architectureSvg(en) {
   const t = en
-    ? { web: 'Web viewer', unity: 'Unity sample', unreal: 'Unreal sample', ws: 'WebSocket :8643 · hello {role, key}', dedi: 'Dedicated server', host: 'session host · engine + bot', pay: 'Payment API :8642 (separate)', neon: 'Neon webhooks' }
-    : { web: '웹 뷰어', unity: 'Unity 샘플', unreal: 'Unreal 샘플', ws: 'WebSocket :8643 · hello {역할, 키}', dedi: '데디케이티드 서버', host: '세션 호스트 · 엔진 + 봇', pay: '결제 API :8642 (분리)', neon: 'Neon 웹훅' };
+    ? { web: 'Web viewer', unity: 'Unity sample', unreal: 'Unreal sample', ws: 'WebSocket :8643 · hello {role, key, identity}', dedi: 'Dedicated server + store gateway', host: 'session host · engine + bot', pay: 'Payment service (behind the gateway)', neon: 'Neon · webhooks', gateway: 'store gateway' }
+    : { web: '웹 뷰어', unity: 'Unity 샘플', unreal: 'Unreal 샘플', ws: 'WebSocket :8643 · hello {역할, 키, 신원}', dedi: '데디케이티드 서버 + 상점 게이트웨이', host: '세션 호스트 · 엔진 + 봇', pay: '결제 서비스 (게이트웨이 뒤)', neon: 'Neon · 웹훅', gateway: 'store gateway' };
   const box = (x, y, w, h, label, cls = '') =>
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" class="dc-box ${cls}"/>` +
     `<text x="${x + w / 2}" y="${y + h / 2 + 4}" text-anchor="middle" class="dc-label">${label}</text>`;
@@ -157,13 +163,15 @@ function architectureSvg(en) {
     ${line(170, 130, 170, 152)}
     <text x="170" y="147" text-anchor="middle" class="dc-note">src/engine · src/balance · src/bot</text>
     ${box(60, 154, 220, 30, en ? 'pure simulation (also used by the balance gate)' : '순수 시뮬레이션 (밸런스 게이트와 공유)', 'dc-engine')}
+    <polyline points="60,82 40,82 40,198" fill="none" class="dc-line"/>
+    <text x="33" y="150" transform="rotate(-90 33 150)" text-anchor="middle" class="dc-note">${t.gateway}</text>
     ${box(14, 198, 190, 28, t.pay, 'dc-pay')}
     ${box(216, 198, 110, 28, t.neon, 'dc-pay')}
     ${line(204, 212, 216, 212)}
   </svg>`;
 }
 
-export function initDedicatedOverlay({ locale, client, onTryGame, backUrl }) {
+export function initDedicatedOverlay({ locale, client, onTryGame, onOpenStore, backUrl }) {
   const en = locale === 'en';
   const t = TEXT[en ? 'en' : 'ko'];
   const root = document.querySelector('#dedicatedPanel');
@@ -183,6 +191,8 @@ export function initDedicatedOverlay({ locale, client, onTryGame, backUrl }) {
     <div class="dp-actions">
       <button id="dpTryGame" class="dp-primary">${t.tryGame}</button>
       <span class="dp-hint">${t.tryGameHint}</span>
+      <button id="dpOpenStore" class="dp-store">${t.openStore}</button>
+      <span class="dp-hint">${t.openStoreHint}</span>
     </div>
     <div class="dp-controls" id="dpControls">
       <button id="dpPause">${t.pause}</button>
@@ -212,6 +222,7 @@ export function initDedicatedOverlay({ locale, client, onTryGame, backUrl }) {
   let lastLive = null;
 
   get('dpTryGame').addEventListener('click', () => onTryGame?.());
+  get('dpOpenStore').addEventListener('click', () => onOpenStore?.());
   get('dpPause').addEventListener('click', async () => {
     const result = await client.command(paused ? 'resume' : 'pause');
     if (result.ok) { paused = !paused; get('dpPause').textContent = paused ? t.resume : t.pause; }

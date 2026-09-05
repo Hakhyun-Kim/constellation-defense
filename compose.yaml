@@ -27,5 +27,9 @@ services:
       dockerfile: dedicated/Dockerfile
     environment:
       DEDICATED_CONTROL_KEY: local-demo-key
+      # Store gateway target: the payment service in the web container.
+      PAYMENT_API_URL: http://web:8642
+    depends_on:
+      - web
     ports:
       - "8643:8643"

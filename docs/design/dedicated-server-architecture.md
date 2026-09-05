@@ -81,23 +81,45 @@ ask on macOS than `node dedicated/server.mjs`; `dedicated/Dockerfile` and
 `compose.yaml` exist for container-shaped deployments and are marked as not
 yet executed on the development machine.
 
-## Direction — a single client-facing edge
+## A single client-facing edge — shipped (protocol v2)
 
-The intended next step is for the dedicated server to become the only surface
-clients talk to: store operations travel over the same WebSocket, and the
-dedicated server brokers them to the payment service server-to-server with
-the player's identity. Payment features then become server-side changes —
-engine clients need no HTTP store client, cookies or per-engine CSP work —
-and entitlements land in the authoritative state every viewer already
-renders. The payment service deliberately stays a separate internal process
-(webhook delivery retried for 36 hours must not depend on game-session
-lifecycle, and payment credentials stay out of the game-server process), and
-Hosted checkout still opens Neon's page in the player's browser. The
-current-vs-target topology is drawn in the companion documentation
-(neon-checkout-integration, doc 13). None of the store messages exist in the
-protocol yet; what exists and is verified are the pieces the migration
-composes — role auth at hello, the command/result path, snapshot broadcast,
-and the payment service's bearer identity.
+The dedicated server is now also the store gateway: store operations travel
+over the same WebSocket, and this process brokers them to the payment
+service server-to-server with the connection's account identity. A client
+therefore needs no HTTP store client, cookies or payment-origin
+configuration — the wire is the socket it already has — and the store UI
+itself did not change: it swaps its transport function and cannot tell which
+wire it is on.
+
+Mechanics, deliberately narrow:
+
+- **Allowlisted forwarding.** Only the client-facing store surface passes
+  (`/api/store/catalog · market · entitlements · checkout · mock-complete ·
+  mock-refund`, `/api/account/transfer-code · claim`). `/api/webhooks/*` is
+  refused with a written reason — webhooks are Neon→payment-service traffic
+  and never travel through a client connection. Per-connection limits: four
+  requests in flight, 64 KiB bodies, a 10 s upstream timeout.
+- **Identity is the bearer account.** The connection adopts the
+  `playerToken` from `hello` or mints a UUID, sends it as
+  `Authorization: Bearer`, and announces it in `storeIdentity` so the client
+  persists continuity with client-mode purchases. A claimed transfer code
+  switches the connection's account, exactly as the browser does. Explicit
+  market selection is cookie-based upstream, so the gateway keeps a
+  per-connection cookie jar — which incidentally fixes the documented
+  cookie-only market limitation for cross-origin clients.
+- **Entitlements join the authoritative state.** After a fulfilment, refund
+  or account claim, the gateway re-reads that account's entitlements from
+  the ledger and broadcasts the per-account union in every snapshot
+  (`cosmetics`); each viewer's castle wears what the session delivered, and
+  a refund removes it for everyone. The ledger stays in the payment service;
+  the gateway holds only this display union, for the process lifetime.
+
+The payment service stays a separate internal process on purpose: webhook
+delivery (retried up to 36 hours) must not depend on game-session lifecycle,
+and payment credentials stay out of the game-server process. Hosted checkout
+still opens Neon's page in the player's browser — the redirect is the point
+of Hosted checkout — and a hosted-mode return currently lands on the
+client-mode URL, which is the recorded next seam for gateway-mode returns.
 
 ## Current limits, stated plainly
 
@@ -106,8 +128,11 @@ and the payment service's bearer identity.
   engine commands) is the designed next milestone — the command/role
   plumbing it needs is what `pause`/`speed`/`restart` already exercise.
 - The controller key is a single shared secret suited to a demo; real
-  deployments should issue per-user credentials (the payment service's bearer
-  identity is the natural source).
+  deployments should issue per-user credentials (the store identity the
+  gateway already brokers per connection is the natural source).
+- A hosted (non-mock) checkout opened through the gateway returns the player
+  to the client-mode URL after payment; gateway-mode return routing is the
+  next seam. The mock lifecycle runs entirely in-modal and is unaffected.
 - Town/village interiors are shown as map state, not as the walkable scene.
 - The Unity/Unreal samples verify the protocol from engine runtimes but have
   not been executed here (neither engine is installed on this machine); the
@@ -121,8 +146,18 @@ ephemeral port and asserts: RFC handshake vector, frame length encodings,
 health endpoint, viewer welcome + snapshot schema, autonomous progress to
 combat, event/decision streaming, tick advancement, viewer command refusal,
 wrong-key downgrade, controller speed/pause/restart including invalid-input
-rejection, and restart announcement to all clients. A manual browser pass
-verified the live viewer, captions, VFX from streamed events, the role badge,
-the forbidden-path message, speed-up via the controller key, "try the game"
-switching to a local run, and returning to the same server session — with an
-empty console.
+rejection, and restart announcement to all clients. The gateway suite runs a
+**real in-process payment service** (mock mode, temporary JSON ledger) behind
+the server and asserts: catalog forwarding, minted-identity announcement,
+supplied-identity continuity, market selection through the cookie jar,
+brokered checkout/fulfilment/refund, the delivered cosmetic appearing in —
+and after refund disappearing from — another viewer's snapshots, webhook
+paths refused with a written reason, and non-store paths refused.
+
+A manual browser pass verified the live viewer, captions, VFX from streamed
+events, the role badge, the forbidden-path message, speed-up via the
+controller key, "try the game" switching to a local run, and returning to the
+same server session; a second pass bought and refunded a cosmetic through the
+panel's store button and confirmed, via a second keyless viewer tab, that the
+shared castle gained and lost the decoration on both screens — consoles empty
+throughout.

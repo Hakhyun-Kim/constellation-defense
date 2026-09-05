@@ -12,15 +12,18 @@ asserts the same contract that `npm run dedicated:check` enforces:
 
 Each test proves, from inside the engine's own runtime:
 
-1. `hello` → `welcome` with `protocol: 1` and the granted role,
+1. `hello` → `welcome` with `protocol: 2` and the granted role,
 2. a `snapshot` carrying the documented render-state schema,
-3. the auth boundary — a `command` without the controller key is `forbidden`.
+3. the auth boundary — a `command` without the controller key is `forbidden`,
+4. the store gateway — a `store` catalog request answered with `200` and items
+   on the same socket (no HTTP store client in the engine).
 
 ## Running
 
 ```bash
 # In the repository root, with Node 22.9+:
-npm run dedicated       # ws://127.0.0.1:8643
+npm run serve           # payment service + web client on :8642 (mock mode)
+npm run dedicated       # ws://127.0.0.1:8643 — brokers store calls to :8642
 ```
 
 Then run the test inside Unity/Unreal. `DEDICATED_URL` overrides the address

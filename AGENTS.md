@@ -139,19 +139,21 @@ start-demo.command        원클릭(macOS/Linux): 같은 동작, Node 22.9+ 검�
 
 > `server/` 변경이 포함돼 외부로 공유되는 PR 은 **영어** 커밋 메시지를 쓴다.
 
-## Dedicated 게임 서버 (`dedicated/`)
+## Dedicated 게임 서버 + 상점 게이트웨이 (`dedicated/`)
 
-시뮬레이션을 권위적으로 소유하는 별도 프로세스. 클라이언트(웹, 이후
-Unity/Unreal)는 스냅샷을 렌더링하는 뷰어이고, 게임 규칙은 클라이언트에서
-돌지 않는다. 결정 근거: `docs/design/dedicated-server-architecture.md`,
-와이어 계약: `dedicated/PROTOCOL.md` (실행 명세는 `npm run dedicated:check`).
+시뮬레이션을 권위적으로 소유하고, 클라이언트의 유일한 접점 역할까지 하는
+별도 프로세스. 클라이언트(웹, 이후 Unity/Unreal)는 스냅샷을 렌더링하는
+뷰어이고, 게임 규칙은 클라이언트에서 돌지 않으며, 상점 호출도 이 소켓을
+타고 결제 서비스로 중계된다(server-to-server). 결정 근거:
+`docs/design/dedicated-server-architecture.md`, 와이어 계약:
+`dedicated/PROTOCOL.md` v2 (실행 명세는 `npm run dedicated:check`).
 
 ```
-dedicated/server.mjs   WS 엔드포인트 · hello 역할 인증(viewer/controller) · 방송
+dedicated/server.mjs   WS 엔드포인트 · hello 역할/신원 · 방송 · 상점 게이트웨이
 dedicated/host.mjs     권위 세션: engine+balance+bot 정책, 스냅샷/이벤트/결정 생성
 dedicated/ws.mjs       의존성 없는 RFC6455 서버 (텍스트 프레임)
-src/app/dedicated-client.js   스냅샷 병합 + 이동 보간 — 규칙 없음
-src/app/dedicated-overlay.js  데모 오버레이(상태·아키텍처·흐름·코드맵·컨트롤)
+src/app/dedicated-client.js   스냅샷 병합 + 이동 보간 + store 전송 — 규칙 없음
+src/app/dedicated-overlay.js  데모 오버레이(상태·아키텍처·흐름·코드맵·상점·컨트롤)
 clients/unity·unreal   같은 계약의 엔진 클라이언트 샘플 (여기서 실행은 안 됨)
 start-dedicated.bat / .command   서버 2개 실행 + ?dedicated=1 뷰어 열기
 ```
@@ -159,11 +161,19 @@ start-dedicated.bat / .command   서버 2개 실행 + ?dedicated=1 뷰어 열기
 **지켜야 할 규약:**
 - **클라이언트 모드가 게임의 기준이다.** 기본 게임(Pages·index.html 더블클릭·
   `npm run serve`)은 서버 0개로 돌아야 하고, dedicated 코드는 `?dedicated=1`
-  없이는 연결·오버레이·입력 차단 어느 것도 활성화하지 않는다(번들 +약 21KB
-  외 비용 없음). 이 경계를 무너뜨리는 변경은 하지 않는다.
+  없이는 연결·오버레이·입력 차단 어느 것도 활성화하지 않는다. 이 경계를
+  무너뜨리는 변경은 하지 않는다.
 - `dedicated/`는 `src/engine·balance·bot`, `scripts/balance-bot.mjs`의 정책
-  헬퍼, `server/logger.mjs`만 import 한다. 결제 코드와 섞지 않는다.
+  헬퍼, `server/logger.mjs`만 import 한다. 결제 코드는 import 하지 않고
+  **HTTP로만** 부른다(`PAYMENT_API_URL`, 기본 `http://127.0.0.1:8642`).
 - 클라이언트에 게임 규칙을 넣지 않는다. 스냅샷이 항상 로컬 추측을 덮는다.
+- **게이트웨이는 허용 목록 밖을 중계하지 않는다.** 특히 `/api/webhooks/*`는
+  이유를 적어 403 — 웹훅은 Neon→결제 서비스 트래픽이다. 새 클라이언트 경로가
+  필요하면 `STORE_PATHS`·`PROTOCOL.md`·`dedicated-check`를 같은 커밋에서
+  바꾼다.
+- 상점 신원은 hello의 `playerToken`(또는 발급 UUID) bearer 계정이다. 가격·
+  국가·지급 판정은 전부 결제 서비스 몫이고 게이트웨이는 신원과 쿠키 저장고만
+  붙인다. 세션 코스메틱(`cosmetics`)은 표시용 union일 뿐 원장이 아니다.
 - 프로토콜을 바꾸면 `PROTOCOL.md`와 `scripts/dedicated-check.mjs`를 같은
   커밋에서 갱신한다 — 문서와 검사가 어긋나면 검사가 이긴다.
 - 컨트롤 키는 데모용 공유 비밀이다. 배포에서는 반드시 교체하고, 로컬
