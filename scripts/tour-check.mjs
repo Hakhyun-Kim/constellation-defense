@@ -58,9 +58,17 @@ assert.match(css, /#neonTour\s*\{/, '투어 패널 스타일이 있다');
 
 /* 투어는 실제 코드 경로를 지나야 의미가 있다. 지급과 회수 모두 서버를 부른다. */
 for (const endpoint of ['/api/store/catalog', '/api/store/market', '/api/store/checkout',
-  '/api/store/mock-complete', '/api/store/mock-refund', '/api/store/entitlements']) {
+  '/api/store/mock-complete', '/api/store/mock-refund', '/api/store/entitlements',
+  '/api/account/transfer-code', '/api/account/claim']) {
   assert.ok(source.includes(endpoint), `투어가 ${endpoint} 를 실제로 호출한다`);
 }
+
+/* 단계 텍스트와 실행 블록의 인덱스가 어긋나면 설명과 결과가 짝이 안 맞는다 —
+ * 게임은 멀쩡히 돌기 때문에 눈으로는 늦게 발견된다. */
+const used = [...source.matchAll(/card\(s\[(\d+)\]\)/g)].map((m) => Number(m[1]));
+assert.deepEqual(used, [...used].sort((a, b) => a - b), '단계 인덱스가 순서대로다');
+assert.equal(new Set(used).size, used.length, '같은 단계 텍스트를 두 번 쓰지 않는다');
+assert.equal(used.length, ko.steps.length, '모든 단계 텍스트가 쓰인다');
 /* 면접관은 새로고침한다 — 시작할 때 자기 상태를 되돌리지 않으면 두 번째
  * 실행이 이중청구 방지에 막혀 결제 단계에서 멈춘다. */
 assert.match(source, /resetOwnState/, '투어는 시작 전에 자기가 만든 보유 상태를 되돌린다');

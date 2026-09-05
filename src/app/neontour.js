@@ -54,6 +54,8 @@ const TEXT = {
         '웹훅 주소는 인터넷에 열려 있습니다. 누구나 던질 수 있으니, 서명이 유일한 문지기입니다. 지금 브라우저에서 가짜 서명으로 직접 던져 보겠습니다.'],
       ['② 진짜 지급',
         '서명을 원문 그대로 검증하고, 기록해 둔 결제 의도와 계정·SKU·수량·금액을 대조한 뒤에야 권리를 씁니다.'],
+      ['구매는 기기가 아니라 계정에 붙습니다',
+        '지금까지 신원은 브라우저 하나에 묶인 소지자 자격이었습니다 — 기기를 바꾸면 산 것이 따라오지 않습니다. 인계 코드가 그걸 옮깁니다. 쿠키도 토큰도 없는 기기가 코드를 넣고 권리를 물려받는 것을 지금 보겠습니다.'],
       ['③ 같은 이벤트가 또 오면',
         'Neon은 2xx가 아닌 응답을 최대 36시간 재시도합니다. 재전송은 오류가 아니라 정상 트래픽이라, 같은 이벤트 id는 한 번만 지급됩니다.'],
       ['④ 이미 가진 것을 또 사려 하면 — 409',
@@ -98,6 +100,8 @@ const TEXT = {
         'The webhook endpoint is open to the internet; anyone can post to it, so the signature is the only gatekeeper. Watch the browser post one with a fake digest right now.'],
       ['② The real grant',
         'The signature is verified over the raw body, then account, SKU, quantity and amount are matched against the recorded intent before anything is written.'],
+      ['The purchase belongs to an account, not this device',
+        'Identity used to be a bearer credential bound to one browser — change device and the purchase does not follow. A transfer code moves it, the way Korean and Japanese mobile games have always done it. Watch a device with no cookie and no token claim the code and inherit the entitlement.'],
       ['③ The same event, delivered again',
         'Neon retries any non-2xx for up to 36 hours, so redelivery is ordinary traffic rather than an error. The same event id grants exactly once.'],
       ['④ Buying what you already own — 409',
@@ -204,6 +208,27 @@ function buildSteps(ctx, text) {
     },
     {
       ...card(s[7]),
+      /* credentials:'omit' 이 곧 "다른 기기"다 — 쿠키도 토큰도 실리지 않는다. */
+      run: async () => {
+        const issued = await post('/api/account/transfer-code', {});
+        const code = issued.data.code;
+        const strangerBefore = await fetch('/api/store/entitlements', { credentials: 'omit' }).then((r) => r.json());
+        const claimed = await fetch('/api/account/claim', {
+          method: 'POST', credentials: 'omit',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }),
+        }).then((r) => r.json());
+        const strangerAfter = await fetch('/api/store/entitlements', {
+          credentials: 'omit', headers: { Authorization: `Bearer ${claimed.accountId}` },
+        }).then((r) => r.json());
+        return [
+          `code    ${code}`,
+          `before  ${JSON.stringify(strangerBefore.entitlements)}   (new device)`,
+          `after   ${JSON.stringify(Object.keys(strangerAfter.entitlements))}`,
+        ].join('\n');
+      },
+    },
+    {
+      ...card(s[8]),
       run: async () => {
         if (!ctx.reference) return text.noIntent;
         const again = await post('/api/store/mock-complete', { reference: ctx.reference });
@@ -213,14 +238,14 @@ function buildSteps(ctx, text) {
       diagram: 'codes',
     },
     {
-      ...card(s[8]),
+      ...card(s[9]),
       run: async () => {
         const blocked = await post('/api/store/checkout', { sku: 'CELESTIAL_BANNER', locale: ctx.locale });
         return line(blocked.status, blocked.data);
       },
     },
     {
-      ...card(s[9]),
+      ...card(s[10]),
       run: async () => {
         if (!ctx.reference) return text.noIntent;
         const refund = await post('/api/store/mock-refund', { reference: ctx.reference });
@@ -230,7 +255,7 @@ function buildSteps(ctx, text) {
       },
     },
     {
-      ...card(s[10]),
+      ...card(s[11]),
       /* distinct: 같은 이벤트의 재전송이 아니라 "다른 지급 이벤트"로 보낸다.
        * 재전송이면 멱등성 원장이 먼저 잡아 버려서, 정작 보여주려는 방어선
        * (환불된 결제 의도는 지급하지 않는다)을 지나가지 못한다. */
@@ -241,7 +266,7 @@ function buildSteps(ctx, text) {
         return `${line(late.status, late.data)}\n\n${pretty(owned.data.entitlements)}`;
       },
     },
-    { ...card(s[11]), diagram: 'architecture' },
+    { ...card(s[12]), diagram: 'architecture' },
   ];
 }
 

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-const EMPTY = () => ({ checkouts: {}, players: {}, processedEvents: {} });
+const EMPTY = () => ({ checkouts: {}, players: {}, processedEvents: {}, transfers: {}, saves: {} });
 
 /* 30일이 지난 미결제 의도와 오래된 멱등성 기록은 지운다. 원장이 무한히 커지면
  * 파일 저장소가 먼저 무너지기 때문. 멱등성 창은 Neon의 재시도 기간(36시간)보다
@@ -169,6 +169,51 @@ export class JsonRepository {
 
   async entitlements(accountId) {
     return (await this.load()).players[accountId]?.entitlements || {};
+  }
+
+  /* --- 계정 인계 ---
+   * 코드는 해시로만 저장한다. 원문을 들고 있으면 원장 파일 하나가 새는 순간
+   * 계정 전부가 넘어간다. 한 번 쓰면 사라지고, 기한이 지나도 사라진다. */
+  async issueTransferCode({ accountId, hash, expiresAt }) {
+    return this.mutate((data) => {
+      /* 계정당 하나만 살아 있게 한다 — 여러 장이 떠돌면 회수할 방법이 없다. */
+      for (const [key, record] of Object.entries(data.transfers)) {
+        if (record.accountId === accountId) delete data.transfers[key];
+      }
+      data.transfers[hash] = { accountId, expiresAt, issuedAt: new Date(this.now()).toISOString() };
+      return { accountId, expiresAt };
+    });
+  }
+
+  async claimTransferCode(hash) {
+    return this.mutate((data) => {
+      const record = data.transfers[hash];
+      if (!record) return null;
+      delete data.transfers[hash];
+      if (Date.parse(record.expiresAt) < this.now()) return null;
+      return { accountId: record.accountId };
+    });
+  }
+
+  /* --- 계정 저장본 ---
+   * version 은 단조 증가한다. 클라이언트가 자기가 읽은 버전을 함께 보내고,
+   * 그 사이 다른 기기가 썼으면 덮어쓰지 않고 충돌을 돌려준다. 기기 두 대로
+   * 같은 계정을 쓰는 순간 마지막 쓰기가 이기는 방식은 진행도를 조용히 지운다. */
+  async readSave(accountId) {
+    return (await this.load()).saves[accountId] || null;
+  }
+
+  async writeSave({ accountId, save, baseVersion }) {
+    return this.mutate((data) => {
+      const current = data.saves[accountId] || null;
+      const version = current?.version || 0;
+      if (baseVersion !== undefined && baseVersion !== version) {
+        return { conflict: true, current };
+      }
+      const next = { save, version: version + 1, updatedAt: new Date(this.now()).toISOString() };
+      data.saves[accountId] = next;
+      return { conflict: false, current: next };
+    });
   }
 
   /* 준비 상태 점검. 로컬 파일이라 부팅 이후에는 사실상 항상 참이다 —

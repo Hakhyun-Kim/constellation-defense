@@ -161,6 +161,58 @@ export class FirestoreRepository {
     return snapshot.exists ? snapshot.data().entitlements || {} : {};
   }
 
+  get transfers() { return this.root.collection('transferCodes'); }
+  get saves() { return this.root.collection('saves'); }
+
+  /* --- 계정 인계 ---
+   * 코드는 해시를 문서 id 로 쓴다. 원문은 어디에도 남지 않는다. */
+  async issueTransferCode({ accountId, hash, expiresAt }) {
+    /* 계정당 하나만 살아 있게 한다. 단일 필드 동등 질의라 색인이 필요 없다. */
+    const previous = await this.transfers.where('accountId', '==', accountId).get();
+    const batch = this.db.batch();
+    previous.docs.forEach((doc) => batch.delete(doc.ref));
+    batch.set(this.transfers.doc(hash), {
+      accountId,
+      expiresAt: new Date(expiresAt),
+      issuedAt: new Date(this.now()).toISOString(),
+    });
+    await batch.commit();
+    return { accountId, expiresAt };
+  }
+
+  async claimTransferCode(hash) {
+    const ref = this.transfers.doc(hash);
+    return this.db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      if (!snapshot.exists) return null;
+      const record = snapshot.data();
+      /* 한 번 쓰면 사라진다 — 기한이 지났더라도 지운다. */
+      tx.delete(ref);
+      const expires = record.expiresAt?.toDate ? record.expiresAt.toDate().getTime() : Date.parse(record.expiresAt);
+      if (expires < this.now()) return null;
+      return { accountId: record.accountId };
+    });
+  }
+
+  /* --- 계정 저장본 --- */
+  async readSave(accountId) {
+    const snapshot = await this.saves.doc(accountId).get();
+    return snapshot.exists ? snapshot.data() : null;
+  }
+
+  async writeSave({ accountId, save, baseVersion }) {
+    const ref = this.saves.doc(accountId);
+    return this.db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const current = snapshot.exists ? snapshot.data() : null;
+      const version = current?.version || 0;
+      if (baseVersion !== undefined && baseVersion !== version) return { conflict: true, current };
+      const next = { save, version: version + 1, updatedAt: new Date(this.now()).toISOString() };
+      tx.set(ref, next);
+      return { conflict: false, current: next };
+    });
+  }
+
   /* 준비 상태 점검 — 존재하지 않아도 되는 문서를 한 번 읽어 연결을 확인한다. */
   async healthy() {
     await this.root.get();

@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   DEFAULT_COUNTRY, checkoutItem, isSupportedCountry, marketFor, MARKETS, PRODUCTS, publicCatalog,
 } from './catalog.mjs';
@@ -13,6 +13,23 @@ const CHECKOUT_WINDOW_MS = 10 * 60 * 1000;
 const CHECKOUT_LIMIT = 10;
 /* 플랫폼이 붙여 주는 지리 헤더. 있으면 브라우저 언어보다 신뢰도가 높다. */
 const GEO_HEADERS = ['cf-ipcountry', 'x-vercel-ip-country', 'x-appengine-country', 'x-geo-country'];
+
+/* 인계 코드는 사람이 다른 기기에 옮겨 적는다. 그래서 헷갈리는 글자를 뺀다 —
+ * O/0, I/1/L 을 섞어 두면 "코드가 안 먹는다"는 문의가 지원 비용이 된다. */
+const TRANSFER_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const TRANSFER_LENGTH = 12;
+const TRANSFER_TTL_MS = 24 * 60 * 60 * 1000;
+/* 저장본은 진행도 한 벌이다. 넉넉하되 무제한은 아니게. */
+const SAVE_LIMIT = 256 * 1024;
+
+function newTransferCode() {
+  /* randomInt 는 거절 표본으로 편향 없이 뽑는다. 소지자 자격이라 %는 쓰지 않는다. */
+  const chars = Array.from({ length: TRANSFER_LENGTH }, () => TRANSFER_ALPHABET[randomInt(TRANSFER_ALPHABET.length)]);
+  return `CD-${chars.slice(0, 4).join('')}-${chars.slice(4, 8).join('')}-${chars.slice(8, 12).join('')}`;
+}
+
+/* 원문은 어디에도 저장하지 않는다. 보여주는 것은 발급 순간 한 번뿐이다. */
+const hashTransferCode = (code) => createHash('sha256').update(String(code).trim().toUpperCase()).digest('hex');
 
 function cookies(req) {
   return Object.fromEntries(
@@ -102,7 +119,7 @@ function applyCors(req, res, allowedOrigins) {
   if (!origin || !allowedOrigins.includes(origin)) return false;
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Max-Age', '600');
   return true;
@@ -236,6 +253,66 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         if (!isSupportedCountry(country)) return json(res, 400, { error: 'unsupported country' });
         appendCookie(res, COUNTRY_COOKIE, country, cookieOptionsFor(req));
         return json(res, 200, { country, currency: marketFor(country).currency });
+      }
+
+      /* --- 계정 ---
+       * 지금까지 신원은 기기에 묶인 소지자 자격이었다. 기기를 바꾸면 산 것이
+       * 따라오지 않는다는 뜻이고, 결제 통합에서 그건 가장 흔한 문의다.
+       *
+       * 인계 코드는 한국·일본 모바일 게임의 관행을 그대로 따른다. 이메일도
+       * 비밀번호도 없이 "구매는 기기가 아니라 계정을 따른다"만 성립시킨다.
+       * 이것은 인증이 아니라 이전 수단이다 — 코드를 가진 사람이 계정을 가진다.
+       * 실제 타이틀이라면 이메일이나 OAuth 가 이 자리에 온다. */
+      if (req.method === 'POST' && url.pathname === '/api/account/transfer-code') {
+        const accountId = account(req, res, cookieOptionsFor(req));
+        const code = newTransferCode();
+        const expiresAt = new Date(Date.now() + TRANSFER_TTL_MS).toISOString();
+        await repository.issueTransferCode({ accountId, hash: hashTransferCode(code), expiresAt });
+        log.info?.('[store] transfer code issued', { accountId });
+        /* 코드 원문이 서버를 떠나는 것은 이 응답 한 번뿐이다. */
+        return json(res, 201, { code, expiresAt });
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/account/claim') {
+        const input = readJson(await body(req));
+        const claimed = await repository.claimTransferCode(hashTransferCode(input.code || ''));
+        if (!claimed) {
+          log.warn?.('[store] transfer code rejected');
+          /* 왜 실패했는지(없음/만료/이미 사용) 구분해 주지 않는다 — 코드를
+           * 찍어 보는 쪽에 정보를 주는 셈이 된다. */
+          return json(res, 404, { error: 'invalid_code' });
+        }
+        /* 기기가 이 계정을 입는다. 권리는 옮기지 않는다 — 애초에 계정에 있다. */
+        appendCookie(res, PLAYER_COOKIE, claimed.accountId, cookieOptionsFor(req));
+        log.info?.('[store] transfer code claimed', { accountId: claimed.accountId });
+        return json(res, 200, { accountId: claimed.accountId });
+      }
+
+      // --- 계정 저장본 ---
+      if (req.method === 'GET' && url.pathname === '/api/save') {
+        const record = await repository.readSave(account(req, res, cookieOptionsFor(req)));
+        if (!record) return json(res, 200, { save: null, version: 0 });
+        return json(res, 200, { save: record.save, version: record.version, updatedAt: record.updatedAt });
+      }
+
+      if (req.method === 'PUT' && url.pathname === '/api/save') {
+        const input = readJson(await body(req, SAVE_LIMIT));
+        if (input.save === undefined) return json(res, 400, { error: 'save is required' });
+        const result = await repository.writeSave({
+          accountId: account(req, res, cookieOptionsFor(req)),
+          save: input.save,
+          baseVersion: input.baseVersion,
+        });
+        /* 다른 기기가 그 사이 썼으면 덮지 않고 상대의 것을 돌려준다. 마지막
+         * 쓰기가 이기게 두면 두 기기를 오가는 플레이어의 진행도가 조용히 사라진다. */
+        if (result.conflict) {
+          return json(res, 409, {
+            error: 'stale_save',
+            version: result.current?.version || 0,
+            save: result.current?.save ?? null,
+          });
+        }
+        return json(res, 200, { version: result.current.version, updatedAt: result.current.updatedAt });
       }
 
       if (req.method === 'GET' && url.pathname === '/api/store/entitlements') {

@@ -388,6 +388,72 @@ async function runSuite(repository, label) {
     }
     assert.ok(limited > 0, '체크아웃 생성은 무제한이 아니다');
 
+    /* --- 계정: 인계 코드 ---
+     * 이 통합의 가장 정직한 약점이 "신원이 기기에 묶인 소지자 자격"이었다.
+     * 인계 코드는 그것을 계정으로 옮긴다 — 산 것이 기기가 아니라 계정을 따르는지가
+     * 여기서 증명되어야 한다. */
+    const owner = await boughtOnce('account');
+    assert.equal(await ownsBanner(owner.cookie), true);
+
+    const issued = await call('/api/account/transfer-code', {
+      method: 'POST', headers: { cookie: owner.cookie, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    assert.equal(issued.status, 201);
+    const { code, expiresAt } = await issued.json();
+    assert.match(code, /^CD-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/, '사람이 옮겨 적을 수 있는 형태');
+    assert.doesNotMatch(code, /[O0I1L]/, '헷갈리는 글자는 쓰지 않는다');
+    assert.ok(Date.parse(expiresAt) > Date.now(), '기한이 있다');
+
+    /* 새 기기(쿠키 없음)가 코드를 넣으면 그 계정이 된다. */
+    const freshDevice = sessionCookie(await call('/api/store/catalog?locale=ko'));
+    assert.equal(await ownsBanner(freshDevice), false, '새 기기는 아직 아무것도 없다');
+    const claimed = await call('/api/account/claim', {
+      method: 'POST', headers: { cookie: freshDevice, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    assert.equal(claimed.status, 200);
+    const adopted = sessionCookie(claimed);
+    assert.equal((await claimed.json()).accountId, owner.accountId, '기기가 기존 계정을 입는다');
+    assert.equal(await ownsBanner(adopted), true, '구매가 기기가 아니라 계정을 따라온다');
+
+    /* 코드는 한 번만 쓰인다. 종이에 적힌 소지자 자격이라 재사용을 허용하면
+     * 흘린 코드 하나로 계정이 계속 넘어간다. */
+    const reused = await call('/api/account/claim', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }),
+    });
+    assert.equal(reused.status, 404, '같은 코드를 두 번 쓸 수 없다');
+    const nonsense = await call('/api/account/claim', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: 'CD-ZZZZ-ZZZZ-ZZZZ' }),
+    });
+    assert.equal(nonsense.status, 404);
+    assert.equal((await nonsense.json()).error, 'invalid_code', '없음·만료·사용됨을 구분해 주지 않는다');
+
+    // --- 계정 저장본 ---
+    const emptySave = await call('/api/save', { headers: { cookie: owner.cookie } }).then((r) => r.json());
+    assert.deepEqual(emptySave, { save: null, version: 0 }, '저장본이 없으면 0번');
+
+    const putSave = (cookie, payload) => call('/api/save', {
+      method: 'PUT', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+
+    const first = await putSave(owner.cookie, { save: { shards: 12 }, baseVersion: 0 });
+    assert.equal(first.status, 200);
+    assert.equal((await first.json()).version, 1);
+
+    /* 두 기기가 같은 계정을 쓴다. 오래된 버전으로 쓰면 덮지 않고 상대 것을 준다 —
+     * 마지막 쓰기가 이기게 두면 진행도가 조용히 사라진다. */
+    const stale = await putSave(adopted, { save: { shards: 3 }, baseVersion: 0 });
+    assert.equal(stale.status, 409, '오래된 버전은 덮어쓰지 못한다');
+    const conflict = await stale.json();
+    assert.equal(conflict.version, 1);
+    assert.deepEqual(conflict.save, { shards: 12 }, '충돌 응답이 서버의 최신본을 함께 준다');
+
+    const merged = await putSave(adopted, { save: { shards: 20 }, baseVersion: 1 });
+    assert.equal(merged.status, 200);
+    assert.equal((await merged.json()).version, 2, '최신 버전 위에는 쓸 수 있다');
+    assert.deepEqual((await call('/api/save', { headers: { cookie: owner.cookie } }).then((r) => r.json())).save,
+      { shards: 20 }, '두 기기가 같은 저장본을 본다');
+
     /* --- 실제 Neon 호출 경로 ---
      * 모의 모드는 neon-client 를 통째로 건너뛴다. 그래서 여기서는 mock:false 로
      * 두고 fetch 만 가짜로 갈아끼워, 샌드박스에서 처음 눌렀을 때 우리 쪽 문제로
@@ -456,7 +522,7 @@ async function runSuite(repository, label) {
       assert.equal((await incomplete.checkout(buyer)).status, 500, 'redirectUrl 없는 응답은 성공으로 치지 않는다');
     } finally { await incomplete.close(); }
 
-    console.log(`  ✅ ${label}: 카탈로그·국가 해석·가격 계약·서명·재전송·환경·속도 제한·환불 회수·실호출 경로`);
+    console.log(`  ✅ ${label}: 카탈로그·국가 해석·가격 계약·서명·재전송·환경·속도 제한·환불 회수·계정 인계·저장본·실호출 경로`);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

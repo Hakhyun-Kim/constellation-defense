@@ -52,12 +52,22 @@ function copy(locale) {
     cosmetic: 'Cosmetic only · no gameplay advantage', region: 'Billing region',
     slow: 'This is taking longer than usual. Your purchase is safe.', retry: 'Check again',
     mock: 'Mock mode · no payment is taken', already_owned: 'You already own this.',
+    account: 'This device', transfer: 'Get transfer code', useCode: 'Use a code',
+    codeShown: 'Write this down. It is shown once and works once, for 24 hours.',
+    codePrompt: 'Enter a transfer code from your other device',
+    invalid_code: 'That code is not valid — it may be used or expired.',
+    moved: 'This device now uses that account.',
   } : {
     title: '별빛 상점', buy: 'Neon으로 구매', owned: '보유 중', close: '닫기',
     pending: '구매 완료를 확인하고 있어요…', error: '상점을 잠시 이용할 수 없어요.',
     cosmetic: '치장 전용 · 전투 능력에 영향 없음', region: '결제 지역',
     slow: '확인이 평소보다 늦어지고 있어요. 구매는 안전하게 기록돼 있어요.', retry: '다시 확인',
     mock: '모의 모드 · 실제 결제가 일어나지 않아요', already_owned: '이미 가지고 있어요.',
+    account: '이 기기', transfer: '인계 코드 받기', useCode: '코드 입력',
+    codeShown: '적어 두세요. 한 번만 보여 주고, 한 번만 쓰이고, 24시간 뒤 만료됩니다.',
+    codePrompt: '다른 기기에서 받은 인계 코드를 입력하세요',
+    invalid_code: '쓸 수 없는 코드입니다 — 이미 사용됐거나 만료됐어요.',
+    moved: '이 기기가 그 계정을 씁니다.',
   };
 }
 
@@ -112,6 +122,41 @@ export function initNeonStore({ locale = 'ko' } = {}) {
     return row;
   }
 
+  /* 계정 인계. 이 통합의 가장 정직한 약점이 "신원이 기기에 묶여 있다"였고,
+   * 여기가 그것을 계정으로 옮기는 자리다. 코드는 발급 순간 한 번만 보인다. */
+  function renderAccount() {
+    const row = element('div', 'neon-account');
+    row.append(element('span', null, words.account));
+
+    const getCode = element('button', 'neon-linkish', words.transfer);
+    getCode.addEventListener('click', async () => {
+      try {
+        const { code } = await postJson('/api/account/transfer-code', {});
+        status.replaceChildren();
+        const shown = element('code', 'neon-code', code);
+        status.append(shown, element('small', 'neon-code-note', words.codeShown));
+      } catch (error) { status.textContent = words[error.message] || error.message; }
+    });
+
+    const useCode = element('button', 'neon-linkish', words.useCode);
+    useCode.addEventListener('click', async () => {
+      /* prompt 를 쓰는 이유: 이 데모에서 필요한 것은 코드가 계정을 옮긴다는
+       * 사실이지 입력 폼의 완성도가 아니다. 실제 타이틀이라면 화면이 따로 있다. */
+      const entered = window.prompt(words.codePrompt);
+      if (!entered) return;
+      try {
+        const { accountId } = await postJson('/api/account/claim', { code: entered });
+        rememberPlayer(accountId);
+        status.textContent = words.moved;
+        await loadCatalog();
+        await refreshEntitlements();
+      } catch (error) { status.textContent = words[error.message] || error.message; }
+    });
+
+    row.append(getCode, useCode);
+    return row;
+  }
+
   function render() {
     if (!catalog) return;
     const item = catalog.items[0];
@@ -128,6 +173,7 @@ export function initNeonStore({ locale = 'ko' } = {}) {
     product.append(art, body, buy);
     const region = renderRegion();
     if (region) product.append(region);
+    product.append(renderAccount());
     document.querySelector('#paidCosmeticBadge')?.classList.toggle('hidden', !owned);
   }
 
