@@ -11,7 +11,7 @@
 <body>
 <div class="wrap">
 
-  <!-- ===== 왼쪽: 3D 전장 ===== -->
+  <!-- Left: 3D battlefield. -->
   <div class="left">
     <header class="topbar">
       <h1>🌌 Constellation Defense <span id="paidCosmeticBadge" class="paid-cosmetic hidden" title="별빛 개척자 깃발">🚩</span></h1>
@@ -53,12 +53,12 @@
         <span>다음 방어가 시작됩니다</span><b id="phaseCountdownNum">10</b><small>초 뒤 자동 시작 · Space로 즉시 시작</small>
       </div>
       <div id="comboChip" class="hidden"></div>
-      <!-- 3매치 결과가 전장에 도착했음을 알리는 전술 피드백. 실제 피해 숫자는 3D 착탄 지점에서 따로 뜬다. -->
+      <!-- Tactic feedback announces battlefield delivery; damage numbers appear separately at the 3D impact point. -->
       <div id="tacticImpact" class="tactic-impact" aria-live="polite" aria-atomic="true">
         <span id="tacticImpactIcon" class="tactic-impact-icon">☄️</span>
         <span class="tactic-impact-copy"><b id="tacticImpactTitle">유성 폭격!</b><small id="tacticImpactDetail">왼쪽 길</small></span>
       </div>
-      <!-- 별지기 칩: 초상 · 레벨 · 체력/경험치 · 마법 버튼 -->
+      <!-- Champion chip: portrait, level, health/XP and spell buttons. -->
       <div id="champChip">
         <button id="champFace" title="옷장 열기 — 이름과 모습을 바꿔요!">🌠</button>
         <div class="champ-mid">
@@ -88,10 +88,10 @@
       <div id="toasts"></div>
     </div>
 
-    <!-- 모든 배치 영웅의 액티브를 한 손가락 거리에서 쓰는 전장 하단 퀵바. -->
+    <!-- Quickbar below the field provides nearby access to every deployed hero's active ability. -->
     <div id="combatSkillDock" class="combat-skill-dock hidden" aria-label="영웅 스킬 퀵바"></div>
 
-    <!-- 배치 중 안내 — 전장 "아래"에 둔다. 전장 위에 얹으면 하필 발판을 가린다. -->
+    <!-- Place guidance below the battlefield so it does not cover placement pads. -->
     <div id="placeBar" class="placebar">
       <span id="placeBarText">✦ 영웅 카드를 눌러 방어로 옆 발판에 배치하세요</span>
       <button id="placeBarCancel">✕ 취소</button>
@@ -123,7 +123,7 @@
     </div>
   </div>
 
-  <!-- ===== 오른쪽: 용사와 성 관리 ===== -->
+  <!-- Right: hero and castle management. -->
   <aside class="right">
 
     <section class="card fixed" id="statCard">
@@ -145,7 +145,7 @@
       </div>
     </section>
 
-    <!-- 전투 중에는 전장을 넓게 유지하고, 터치 전술판을 오른쪽 손 영역에 둔다. -->
+    <!-- Preserve battlefield space during combat and keep the touch tactics board in the right-hand area. -->
     <section class="card tactic-card fixed" id="tacticCard">
       <div class="tactic-head">
         <div><h2>🌌 별자리 전술판</h2><span>별을 누르거나 밀어 영웅 전술을 발동</span></div>
@@ -190,7 +190,7 @@
       </div>
     </section>
 
-    <!-- 탭: 한 번에 하나만 보여 세로 길이를 줄인다 -->
+    <!-- Show one tab at a time to reduce vertical length. -->
     <div class="tabs" id="tabs">
       <button data-tab="squad" class="on">✦ 영웅 성장<span id="combineDot" class="tabdot hidden"></span></button>
       <button data-tab="castle">🏰 성</button>
@@ -226,7 +226,7 @@
   </aside>
 </div>
 
-<!-- ===== 시작 메뉴 (자동 저장이 있을 때만) ===== -->
+<!-- Startup menu, shown only when autosave exists. -->
 <div id="startModal" class="modal hidden">
   <div class="modal-card start">
     <h2>🌌 Constellation Defense</h2>
@@ -237,7 +237,7 @@
   </div>
 </div>
 
-<!-- ===== 게임 오버 모달 ===== -->
+<!-- Defeat modal. -->
 <div id="overModal" class="modal hidden">
   <div class="modal-card over">
     <h2>💥 성이 함락되었어요…</h2>
@@ -252,7 +252,7 @@
   </div>
 </div>
 
-<!-- ===== 도감 · 기록 (용사 / 몬스터 / 업적 / 전술) ===== -->
+<!-- Codex: heroes, monsters, achievements and tactics. -->
 <div id="bookModal" class="modal hidden">
   <div class="modal-card book">
     <h2>📖 도감 · 기록</h2>
@@ -267,7 +267,7 @@
   </div>
 </div>
 
-<!-- ===== 서른 번째 아침 (승리) ===== -->
+<!-- Thirtieth-dawn victory. -->
 <div id="victoryModal" class="modal hidden">
   <div class="modal-card victory">
     <div class="victory-sun">🌅</div>
@@ -284,27 +284,26 @@
   </div>
 </div>
 
-<!-- ===== 별의 축복 (메타 업그레이드) ===== -->
-<!-- ===== Neon 안내 투어 — 게임 화면만으로 통합을 설명한다 ===== -->
-<aside id="neonTour" class="hidden" aria-live="polite">
-  <div class="tour-head">
-    <span id="tourStep" class="tour-step">1 / 1</span>
-    <b id="tourTitle"></b>
-  </div>
+<!-- Star Blessings: persistent upgrades. -->
+<!-- Interactive Neon checkout inspector. -->
+<aside id="neonTour" class="hidden" aria-label="Checkout inspector">
+  <div class="tour-head"><span id="tourStep" class="tour-step">1 / 5</span><b id="tourTitle"></b></div>
   <p id="tourBody"></p>
-  <pre id="tourLive" class="tour-live hidden"></pre>
-  <div id="tourDiagram" class="tour-diagram hidden"></div>
-  <div class="tour-actions">
-    <button id="tourPrev" title="이전">◀</button>
-    <button id="tourPause">⏸ 멈춤</button>
-    <button id="tourNext" title="다음">▶</button>
-    <button id="tourExit" title="투어 끝내기">✕</button>
-  </div>
+  <p id="tourGame"></p>
+  <p id="tourTask" role="status"></p>
+  <div class="tour-actions"><button id="tourPlay"></button><button id="tourRisk"></button><button id="tourShop"></button></div>
+  <details open class="tour-code-section"><summary id="tourCodeLabel"></summary>
+    <div id="tourCodeTabs" class="tour-actions"></div><code id="tourSource"></code><pre id="tourCode" class="tour-live"></pre>
+  </details>
+  <details open><summary id="tourTraceLabel"></summary><pre id="tourLive" class="tour-live">Waiting for a store request…</pre></details>
+  <p id="tourBoundary"></p>
+  <div class="tour-actions"><button id="tourExport"></button><button id="tourExit"></button></div>
 </aside>
 
 <div id="neonStoreModal" class="modal hidden">
   <div class="modal-card neon-store">
     <h2 id="neonStoreTitle">✦ 별빛 상점</h2>
+    <div id="neonCastlePreview"></div>
     <div id="neonProduct" class="neon-product"></div>
     <p id="neonStoreStatus" class="neon-store-status" role="status" aria-live="polite"></p>
     <button id="neonStoreClose">닫기</button>
@@ -320,7 +319,7 @@
   </div>
 </div>
 
-<!-- ===== 별지기의 옷장 (꾸미기) ===== -->
+<!-- Champion wardrobe. -->
 <div id="closetModal" class="modal hidden">
   <div class="modal-card closet">
     <h2>🪞 별지기의 옷장</h2>
@@ -340,7 +339,7 @@
   </div>
 </div>
 
-<!-- ===== 별지기 별자리 (스킬트리) ===== -->
+<!-- Champion constellation skill tree. -->
 <div id="skillModal" class="modal hidden">
   <div class="modal-card skill">
     <h2 id="skillTitle">✨ 별지기의 별자리</h2>
@@ -351,7 +350,7 @@
   </div>
 </div>
 
-<!-- ===== 출시 공통 설정 ===== -->
+<!-- Shared release settings. -->
 <div id="settingsModal" class="modal hidden">
   <div class="modal-card settings">
     <h2>⚙️ 설정</h2>
@@ -391,7 +390,7 @@
   </div>
 </div>
 
-<!-- 막간 이야기 -->
+<!-- Interlude story. -->
 <div id="storyModal" class="modal hidden">
   <div class="modal-card story">
     <div class="story-icon" id="storyIcon">📜</div>
@@ -402,7 +401,7 @@
   </div>
 </div>
 
-<!-- 전설·신화 탄생 연출 -->
+<!-- Legendary/mythic birth presentation. -->
 <div id="revealModal" class="reveal-overlay hidden">
   <div class="reveal-card" id="revealCard">
     <div class="reveal-rays"></div>
@@ -414,7 +413,7 @@
   </div>
 </div>
 
-<!-- 용사 상세 정보 툴팁 -->
+<!-- Hero detail tooltip. -->
 <div id="tooltip" class="hidden"></div>
 
 <script src="dist/rafshim.js"></script>

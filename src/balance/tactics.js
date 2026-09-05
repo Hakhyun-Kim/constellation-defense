@@ -1,7 +1,4 @@
-/* =====================================================
- * 별자리 전술 밸런스 — 보드가 아니라 방어선에 적용되는 수치만 둔다.
- * 3매치 UI가 바뀌어도 여기와 engine/tactics.js는 그대로 재사용할 수 있다.
- * ===================================================== */
+/* Defense-side tactic numbers remain reusable independently of match-3 presentation; board rules live elsewhere. */
 
 export const TACTICS = {
   flare: {

@@ -1,6 +1,4 @@
-/* 막간 이야기 표현 계층. 런타임은 아래의 현재 BEATS/ENGLISH_BEATS만 사용한다.
- * LEGACY_BEATS는 예전 저장 파일의 seenStory key 문맥을 검토하기 위한 비활성 자료이며
- * 빌드에서는 참조되지 않아 제거된다. 현재 서사는 헌터 소설·게이트·창조 책임을 따른다. */
+/* Story presentation uses current BEATS/ENGLISH_BEATS only. Inactive LEGACY_BEATS provides historical seenStory-key context and is removed from the bundle. Current fiction follows hunters, gates and responsibility for creation. */
 
 const LEGACY_BEATS = {
   prologue: {
@@ -153,9 +151,7 @@ const LEGACY_BEATS = {
   },
 };
 
-/* 현재 캠페인의 막간은 헌터 소설 속으로 들어온 플레이어가 영웅과 몬스터를
- * 함께 움직이는 책임을 알아가는 이야기다. 이전 수학 프로토타입 문구는 런타임에서
- * 사용하지 않는다. locale은 표현만 바꾸며 진행 조건과 beat key는 동일하다. */
+/* The campaign follows a player entering hunter fiction and discovering responsibility for both heroes and monsters. Retired prototype text is not used at runtime. Locale changes presentation only; progression and beat keys are identical. */
 export const BEATS = {
   prologue: {
     icon: '▤', title: '책이 먼저 너를 읽었다',
@@ -235,16 +231,14 @@ export function beat(key, locale = 'ko') {
   return locale === 'en' ? ENGLISH_BEATS[key] || BEATS[key] : BEATS[key];
 }
 
-/* 웨이브를 깼을 때 띄울 이야기가 있으면 그 키를, 없으면 null.
- * 매 웨이브 띄우면 "스킵을 누르는 게임"이 되므로 초반에 몰고 뒤로 갈수록 성글게. */
+/* Return the story key after a cleared wave, or null. Space interludes farther apart later in the run to avoid constant skipping. */
 const WAVE_BEATS = { 1: 'w1', 2: 'w2', 3: 'w3', 4: 'w4', 5: 'w5', 10: 'w10', 15: 'w15', 20: 'w20', 25: 'w25', 30: 'w30' };
 
 export function beatForWave(wave) {
   return WAVE_BEATS[wave] || null;
 }
 
-/* 웨이브 시작 한 줄 — 이번에 뭐가 오는지 알려 주면서 톤도 살린다.
- * 이야기 모달과 달리 매 웨이브 나오므로 짧게. */
+/* Keep wave-start lines short because they recur every wave, combining incoming-threat guidance with character tone. */
 const WAVE_QUIPS = [
   '게이트가 다시 흔들린다. 이번에는 세 길 모두다.',
   '헌터 길드 예보: 오늘도 몬스터, 가끔 중간보스.',
@@ -270,10 +264,7 @@ export function waveQuip(wave, rng = Math.random, locale = 'ko') {
   return lines[Math.floor(rng() * lines.length) % lines.length];
 }
 
-/* ---------- 별지기의 수다 ----------
- * 준비 단계에 루나가 배치된 용사 곁을 어슬렁거리며 나눈다.
- * [루나의 말, 상대의 대답] 짝 — 대답은 상대 용사 머리 위 말풍선으로 뜬다.
- * 톤 규칙은 이야기와 같다: 세는 것에 서툰 세계 + 김빠지는 마지막 한 마디. */
+/* Legacy champion preparation chatter pairs a champion line with a nearby hero's response, shown above that hero. */
 export const CHAMP_CHAT = {
   any: [
     ['하늘의 명령, 다 들려요?', '몬스터도 듣는 것 같습니다.'],
@@ -293,7 +284,7 @@ export const CHAMP_CHAT = {
     paladin: [['후광은 어떻게 켜는 거예요?', '성실하게 살면 켜집니다.']],
     seraph:  [['날개 한 번만 만져 봐도 돼요?', '간지럽습니다.']],
   },
-  /* 배치된 용사가 아무도 없을 때의 혼잣말 */
+  /* Idle lines when no deployed heroes are nearby. */
   solo: [
     '병사가 아무도 없네… 발판이 이렇게 많은데.',
     '길을 세 바퀴 돌았다. 길은 여전히 세 갈래다.',

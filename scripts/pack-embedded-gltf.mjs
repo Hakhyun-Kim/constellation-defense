@@ -1,10 +1,4 @@
-/* =====================================================
- * Quaternius처럼 buffer를 data URI로 내장한 glTF를 웹용 GLB로 포장한다.
- *
- * 원본 glTF/FBX를 공개 저장소에 같이 두지 않고, 실제 런타임에 필요한 단일
- * GLB만 남긴다. 이 변환은 지오메트리·재질·애니메이션을 바꾸지 않는다.
- * 사용법: node scripts/pack-embedded-gltf.mjs input.gltf output.glb
- * ===================================================== */
+/* Pack glTF with embedded data-URI buffers into one runtime GLB, without changing geometry, materials or animation. Keep source glTF/FBX outside the public runtime repository. Usage: node scripts/pack-embedded-gltf.mjs input.gltf output.glb */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 

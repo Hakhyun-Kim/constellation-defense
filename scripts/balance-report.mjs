@@ -1,11 +1,4 @@
-/* =====================================================
- * 전술 선택 보고서
- *
- * 같은 시드·같은 준비/전투 정책에서 전술을 끈 기준선, 무작위 합법 스왑,
- * 위협도 기반 합법 스왑을 비교한다. 봇은 실제 보드와 castTactic()만 쓴다.
- *
- * 사용법: node scripts/balance-report.mjs [runs=12] [difficulty=normal] [profile=보통] [--json]
- * ===================================================== */
+/* Compare no tactics, random legal swaps and threat-based legal swaps with identical seeds and preparation policies. All policies use the real board and castTactic(). Usage: node scripts/balance-report.mjs [runs=12] [difficulty=normal] [profile] [--json] */
 import * as D from '../src/data.js';
 import { TACTIC_POLICIES, playRun } from './balance-bot.mjs';
 

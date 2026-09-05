@@ -1,6 +1,4 @@
-/* =====================================================
- * 성 — 방어 대상 / 성 업그레이드 / 마법 포탑
- * ===================================================== */
+/* Castle: defense target, upgrades and magic turret. */
 
 export const CASTLE_HP = 100;
 export const CASTLE_POS = { x: 350, y: 58 };

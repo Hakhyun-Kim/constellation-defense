@@ -1,9 +1,4 @@
-/* =====================================================
- * 방어선 전술 해소 — 3매치 구현을 모르는 순수 디펜스 어댑터
- *
- * 입력 계약: { route, kind, size }. 어떤 퍼즐·카드·단축키가 이 명령을 만들었는지는
- * 이 계층의 관심사가 아니다. 따라서 3매치 보드를 교체해도 전투 규칙은 유지된다.
- * ===================================================== */
+/* Pure defense-side tactic adapter accepts { route, kind, size }. It does not know whether a board, card or shortcut produced the command, allowing input systems to change independently. */
 import * as D from '../data.js';
 import { damageEnemy, applySlow } from './effects.js';
 import { squadTacticMods } from './squad.js';

@@ -1,19 +1,11 @@
-/* =====================================================
- * 지형과 성 — Renderer3D에 프로토타입 믹스인으로 붙는다.
- * (this = Renderer3D 인스턴스. 만든 메시 참조를 this에 걸어 두면
- *  sync/frame이 강화 단계·체력에 따라 켜고 끄고 색칠한다)
- * ===================================================== */
+/* Terrain/castle construction mixin for Renderer3D. Store mesh references on the renderer so sync/frame can update visibility and color from upgrades and health. */
 import * as THREE from 'three';
 import * as D from '../data.js';
 import { S, wx, wz, lam, grassTexture, roadTexture, stoneTexture } from './common.js';
 import { SHORE_Z } from './nature.js';
 
 export const worldMethods = {
-  /* 잔디 → 모래 경계선.
-   * 평면 모서리를 그대로 쓰면 성 뒤에 자로 그은 직선이 깔려 단번에 가짜로 보인다.
-   * 바다의 물가 선과 같은 수법으로 푼다: 월드 x 로 노이즈를 뽑아 경계를 흔들고,
-   * 선 너머 픽셀은 discard 해서 밑에 깔린 모래(y=-0.34)가 드러나게 한다.
-   * discard 는 블렌딩이 아니라서 투명 정렬 문제도, 그림자 문제도 안 생긴다. */
+  /* Shape the grass/sand boundary with world-x noise and fragment discard, revealing sand underneath. This avoids a ruler-straight shore without transparent sorting or shadow artifacts. */
   _grassShoreEdge(mat) {
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
@@ -31,29 +23,22 @@ float shoreNoise(vec2 p) {
              mix(shoreHash(i + vec2(0, 1)), shoreHash(i + vec2(1, 1)), f.x), f.y);
 }`)
         .replace('#include <map_fragment>', /* glsl */`
-/* 큰 굽이 + 잔 톱니 두 옥타브. 바다 쪽(-)으로는 혀처럼 길게 뻗고 뭍 쪽(+)은
- * 짧게만 문다 — 뭍 쪽으로 너무 파이면 물가 잔디잎(z ≥ SHORE_Z+0.8)이
- * 모래 위에 뜬 채 남는다. 진폭: 바다 쪽 -1.35 / 뭍 쪽 +0.74 */
+/* Combine broad bends and two fine octaves. Extend farther toward sea (-1.35) than land (+0.74) so shoreline grass does not remain floating over exposed sand. */
 float shoreW = (shoreNoise(vec2(vShoreW.x * 0.33, 3.0)) - 0.5) * 2.0
              + (shoreNoise(vec2(vShoreW.x * 1.31, 17.0)) - 0.5) * 0.7;
 shoreW *= shoreW > 0.0 ? 0.55 : 1.0;
 float shoreEdge = ${(SHORE_Z - 0.15).toFixed(2)} + shoreW;
 if (vShoreW.y < shoreEdge) discard;
 #include <map_fragment>
-/* 잔디(y=-0.08)와 모래(y=-0.34) 사이 단차에는 옆면이 없다 — 끝단을 살짝
- * 어둡게 눌러 얕은 턱의 그림자처럼 보이게 한다 */
+/* Darken the unsupported edge between grass y=-0.08 and sand y=-0.34 to suggest a shallow step shadow. */
 diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEdge));`);
     };
   },
 
-  /* ---------- 지형: 잔디 + 세 갈래 길 + 발판 ---------- */
+  /* Terrain: grass, three paths and placement pads. */
   _buildTerrain() {
-    /* 땅은 물가(SHORE_Z)에서 끝난다 — 그 너머는 바다(nature.js).
-     * 바다를 안 만드는 모드에서는 땅이 그대로 화면 끝까지 이어져야 한다.
-     * 안 그러면 성 뒤에 배경색이 뚫린 구멍이 생긴다. */
-    /* 장식 모드에서는 평면을 물가 너머까지 깔아 둔다 — 실제 끝단은 셰이더가
-     * 노이즈 곡선으로 잘라 내므로(_grassShoreEdge), 기하는 곡선이 가장 깊이
-     * 파고드는 곳(-1.35)보다 더 바다 쪽까지 나가 있어야 한다. */
+    /* End ground at SHORE_Z when sea is enabled; otherwise extend it to the viewport edge to avoid a hole behind the castle. */
+    /* Extend geometry beyond the deepest shoreline-noise cut so the shader can shape the entire boundary. */
     const farZ = this.decor ? SHORE_Z - 2.6 : -20;
     const landDepth = 20 - farZ;
     const groundMat = new THREE.MeshLambertMaterial({ map: grassTexture(), color: 0xd2e3c2 });
@@ -66,7 +51,7 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
     this.ground = ground;
     this.scene.add(ground);
 
-    /* 길 (모든 루트, 공유 구간은 겹쳐 그려짐) */
+    /* Draw every route; shared segments overlap. */
     const roadW = (D.ROAD_HALF * 2 + 10) * S;
     const edgeMat = lam(0x8d6a42);
     const roadMat = new THREE.MeshLambertMaterial({ map: roadTexture(), color: 0xe8d7bd });
@@ -102,7 +87,7 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
         corner.position.set(wx(px), -0.015, wz(py));
         this.scene.add(corner);
       }
-      /* 발자국 점 */
+      /* Footprint dots. */
       const dotMat = lam(0xb08e58);
       for (let s = 30; s < D.ROUTE_LENS[r]; s += 46) {
         const p = D.routePoint(r, s);
@@ -113,7 +98,7 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
       }
     }
 
-    /* 스폰 포탈 (아래쪽, 카메라 가까이) */
+    /* Spawn portal near the camera at the bottom. */
     this.portal = new THREE.Mesh(
       new THREE.TorusGeometry(0.85, 0.1, 10, 26),
       new THREE.MeshBasicMaterial({ color: 0xc478f0 })
@@ -127,7 +112,7 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
     portalGlow.position.copy(this.portal.position);
     this.scene.add(portalGlow);
 
-    /* 배치 발판 */
+    /* Placement pads. */
     this.padHighlights = [];
     for (let i = 0; i < D.PADS.length; i++) {
       const pad = D.PADS[i];
@@ -184,7 +169,7 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
     this.rangeGroup.visible = false;
     this.scene.add(this.rangeGroup);
 
-    /* 장식 나무/바위 (좌우 바깥) — 시드 고정이라 매 실행 배치가 같다 */
+    /* Seeded outer trees and rocks repeat the same layout each launch. */
     const rnd = (() => { let s = 7; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; })();
     const treeTrunk = lam(0x7a5230);
     const treeLeaf = lam(0x3f8f3f);
@@ -212,7 +197,7 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
     }
   },
 
-  /* ---------- 성 (맵 위쪽, 카메라에서 먼 곳) ---------- */
+  /* Castle at the distant top of the map. */
   _buildCastle() {
     const g = new THREE.Group();
     this.castleStoneMats = [];
@@ -237,7 +222,7 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
       c.position.set(-5.8 + k * 1.45, 2.0, -4.35);
       g.add(c);
     }
-    /* 성문 — 가운데 길과 정렬 */
+    /* Align the gate with the center path. */
     const gate = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 0.3), lam(0x4a3826));
     gate.position.set(0, 0.8, -4.05);
     g.add(gate);
@@ -304,11 +289,9 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
       g.add(band);
     }
 
-    /* ---- 성 강화가 눈에 보이게 ----
-     * 띠 몇 줄로는 "내 성이 자랐다"가 안 느껴진다. 부품을 미리 만들어 두고
-     * 레벨에 따라 visible만 켠다(런타임 지오메트리 생성 금지 규칙 유지). */
+    /* Prebuild visible upgrade parts and toggle visibility by level, avoiding runtime geometry creation and making castle growth readable. */
 
-    /* 강화 2: 흉벽 톱니가 늘어난다 */
+    /* Fortification 2 adds battlement teeth. */
     this.extraMerlons = [];
     for (const dx of [-6.9, 6.9, -6.2, 6.2]) {
       const c = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.34, 0.72), stone(0xb2b8cc));
@@ -317,7 +300,7 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
       this.extraMerlons.push(c);
       g.add(c);
     }
-    /* 강화 3: 성벽 앞 방어 말뚝 */
+    /* Fortification 3 adds defensive stakes. */
     this.spikes = [];
     for (let k = 0; k < 11; k++) {
       const sp = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.62, 5), lam(0x6b4c2a));
@@ -327,16 +310,16 @@ diffuseColor.rgb *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.8, vShoreW.y - shoreEd
       this.spikes.push(sp);
       g.add(sp);
     }
-    /* 강화 4: 성문이 강철문으로 */
+    /* Fortification 4 adds a steel gate. */
     this.steelGate = new THREE.Mesh(new THREE.BoxGeometry(1.62, 1.22, 0.34), stone(0x6a7590));
     this.steelGate.position.set(0, 0.82, -4.02);
     this.steelGate.visible = false;
     g.add(this.steelGate);
     this.gate = gate;
-    /* 강화 5: 성벽이 밝은 대리석으로 (재질 색만 바꾼다) */
+    /* Fortification 5 changes wall material color to bright marble. */
     this.wallBaseColor = this.wall.material.color.clone();
 
-    /* 마법 포탑 — 크리스털만 뜨던 것을 실제 탑으로 */
+    /* Give magic crystals actual supporting turret pillars. */
     this.towerPillars = [];
     for (let k = 0; k < 3; k++) {
       const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 1.5, 7), stone(0x8f97b0));

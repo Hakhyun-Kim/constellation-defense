@@ -1,4 +1,4 @@
-/* ?rafshim: 숨겨진 탭/자동화 환경에서 rAF가 스로틀될 때 타이머로 구동 (테스트용) */
+/* ?rafshim uses timers when requestAnimationFrame is throttled in hidden tabs or automation; testing only. */
 (() => {
   const query = new URLSearchParams(location.search);
   if (!query.has('rafshim') && document.visibilityState !== 'hidden') return;

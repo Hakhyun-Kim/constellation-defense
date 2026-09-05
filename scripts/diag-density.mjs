@@ -1,4 +1,4 @@
-/* 스폰 밀집도 진단: 웨이브별 동시 등장 몬스터 수(최대/평균) */
+/* Spawn density diagnostic: maximum and average simultaneous enemies per wave. */
 import * as D from '../src/data.js';
 import * as E from '../src/engine.js';
 
@@ -11,7 +11,7 @@ function mulberry32(seed) {
   };
 }
 
-/* 그 웨이브를 "보통 수준으로 방어했을 때" 화면에 몇 마리가 함께 보이나 */
+/* Count visible enemies under a typical defense policy. */
 function measure(wave, heroSpec) {
   const state = E.createGame({ rng: mulberry32(wave * 7919 + 3), difficulty: 'normal' });
   state.wave = wave;
@@ -40,7 +40,7 @@ function measure(wave, heroSpec) {
   };
 }
 
-/* 중반 기준 방어 구성 (희귀~영웅 6명) */
+/* Midgame defense: six rare-to-heroic units. */
 const mid = [[2, 'archer', 1], [3, 'mage', 1], [4, 'sentinel', 1], [5, 'frostmage', 1], [0, 'knight', 1], [1, 'guard', 1]];
 console.log('\n=== 스폰 밀집도 (중반 방어 구성 기준) ===');
 console.table([1, 3, 5, 8, 12].map(w => measure(w, mid)));

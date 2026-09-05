@@ -1,9 +1,4 @@
-/* SKU 허용 목록. 가격은 서버만 소유한다 — 클라이언트는 SKU 이름만 보낸다.
- *
- * Neon은 가격을 "통화 기본 단위의 100배" 정수로 받는다. 원화는 보조 단위가 없어서
- * ₩4,900이 490000으로 나가는데, 이게 한국 개발자 눈에는 100배 오류처럼 보인다.
- * 그래서 배수는 이 표 한 곳에만 두고, 표시 문자열은 절대 손으로 적지 않는다
- * (예전에 '₩4,900'을 상수로 박아 뒀다가 가격과 표시가 따로 노는 버그가 있었다). */
+/* Server-owned SKU allowlist and prices. Neon expects integers at 100 times the currency base unit: KRW 4,900 is 490000. Keep numeric prices here and derive display strings; hardcoded display prices previously drifted from checkout amounts. */
 export const MARKETS = Object.freeze({
   KR: Object.freeze({ currency: 'KRW', displayLocale: 'ko-KR' }),
   US: Object.freeze({ currency: 'USD', displayLocale: 'en-US' }),
@@ -23,8 +18,7 @@ export const PRODUCTS = Object.freeze({
   CELESTIAL_BANNER: Object.freeze({
     sku: 'CELESTIAL_BANNER',
     entitlement: 'cosmetic.celestial_banner',
-    /* 영구 아이템은 한 번만 살 수 있다. 소모품을 추가하면 이 값이 false 가 되고
-     * 재구매가 열린다 — 그때 필요한 건 '보유 확인'이 아니라 수량 회계다. */
+    /* Permanent items cannot be repurchased while owned. Consumables would need quantity accounting rather than a boolean ownership check. */
     permanent: true,
     names: Object.freeze({ ko: '별빛 개척자 깃발', en: 'Celestial Pioneer Banner' }),
     subtitles: Object.freeze({
@@ -33,10 +27,21 @@ export const PRODUCTS = Object.freeze({
     }),
     prices: Object.freeze({ KRW: 490000, USD: 499 }),
   }),
+  AURORA_SPIRES: Object.freeze({
+    sku: 'AURORA_SPIRES', entitlement: 'cosmetic.aurora_spires', permanent: true,
+    names: Object.freeze({ ko: '오로라 수정 첨탑', en: 'Aurora Crystal Spires' }),
+    subtitles: Object.freeze({ ko: '성 위에 빛나는 푸른 수정 장식', en: 'Tall turquoise crystals crown both watchtowers' }),
+    prices: Object.freeze({ KRW: 390000, USD: 399 }),
+  }),
+  GOLDEN_SENTINELS: Object.freeze({
+    sku: 'GOLDEN_SENTINELS', entitlement: 'cosmetic.golden_sentinels', permanent: true,
+    names: Object.freeze({ ko: '황금 성문 수호상', en: 'Golden Gate Sentinels' }),
+    subtitles: Object.freeze({ ko: '성문 양옆을 장식하는 황금 수호상', en: 'Two golden guardians flank the castle gate' }),
+    prices: Object.freeze({ KRW: 590000, USD: 599 }),
+  }),
 });
 
-/* Neon 정수(기본 단위 × 100)를 사람이 읽는 문자열로. KRW는 소수점 0자리,
- * USD는 2자리 — Intl이 통화별 자릿수를 알고 있으므로 직접 계산하지 않는다. */
+/* Convert Neon base-unit-times-100 integers with Intl: KRW uses zero fraction digits and USD uses two. */
 export function formatPrice(price, currency) {
   const market = Object.values(MARKETS).find((entry) => entry.currency === currency);
   return new Intl.NumberFormat(market?.displayLocale || 'en-US', { style: 'currency', currency })
@@ -50,6 +55,7 @@ export function publicCatalog(locale, country) {
     .filter((product) => product.prices[currency])
     .map((product) => ({
       sku: product.sku,
+      entitlement: product.entitlement,
       name: product.names[lang],
       subtitle: product.subtitles[lang],
       currency,
@@ -58,9 +64,7 @@ export function publicCatalog(locale, country) {
     }));
 }
 
-/* Neon /checkout 의 items[] 한 항목. 문서에서 확인한 필드만 보낸다 —
- * bundleContents/taxCode are documented optional/defaulted fields; this single
- * non-bundle cosmetic uses the smaller payload verified in the sandbox. */
+/* One Neon /checkout items entry. bundleContents and taxCode have documented defaults; this non-bundle cosmetic uses the smaller payload verified in the sandbox. */
 export function checkoutItem(sku, { locale, country }) {
   const product = Object.hasOwn(PRODUCTS, sku) ? PRODUCTS[sku] : null;
   if (!product) return null;

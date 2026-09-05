@@ -3,15 +3,11 @@ import { dirname } from 'node:path';
 
 const EMPTY = () => ({ checkouts: {}, players: {}, processedEvents: {}, transfers: {}, saves: {}, refunds: {} });
 
-/* 30일이 지난 미결제 의도와 오래된 멱등성 기록은 지운다. 원장이 무한히 커지면
- * 파일 저장소가 먼저 무너지기 때문. 멱등성 창은 Neon의 재시도 기간(36시간)보다
- * 훨씬 길게 잡아야 안전하다. */
+/* Prune unpaid intents and old deduplication records after 30 days to bound file growth. Retention must comfortably exceed Neon's 36-hour retry window. */
 const PENDING_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-/* 재시도해도 절대 성공하지 않는 거절. Neon은 비-2xx를 36시간 재시도하므로
- * 이런 경우는 200으로 받아 삼키고 로그만 남겨야 한다. 반대로 일시적 실패
- * (디스크·DB)는 던져서 5xx가 나가야 재시도를 받는다. */
+/* Permanent rejections are acknowledged with 200 and logged because retries cannot fix them. Disk/database failures propagate as 5xx so Neon retries. */
 export class PermanentRejection extends Error {
   constructor(reason) {
     super(reason);
@@ -80,15 +76,13 @@ export class JsonRepository {
     });
   }
 
-  /* 지급은 이 한 곳에서만 일어난다 — 실결제 웹훅과 mock 경로가 같은 문을 쓴다. */
+  /* Real webhooks and mock confirmation share this sole fulfillment entry point. */
   async fulfill(event) {
     return this.mutate((data) => {
       if (data.processedEvents[event.eventId]) return { duplicate: true };
       const pending = data.checkouts[event.externalReferenceId];
       if (!pending) throw new PermanentRejection('unknown checkout reference');
-      /* 같은 이벤트의 재전송은 위에서 걸린다. 여기까지 온 것은 "다른 이벤트가
-       * 이미 처리된 결제 의도를 또 가리키는" 경우다. refunded 도 막아야 하는데,
-       * 환불 웹훅이 지급 웹훅보다 먼저 도착하면 뒤늦은 지급이 회수를 되돌린다. */
+      /* Event replay was handled above. A new event referencing a processed or refunded intent must also be rejected so late delivery cannot reverse a refund. */
       if (pending.status !== 'pending') throw new PermanentRejection(`checkout is already ${pending.status}`);
       if (pending.accountId !== event.accountId) throw new PermanentRejection('account does not match checkout');
       if (pending.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
@@ -101,9 +95,7 @@ export class JsonRepository {
         data.processedEvents[event.eventId] = { purchaseId: event.purchaseId, at: refund.at };
         return { ignored: 'purchase was refunded before fulfillment' };
       }
-      /* 결제 통화가 우리가 만든 그대로면 금액도 그대로여야 한다. 플레이어가 결제
-       * 페이지에서 국가를 바꾼 경우(initialCurrency ≠ currency)는 Neon이 환산한
-       * 값이므로 금액 비교 대상이 아니다 — 대신 기록만 남긴다. */
+      /* Compare prices only when settlement currency matches the original checkout currency. Neon-converted amounts are recorded rather than compared directly. */
       if (event.currency && event.currency === pending.currency && event.price != null && event.price !== pending.price) {
         throw new PermanentRejection('amount does not match checkout');
       }
@@ -130,17 +122,14 @@ export class JsonRepository {
     return (await this.load()).checkouts[reference] || null;
   }
 
-  /* 환불 이벤트는 externalReferenceId 가 null 로 오고(문서의 예시가 그렇다),
-   * 분쟁 이벤트는 purchaseId 하나만 싣는다. 그래서 결제 의도를 되찾는 길이
-   * 두 개여야 한다. */
+  /* Refund references can be null, so support both externalReferenceId and purchaseId lookup. */
   findCheckout(data, { externalReferenceId, purchaseId }) {
     if (externalReferenceId && data.checkouts[externalReferenceId]) return data.checkouts[externalReferenceId];
     if (!purchaseId) return null;
     return Object.values(data.checkouts).find((record) => record.purchaseId === purchaseId) || null;
   }
 
-  /* 환불은 지급의 거울상이다 — 같은 멱등성 원장, 같은 의도 대조, 반대 방향.
-   * 구매 기록은 지우지 않고 표시만 한다. 감사 흔적이 사라지면 안 된다. */
+  /* Refunds share intent validation and deduplication with fulfillment. Mark purchase history instead of deleting the audit trail. */
   async revoke(event) {
     return this.mutate((data) => {
       if (data.processedEvents[event.eventId]) return { duplicate: true };
@@ -166,8 +155,7 @@ export class JsonRepository {
         const purchase = player?.purchases?.find((entry) => entry.purchaseId === checkout.purchaseId);
         if (purchase) { purchase.refundedAt = at; purchase.refundId = event.refundId || null; }
       }
-      /* 아직 pending 이어도 refunded 로 넘긴다. 그래야 뒤늦게 도착한 지급
-       * 웹훅이 fulfill 에서 거절되고, 환불된 결제가 되살아나지 않는다. */
+      /* Mark pending intents refunded too, preventing a later fulfillment from resurrecting ownership. */
       checkout.status = 'refunded';
       checkout.refundedAt = at;
       data.processedEvents[event.eventId] = { refundId: event.refundId || null, at };
@@ -187,12 +175,10 @@ export class JsonRepository {
     return (await this.load()).players[accountId]?.entitlements || {};
   }
 
-  /* --- 계정 인계 ---
-   * 코드는 해시로만 저장한다. 원문을 들고 있으면 원장 파일 하나가 새는 순간
-   * 계정 전부가 넘어간다. 한 번 쓰면 사라지고, 기한이 지나도 사라진다. */
+  /* Transfer codes are stored only as hashes. Plaintext ledger exposure would otherwise disclose account bearer credentials. Codes expire and are single-use. */
   async issueTransferCode({ accountId, hash, expiresAt }) {
     return this.mutate((data) => {
-      /* 계정당 하나만 살아 있게 한다 — 여러 장이 떠돌면 회수할 방법이 없다. */
+      /* Invalidate previous codes for the account so multiple transferable credentials do not accumulate. */
       for (const [key, record] of Object.entries(data.transfers)) {
         if (record.accountId === accountId) delete data.transfers[key];
       }
@@ -211,10 +197,7 @@ export class JsonRepository {
     });
   }
 
-  /* --- 계정 저장본 ---
-   * version 은 단조 증가한다. 클라이언트가 자기가 읽은 버전을 함께 보내고,
-   * 그 사이 다른 기기가 썼으면 덮어쓰지 않고 충돌을 돌려준다. 기기 두 대로
-   * 같은 계정을 쓰는 순간 마지막 쓰기가 이기는 방식은 진행도를 조용히 지운다. */
+  /* Save versions increase monotonically. When clients send the version they read, reject stale writes rather than losing progress from another device. */
   async readSave(accountId) {
     return (await this.load()).saves[accountId] || null;
   }
@@ -232,9 +215,7 @@ export class JsonRepository {
     });
   }
 
-  /* 준비 상태 점검. 로컬 파일이라 부팅 이후에는 사실상 항상 참이다 —
-   * 이 백엔드에서 의미 있는 것은 "원장을 열 수 있었다"까지다. 진짜 연결
-   * 상태를 묻는 것은 Firestore 쪽 구현이다. */
+  /* JSON readiness checks whether the local ledger can be opened; Firestore additionally verifies the remote connection. */
   async healthy() {
     await this.load();
     return true;

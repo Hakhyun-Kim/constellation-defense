@@ -1,11 +1,8 @@
-/* =====================================================
- * 3D 공용 유틸 — 좌표 변환 · 재질 · 절차 생성 텍스처
- * 현재 공용 텍스처는 캔버스로 생성한다. 외부 에셋 로더와 출처 관리는 별도 계층에 둔다.
- * ===================================================== */
+/* Shared 3D coordinate, material and procedural-texture utilities. Canvas-generated textures stay separate from external loading and provenance. */
 import * as THREE from 'three';
 import * as D from '../data.js';
 
-/* 논리 좌표(700×430) → 월드 좌표 */
+/* Convert logical coordinates to world coordinates. */
 export const S = 1 / 36;
 export const wx = (x) => (x - D.FIELD_W / 2) * S;
 export const wz = (y) => (y - D.FIELD_H / 2) * S;
@@ -13,7 +10,7 @@ export const wz = (y) => (y - D.FIELD_H / 2) * S;
 export function lam(color) { return new THREE.MeshLambertMaterial({ color }); }
 export function glow(color) { return new THREE.MeshBasicMaterial({ color }); }
 
-/* ---------- 텍스처 유틸 ---------- */
+/* Texture utilities. */
 const emojiCache = new Map();
 export function emojiTexture(emoji) {
   if (emojiCache.has(emoji)) return emojiCache.get(emoji);
@@ -45,7 +42,7 @@ export function blobTexture() {
   return blobTex;
 }
 
-/* 부드러운 발광 스프라이트 (파티클용) */
+/* Soft glowing particle sprite. */
 let glowTex = null;
 export function glowTexture() {
   if (glowTex) return glowTex;
@@ -62,7 +59,7 @@ export function glowTexture() {
   return glowTex;
 }
 
-/* 반복 타일링 가능한 절차 생성 텍스처 (키별 캐시) */
+/* Tileable procedural textures cached by key. */
 const texCache = new Map();
 function cachedTex(key, draw, repeat = 1) {
   if (texCache.has(key)) return texCache.get(key);
@@ -78,7 +75,7 @@ function cachedTex(key, draw, repeat = 1) {
   return t;
 }
 
-/* 값 노이즈 (시드 고정) */
+/* Fixed-seed value noise. */
 function noiseGrid(n, seed = 1) {
   let s = seed;
   const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
@@ -91,20 +88,20 @@ function sampleNoise(g, n, x, y) {
   return g[Math.floor(yi) * n + Math.floor(xi)];
 }
 
-/* 잔디: 색 얼룩 + 풀잎 스트로크 */
+/* Grass color variation and blade strokes. */
 export function grassTexture() {
   return cachedTex('grass', (g, S) => {
     const N = 32, nz = noiseGrid(N, 7);
     for (let y = 0; y < S; y++) {
       for (let x = 0; x < S; x++) {
         const v = sampleNoise(nz, N, x / 8, y / 8);
-        const h = 96 + v * 16;                    // 색상 각도
+        const h = 96 + v * 16;                    // Hue angle.
         const l = 38 + v * 12;
         g.fillStyle = `hsl(${h}, 45%, ${l}%)`;
         g.fillRect(x, y, 1, 1);
       }
     }
-    /* 풀잎 */
+    /* Grass blades. */
     for (let i = 0; i < 900; i++) {
       const x = Math.random() * S, y = Math.random() * S;
       const len = 3 + Math.random() * 5;
@@ -118,7 +115,7 @@ export function grassTexture() {
   }, 14);
 }
 
-/* 흙길: 자갈 + 발자국 얼룩 */
+/* Dirt path pebbles and worn footprints. */
 export function roadTexture() {
   return cachedTex('road', (g, S) => {
     const N = 24, nz = noiseGrid(N, 21);
@@ -129,12 +126,12 @@ export function roadTexture() {
         g.fillRect(x, y, 1, 1);
       }
     }
-    for (let i = 0; i < 260; i++) {          // 자갈
+    for (let i = 0; i < 260; i++) {          // Pebbles.
       const x = Math.random() * S, y = Math.random() * S, r = 1 + Math.random() * 2.6;
       g.fillStyle = `hsla(${30 + Math.random() * 14}, 22%, ${Math.random() < 0.5 ? 42 : 72}%, 0.75)`;
       g.beginPath(); g.ellipse(x, y, r, r * 0.75, Math.random() * 3, 0, 7); g.fill();
     }
-    for (let i = 0; i < 26; i++) {           // 밟힌 자국
+    for (let i = 0; i < 26; i++) {           // Worn footprints.
       const x = Math.random() * S, y = Math.random() * S;
       g.fillStyle = 'rgba(90,66,38,0.16)';
       g.beginPath(); g.ellipse(x, y, 8 + Math.random() * 12, 5 + Math.random() * 8, Math.random() * 3, 0, 7); g.fill();
@@ -142,7 +139,7 @@ export function roadTexture() {
   }, 3);
 }
 
-/* 성벽 돌: 벽돌 + 이음새 + 얼룩 */
+/* Castle masonry: bricks, mortar and stains. */
 export function stoneTexture() {
   return cachedTex('stone', (g, S) => {
     g.fillStyle = '#9aa1b5';
@@ -155,14 +152,14 @@ export function stoneTexture() {
         const l = 58 + Math.random() * 16;
         g.fillStyle = `hsl(${216 + Math.random() * 12}, 12%, ${l}%)`;
         g.fillRect(x + 1.5, y + 1.5, bw - 3, bh - 3);
-        /* 상단 하이라이트 · 하단 그림자 */
+        /* Top highlights and lower shadows. */
         g.fillStyle = 'rgba(255,255,255,0.13)';
         g.fillRect(x + 1.5, y + 1.5, bw - 3, 2.5);
         g.fillStyle = 'rgba(0,0,0,0.16)';
         g.fillRect(x + 1.5, y + bh - 4.5, bw - 3, 3);
       }
     }
-    for (let i = 0; i < 200; i++) {          // 얼룩/이끼
+    for (let i = 0; i < 200; i++) {          // Stains and moss.
       const x = Math.random() * S, y = Math.random() * S;
       g.fillStyle = `rgba(${70 + Math.random() * 60},${80 + Math.random() * 50},${70 + Math.random() * 40},0.09)`;
       g.beginPath(); g.arc(x, y, 2 + Math.random() * 7, 0, 7); g.fill();

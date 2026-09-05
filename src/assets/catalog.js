@@ -1,10 +1,4 @@
-/* =====================================================
- * 런타임 에셋 manifest의 순수 계약
- *
- * Node 검사와 브라우저 로더가 같은 스키마를 사용한다. 이 파일은 fetch, DOM,
- * Three.js를 모르므로 외부 에셋이 늘어나도 출처와 선택 규칙을 결정적으로
- * 검증할 수 있다.
- * ===================================================== */
+/* Pure runtime manifest contract shared by Node validation and browser loading, without fetch, DOM or Three.js dependencies. Validate provenance and selection deterministically. */
 
 export const ASSET_MANIFEST_VERSION = 1;
 export const ASSET_TYPES = Object.freeze(['model', 'audio', 'texture', 'font', 'image']);

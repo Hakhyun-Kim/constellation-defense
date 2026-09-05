@@ -1,10 +1,7 @@
-/* =====================================================
- * 별지기(메인 캐릭터) — 능력치 / 성장 / 스킬
- * 전투 행동(castStar·castUlt·updateChampion)은 combat.js에 있다.
- * ===================================================== */
+/* Champion stats, progression and skills. Combat actions live in combat.js. */
 import * as D from '../data.js';
 
-/* 레벨 + 스킬 + 별의 축복을 합친 실효 능력치. 값싼 곱셈 몇 개라 매 틱 불러도 된다 */
+/* Combine level, skill and blessing modifiers; the calculation is cheap enough per tick. */
 export function champStats(state) {
   const c = state.champ;
   const sk = c.skills;
@@ -40,7 +37,7 @@ export function gainChampXp(state, amount, events = []) {
     c.level++;
     c.sp++;
     const grown = champStats(state).maxHp;
-    /* 레벨 업은 오른 만큼 + 최대치의 1/4을 회복한다 — 전투 중의 레벨 업이 "한숨 돌리기"가 되게 */
+    /* Level-ups heal the max-HP increase plus one quarter of maximum health to provide mid-combat recovery. */
     if (!c.ko) c.hp = Math.min(grown, c.hp + (grown - c.maxHp) + Math.round(grown * 0.25));
     c.maxHp = grown;
     events.push({ type: 'champLevel', level: c.level, x: c.x, y: c.y });
@@ -55,7 +52,7 @@ export function chargeUlt(state, amount, events) {
   if (c.ult >= 1) events.push({ type: 'ultReady' });
 }
 
-/* 같은 별자리에 이미 쓴 포인트 수 — 스킬 선행 조건의 재료 */
+/* Count points already spent in the same constellation for prerequisites. */
 export const branchSpent = (c, branch) =>
   Object.entries(c.skills).reduce((s, [k, v]) =>
     s + (D.CHAMP_SKILLS[k] && D.CHAMP_SKILLS[k].branch === branch ? v : 0), 0);
@@ -71,7 +68,7 @@ export function takeSkill(state, key) {
   if (spent < SK.need) return { ok: false, reason: 'need', need: SK.need, spent };
   c.sp--;
   c.skills[key] = cur + 1;
-  /* 체력 스킬은 그 자리에서 오른 만큼 회복 — 찍었는데 빈 체력만 늘면 서운하다 */
+  /* Health skills immediately heal their max-HP increase. */
   const S = champStats(state);
   if (S.maxHp > c.maxHp && !c.ko) c.hp += S.maxHp - c.maxHp;
   c.maxHp = S.maxHp;

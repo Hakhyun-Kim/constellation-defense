@@ -1,13 +1,4 @@
-/* Neon 상점 통합 검증.
- *
- * 실제 HTTP 서버를 임시 포트에 띄우고 클라이언트가 하는 것과 같은 요청을 보낸다.
- * 검증 대상은 "정상 구매"가 아니라 정상이 아닌 경우들이다 — 서명 위조, 재전송,
- * 가격 위조, 환경 불일치, 남의 계정, 그리고 Neon이 36시간 재시도하게 만드는
- * 응답 코드.
- *
- * 같은 검증을 저장소 두 구현에 모두 돌린다. JSON 은 항상, Firestore 는
- * FIRESTORE_EMULATOR_HOST 가 있을 때만 — "인터페이스가 같다"는 주장은 같은
- * 단언을 통과해야 성립하기 때문이다. */
+/* Neon integration tests use real HTTP on an ephemeral port. Cover forged signatures, replay, client prices, environment mismatch, other accounts and retry response codes. Run identical assertions against JSON and, when FIRESTORE_EMULATOR_HOST is configured, Firestore. */
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -62,8 +53,7 @@ async function runSuite(repository, label) {
     body: JSON.stringify({ sku: 'CELESTIAL_BANNER', locale: 'ko', ...body }),
   });
 
-  /* 모의 리다이렉트에 우리가 만든 참조가 실려 있다 — 실제 클라이언트도 같은
-   * 값을 이 경로로 되돌려 받는다. 원장을 직접 들여다보지 않아도 되게 한다. */
+  /* The mock redirect carries the checkout reference, as the client sees it, without inspecting the ledger directly. */
   const referenceOf = (redirectUrl) => new URL(redirectUrl).searchParams.get('reference');
 
   const ownsBanner = async (cookie) => {
@@ -75,7 +65,33 @@ async function runSuite(repository, label) {
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
     origin = `http://127.0.0.1:${server.address().port}`;
 
-    // --- 카탈로그: 가격 표시는 파생되고, 국가는 언어가 아니라 신호에서 온다 ---
+    // Three independent cosmetics: pending does not grant; refund preserves siblings.
+    const multiResponse = await call('/api/store/catalog?locale=en');
+    const multiCookie = sessionCookie(multiResponse);
+    const multi = await multiResponse.json();
+    assert.equal(multi.items.length, 3);
+    const mockPost = (path, reference) => call(path, { method: 'POST', headers: { cookie: multiCookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ reference }) });
+    const inventory = () => call('/api/store/entitlements', { headers: { cookie: multiCookie } }).then(r => r.json()).then(data => data.entitlements);
+    const refs = [];
+    for (const item of multi.items) {
+      const response = await openCheckout(multiCookie, { sku: item.sku });
+      assert.equal(response.status, 201);
+      const ref = referenceOf((await response.json()).redirectUrl); refs.push(ref);
+      assert.equal((await inventory())[item.entitlement], undefined);
+      assert.equal((await mockPost('/api/store/mock-complete', ref)).status, 200);
+    }
+    assert.equal(Object.keys(await inventory()).length, 3);
+    assert.equal((await mockPost('/api/store/mock-refund', refs[1])).status, 200);
+    const remaining = await inventory();
+    assert.ok(remaining[multi.items[0].entitlement]);
+    assert.equal(remaining[multi.items[1].entitlement], undefined);
+    assert.ok(remaining[multi.items[2].entitlement]);
+    const rebuy = await openCheckout(multiCookie, { sku: multi.items[1].sku });
+    assert.equal(rebuy.status, 201);
+    await mockPost('/api/store/mock-complete', referenceOf((await rebuy.json()).redirectUrl));
+    assert.equal(Object.keys(await inventory()).length, 3);
+
+    // Catalog: derive price display; infer country from billing signals, not game language.
     const catalogResponse = await call('/api/store/catalog?locale=ko');
     assert.equal(catalogResponse.status, 200);
     const cookie = sessionCookie(catalogResponse);
@@ -90,7 +106,7 @@ async function runSuite(repository, label) {
     );
     assert.equal(catalog.items[0].price, 490000, '₩4,900은 Neon의 100배 정수로 490000');
 
-    // 게임 언어를 영어로 바꿔도 청구 국가는 따라오지 않는다.
+    // Switching game language to English must not change billing country.
     const englishCatalog = await call('/api/store/catalog?locale=en', { headers: { cookie } }).then((r) => r.json());
     assert.equal(englishCatalog.country, 'KR', '언어 토글이 청구 국가를 바꾸지 않는다');
     assert.equal(englishCatalog.items[0].currency, 'KRW');
@@ -98,13 +114,13 @@ async function runSuite(repository, label) {
     const englishCheckout = await openCheckout(cookie, { locale: 'en' });
     assert.equal(new URL((await englishCheckout.json()).redirectUrl).searchParams.get('lang'), 'en');
 
-    // 브라우저 지역 신호는 국가로 인정된다.
+    // The browser's region is a country signal.
     const usCatalog = await call('/api/store/catalog?locale=ko', { headers: { 'accept-language': 'en-US,en;q=0.9' } })
       .then((r) => r.json());
     assert.equal(usCatalog.country, 'US', 'Accept-Language 지역이 기본 국가가 된다');
     assert.equal(usCatalog.items[0].currency, 'USD');
 
-    // 명시적 선택이 모든 추론을 이긴다.
+    // Explicit selection takes precedence over inference.
     const marketResponse = await call('/api/store/market', {
       method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'US' }),
     });
@@ -117,7 +133,7 @@ async function runSuite(repository, label) {
     });
     assert.equal(badMarket.status, 400, '지원하지 않는 국가는 거절된다');
 
-    // --- 체크아웃: 클라이언트가 보낸 가격은 무시된다 ---
+    // Checkout ignores client-supplied prices.
     const checkoutResponse = await openCheckout(cookie, { price: 1, country: 'US', currency: 'USD' });
     assert.equal(checkoutResponse.status, 201);
     const reference = referenceOf((await checkoutResponse.json()).redirectUrl);
@@ -127,7 +143,7 @@ async function runSuite(repository, label) {
     assert.equal(pending.currency, 'KRW', '본문의 country/currency는 무시된다');
     assert.equal(pending.status, 'pending');
 
-    // --- 재시도해도 소용없는 이벤트는 2xx로 삼킨다 (36시간 재시도 방지) ---
+    // Acknowledge permanently invalid events with 2xx to avoid futile retries.
     const unknownReference = await deliver(purchaseEvent(
       { id: 'event-unknown' },
       { accountId: pending.accountId, externalReferenceId: 'no-such-reference' },
@@ -135,8 +151,7 @@ async function runSuite(repository, label) {
     assert.equal(unknownReference.response.status, 200, '모르는 결제 참조는 재시도를 부르지 않는다');
     assert.equal(unknownReference.payload.ignored, 'unknown checkout reference');
 
-    /* 구독·인보이스·퍼널 이벤트는 이 통합과 무관하다. Console 에서 실수로 켜도
-     * 36시간 재시도가 돌지 않도록 2xx 로 받아 삼킨다. */
+    /* Unrelated subscription, invoice and funnel events receive 2xx even if accidentally enabled in Console. */
     const otherType = await deliver(purchaseEvent({ id: 'event-subscription', type: 'subscription.activated' }));
     assert.equal(otherType.response.status, 200, '처리하지 않는 이벤트도 2xx로 받는다');
     assert.match(otherType.payload.ignored, /unhandled type/);
@@ -175,13 +190,13 @@ async function runSuite(repository, label) {
     });
     assert.equal(malformed.status, 200, '서명은 맞지만 깨진 본문도 재시도를 부르지 않는다');
 
-    // --- 서명 실패만 비-2xx로 남긴다 ---
+    // Reject invalid signatures with a non-2xx response.
     const forged = await deliver(purchaseEvent(), { signature: 'deadbeef' });
     assert.equal(forged.response.status, 403, '서명이 틀리면 거절한다');
     const unsigned = await call('/api/webhooks/neon', { method: 'POST', body: JSON.stringify(purchaseEvent()) });
     assert.equal(unsigned.status, 403, '서명이 없으면 거절한다');
 
-    // --- 정상 지급과 재전송 ---
+    // Successful fulfillment and replay.
     const good = purchaseEvent({}, { accountId: pending.accountId, externalReferenceId: reference });
     for (const attempt of [1, 2]) {
       const { response } = await deliver(good);
@@ -191,7 +206,7 @@ async function runSuite(repository, label) {
     assert.equal((await repository.purchases(pending.accountId)).length, 1, '재전송이 이중 지급으로 이어지지 않는다');
     assert.equal((await repository.pendingCheckout(reference)).status, 'fulfilled');
 
-    // 다른 이벤트 id로 같은 결제 의도를 또 가리켜도 두 번 주지 않는다.
+    // A different event ID referencing the same checkout must not grant twice.
     const replayNewId = await deliver(purchaseEvent(
       { id: 'event-2' },
       { id: 'purchase-2', accountId: pending.accountId, externalReferenceId: reference },
@@ -200,9 +215,7 @@ async function runSuite(repository, label) {
     assert.equal(replayNewId.payload.ignored, 'checkout is already fulfilled');
     assert.equal((await repository.purchases(pending.accountId)).length, 1);
 
-    /* --- 환불 회수 ---
-     * 문서의 환불 예시는 externalReferenceId 가 null 이다. 그래서 purchaseId 로
-     * 결제 의도를 되찾는 경로가 실제 경로이고, 여기서 그걸 먼저 검증한다. */
+    /* Refund revocation: the documented event can have null externalReferenceId, so exercise lookup by purchaseId first. */
     function refundEvent(overrides = {}, refundOverrides = {}) {
       return {
         id: 'refund-1', type: 'refund.processed', version: 2, isSandbox: true,
@@ -240,7 +253,7 @@ async function runSuite(repository, label) {
         'refunded checkouts must survive pending-checkout TTL cleanup');
     }
 
-    // 구매 기록은 지우지 않고 표시만 한다 — 감사 흔적이 남아야 한다.
+    // Mark purchase history as refunded instead of deleting the audit trail.
     const history = await repository.purchases(refunded.accountId);
     assert.equal(history.length, 1, '환불해도 구매 기록은 사라지지 않는다');
     assert.ok(history[0].refundedAt, '구매 기록에 환불 시각이 남는다');
@@ -252,8 +265,7 @@ async function runSuite(repository, label) {
     const secondRefund = await deliver(refundEvent({ id: 'refund-a2' }, { id: 'rf_a2', purchaseId: refunded.purchaseId }));
     assert.equal(secondRefund.payload.ignored, 'checkout is already refunded', '두 번 회수하지 않는다');
 
-    /* 환불이 지급보다 먼저 도착하는 경우. 뒤늦은 지급 웹훅이 회수를 되돌리면
-     * 환불된 결제가 되살아난다 — fulfill 이 pending 이 아닌 것을 거절해야 한다. */
+    /* A late fulfillment must not resurrect a refunded checkout; fulfill rejects non-pending intents. */
     const lateGrant = await deliver(purchaseEvent(
       { id: 'late-grant' },
       { id: 'purchase-late', accountId: refunded.accountId, externalReferenceId: refunded.reference },
@@ -261,7 +273,7 @@ async function runSuite(repository, label) {
     assert.equal(lateGrant.payload.ignored, 'checkout is already refunded', '환불된 결제는 뒤늦게도 지급되지 않는다');
     assert.equal(await ownsBanner(refunded.cookie), false);
 
-    // 참조가 실려 오면 그 경로도 동작한다.
+    // Also support refunds carrying an external reference.
     const byReference = await boughtOnce('b');
     const revokeByReference = await deliver(refundEvent(
       { id: 'refund-b' },
@@ -292,20 +304,16 @@ async function runSuite(repository, label) {
     assert.equal(wrongOwner.payload.ignored, 'account does not match checkout', '남의 계정으로 회수할 수 없다');
     assert.equal(await ownsBanner(strangerRefund.cookie), true, '거절된 환불은 아무것도 건드리지 않는다');
 
-    /* --- 이중 청구 방지 ---
-     * 상점 버튼은 보유 중이면 비활성이지만 UI 는 신뢰 경계 밖이다. 영구 아이템을
-     * 두 번 팔면 플레이어가 두 번 청구된다 — 결제 통합에서 가장 나쁜 결말. */
+    /* Reject purchases of already-owned permanent items on the server; disabled UI buttons are outside the trust boundary. */
     const repurchase = await openCheckout(strangerRefund.cookie);
     assert.equal(repurchase.status, 409, '이미 가진 영구 아이템은 다시 팔지 않는다');
     assert.equal((await repurchase.json()).error, 'already_owned');
 
-    /* 반대로 환불로 권리가 사라졌으면 다시 살 수 있어야 한다 — 기준은 결제
-     * 이력이 아니라 현재 보유다. */
+    /* Refunded entitlements may be bought again: current ownership, not historical purchases, determines eligibility. */
     const rebuyAfterRefund = await openCheckout(refunded.cookie);
     assert.equal(rebuyAfterRefund.status, 201, '환불받은 뒤에는 다시 살 수 있다');
 
-    /* --- 모의 환불: 안내 투어가 구매의 수명 전체를 보여주기 위한 경로 ---
-     * 실제 웹훅과 같은 문(revoke)을 지나야 데모가 증거로서 의미가 있다. */
+    /* Mock refunds use the same revoke method as real webhooks to exercise the purchase lifecycle. */
     const tourBuyer = await boughtOnce('tour');
     const mockRefund = await call('/api/store/mock-refund', {
       method: 'POST', headers: { cookie: tourBuyer.cookie, 'Content-Type': 'application/json' },
@@ -317,9 +325,7 @@ async function runSuite(repository, label) {
     const tourHistory = await repository.purchases(tourBuyer.accountId);
     assert.ok(tourHistory[0].refundedAt, '모의 환불도 감사 기록을 남긴다');
 
-    /* 모의 지급의 두 가지 재시도를 구분한다. 같은 이벤트의 재전송은 멱등성이
-     * 잡고, 다른 이벤트가 환불된 결제를 가리키면 결제 의도의 상태가 잡는다.
-     * 안내 투어가 이 둘을 각각 보여주므로 응답이 뒤바뀌면 설명이 거짓이 된다. */
+    /* Distinguish replay deduplication from intent-state validation when a new event references a refunded purchase. */
     const mockBuyer = sessionCookie(await call('/api/store/catalog?locale=ko'));
     const mockOpened = await openCheckout(mockBuyer);
     const mockReference = referenceOf((await mockOpened.json()).redirectUrl);
@@ -342,7 +348,7 @@ async function runSuite(repository, label) {
       'checkout is already refunded', '환불된 결제를 가리키는 다른 이벤트는 상태가 잡는다');
     assert.equal(await ownsBanner(mockBuyer), false, '뒤늦은 지급이 회수를 되돌리지 않는다');
 
-    /* 남의 결제는 모의 환불로도 건드릴 수 없다. */
+    /* Mock refunds cannot modify another player's checkout. */
     const stranger = sessionCookie(await call('/api/store/catalog?locale=ko'));
     const notYours = await call('/api/store/mock-refund', {
       method: 'POST', headers: { cookie: stranger, 'Content-Type': 'application/json' },
@@ -350,10 +356,7 @@ async function runSuite(repository, label) {
     });
     assert.equal(notYours.status, 404, '자기 결제만 모의 환불할 수 있다');
 
-    /* --- 신원: 쿠키 없이 Bearer 토큰만으로 ---
-     * Unity·Unreal 에는 쿠키 항아리가 없고, 게임이 CDN 에 있고 API 가 다른
-     * 도메인이면 SameSite 때문에 쿠키가 끊긴다. 토큰 경로가 살아 있어야
-     * 클라이언트 종류가 서버 설계를 제약하지 않는다. */
+    /* Bearer-only identity supports native clients and separately hosted browser clients without relying on SameSite cookies. */
     assert.ok(catalog.playerId, '카탈로그가 자기 신원을 알려준다 — 토큰 클라이언트가 저장할 수 있도록');
     const byToken = await call('/api/store/entitlements', {
       headers: { authorization: `Bearer ${pending.accountId}` },
@@ -367,7 +370,7 @@ async function runSuite(repository, label) {
     assert.equal(garbageToken.status, 200, '형식이 틀린 토큰은 새 신원으로 취급한다');
     assert.notEqual((await garbageToken.json()).playerId, 'not-a-uuid');
 
-    // --- CORS: 허용 목록에 있는 오리진만 ---
+    // CORS accepts only allowlisted origins.
     const corsHandler = createStoreApi({
       repository,
       config: {
@@ -398,7 +401,7 @@ async function runSuite(repository, label) {
       assert.equal(sameOrigin.status, 200, 'Origin 헤더가 없는 요청은 영향을 받지 않는다');
     } finally { await new Promise((resolve) => corsServer.close(resolve)); }
 
-    // --- 체크아웃 생성 속도 제한 ---
+    // Checkout creation rate limit.
     const spammer = sessionCookie(await call('/api/store/catalog?locale=ko'));
     let limited = 0;
     for (let attempt = 0; attempt < 12; attempt += 1) {
@@ -406,10 +409,7 @@ async function runSuite(repository, label) {
     }
     assert.ok(limited > 0, '체크아웃 생성은 무제한이 아니다');
 
-    /* --- 계정: 인계 코드 ---
-     * 이 통합의 가장 정직한 약점이 "신원이 기기에 묶인 소지자 자격"이었다.
-     * 인계 코드는 그것을 계정으로 옮긴다 — 산 것이 기기가 아니라 계정을 따르는지가
-     * 여기서 증명되어야 한다. */
+    /* Account transfer moves browser-held identity to another device so purchases follow the account. */
     const owner = await boughtOnce('account');
     assert.equal(await ownsBanner(owner.cookie), true);
 
@@ -422,7 +422,7 @@ async function runSuite(repository, label) {
     assert.doesNotMatch(code, /[O0I1L]/, '헷갈리는 글자는 쓰지 않는다');
     assert.ok(Date.parse(expiresAt) > Date.now(), '기한이 있다');
 
-    /* 새 기기(쿠키 없음)가 코드를 넣으면 그 계정이 된다. */
+    /* A new device without cookies claims the original account using the code. */
     const freshDevice = sessionCookie(await call('/api/store/catalog?locale=ko'));
     assert.equal(await ownsBanner(freshDevice), false, '새 기기는 아직 아무것도 없다');
     const claimed = await call('/api/account/claim', {
@@ -434,8 +434,7 @@ async function runSuite(repository, label) {
     assert.equal((await claimed.json()).accountId, owner.accountId, '기기가 기존 계정을 입는다');
     assert.equal(await ownsBanner(adopted), true, '구매가 기기가 아니라 계정을 따라온다');
 
-    /* 코드는 한 번만 쓰인다. 종이에 적힌 소지자 자격이라 재사용을 허용하면
-     * 흘린 코드 하나로 계정이 계속 넘어간다. */
+    /* Transfer codes are single-use bearer credentials; replay must not repeatedly transfer an account. */
     const reused = await call('/api/account/claim', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }),
     });
@@ -446,7 +445,7 @@ async function runSuite(repository, label) {
     assert.equal(nonsense.status, 404);
     assert.equal((await nonsense.json()).error, 'invalid_code', '없음·만료·사용됨을 구분해 주지 않는다');
 
-    // --- 계정 저장본 ---
+    // Account save snapshots.
     const emptySave = await call('/api/save', { headers: { cookie: owner.cookie } }).then((r) => r.json());
     assert.deepEqual(emptySave, { save: null, version: 0 }, '저장본이 없으면 0번');
 
@@ -458,8 +457,7 @@ async function runSuite(repository, label) {
     assert.equal(first.status, 200);
     assert.equal((await first.json()).version, 1);
 
-    /* 두 기기가 같은 계정을 쓴다. 오래된 버전으로 쓰면 덮지 않고 상대 것을 준다 —
-     * 마지막 쓰기가 이기게 두면 진행도가 조용히 사라진다. */
+    /* Two devices sharing an account must detect stale versions instead of silently overwriting progress. */
     const stale = await putSave(adopted, { save: { shards: 3 }, baseVersion: 0 });
     assert.equal(stale.status, 409, '오래된 버전은 덮어쓰지 못한다');
     const conflict = await stale.json();
@@ -472,10 +470,7 @@ async function runSuite(repository, label) {
     assert.deepEqual((await call('/api/save', { headers: { cookie: owner.cookie } }).then((r) => r.json())).save,
       { shards: 20 }, '두 기기가 같은 저장본을 본다');
 
-    /* --- 실제 Neon 호출 경로 ---
-     * 모의 모드는 neon-client 를 통째로 건너뛴다. 그래서 여기서는 mock:false 로
-     * 두고 fetch 만 가짜로 갈아끼워, 샌드박스에서 처음 눌렀을 때 우리 쪽 문제로
-     * 실패하지 않도록 나가는 요청의 모양과 실패 처리를 미리 확인한다. */
+    /* Exercise the non-mock Neon adapter with injected fetch to verify outgoing payloads and failures before a sandbox attempt. */
     let sent = null;
     const stubNeon = (status, payload) => async (url, options) => {
       sent = { url, options, body: JSON.parse(options.body) };
@@ -513,7 +508,7 @@ async function runSuite(repository, label) {
 
       assert.equal(sent.url, 'https://api.example.test/checkout');
       assert.equal(sent.options.headers['X-API-KEY'], 'test-secret-key', 'API 키는 헤더로만 나간다');
-      // Neon 이 요구하는 필드가 모두 실려 있는지 — 하나라도 빠지면 첫 샌드박스 시도가 거절된다
+      // Assert the required Neon request fields.
       for (const field of ['items', 'externalReferenceId', 'accountId', 'languageLocale', 'playerCountry', 'currency', 'storeUrl', 'successUrl', 'cancelUrl']) {
         assert.ok(sent.body[field] !== undefined, `checkout 요청에 ${field} 가 있다`);
       }
@@ -546,7 +541,7 @@ async function runSuite(repository, label) {
   }
 }
 
-// --- JSON 원장: 자격 증명도 에뮬레이터도 없이 항상 돈다 ---
+// JSON ledger always runs without credentials or an emulator.
 const temporary = await mkdtemp(join(tmpdir(), 'constellation-store-'));
 try {
   await runSuite(new JsonRepository(join(temporary, 'store.json')), 'JSON 원장');
@@ -554,11 +549,7 @@ try {
   await rm(temporary, { recursive: true, force: true });
 }
 
-/* --- Firestore 원장: 에뮬레이터가 있을 때만 ---
- * Cloud Run 은 인스턴스를 여러 개 띄우므로 프로세스 안의 큐로는 exactly-once 를
- * 지킬 수 없다. 그 보장을 트랜잭션으로 옮긴 구현이 같은 단언을 통과하는지 본다.
- *   gcloud emulators firestore start --host-port=127.0.0.1:8080
- *   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm run store:check */
+/* Firestore tests run only with the emulator. Multiple Cloud Run instances require database transactions, not an in-process queue. Run gcloud emulators firestore start --host-port=127.0.0.1:8080, then set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 and run npm run store:check. */
 if (process.env.FIRESTORE_EMULATOR_HOST) {
   const { Firestore } = await import('@google-cloud/firestore');
   const { FirestoreRepository } = await import('../server/firestore-repository.mjs');

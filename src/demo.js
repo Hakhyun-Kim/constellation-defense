@@ -1,14 +1,4 @@
-/* =====================================================
- * 데모 모드 — AI가 게임을 실제로 플레이하는 것을 구경한다
- *
- * dungeon100의 시연은 하드코딩된 각본이지만, 이 게임은 이미
- * 밸런스 봇이라는 "제대로 판단하는 뇌"를 갖고 있다. 그래서 데모는
- * 각본을 따르지 않고 **봇의 판단(src/bot.js)을 그대로 써서 진짜로 논다.**
- * 덕분에 각본을 유지보수할 필요가 없고, 게임이 바뀌면 데모도 따라 바뀐다.
- *
- * 조작은 전부 사람이 쓰는 경로로 흘린다(doSummon·doPlace·combine·tacticSwap…).
- * 데모 전용 지름길을 만들면 데모에서만 되는 버그가 생긴다.
- * ===================================================== */
+/* The live demo reuses src/bot.js decisions rather than maintaining a scripted game. Execute every action through normal player command paths so the demo remains representative as rules change. */
 import * as Bot from './bot.js';
 import { findLegalSwaps, laneForGroup, tacticSizeForGroup } from './tactics/board.js';
 
@@ -44,8 +34,7 @@ export const DEMO_GUIDES = Object.freeze({
   boss: Object.freeze({ duration: 4.4, tone: 'boss', title: '🐉 라이브 액터 보스 컷인', detail: '컷인 속 모델이 그대로 전장에 진입합니다. 모아 둔 문양·영웅 액티브·성좌 지원을 겹쳐 쓸 순간입니다.' }),
 });
 
-/* 관전자는 봇의 실제 판단을 읽을 수 있어야 한다. 이 함수는 이미 고른 합법 스왑을
- * 설명할 뿐, 점수나 결과를 바꾸지 않는다. */
+/* Explain an already-selected legal swap without changing its score or result. */
 export function describeTacticMove(move) {
   const group = move.groups?.find(candidate => tacticSizeForGroup(candidate) === 6) || move.groups?.[0];
   if (!group) return '🌌 별자리를 이어 전술을 준비합니다';
@@ -81,19 +70,19 @@ export function chooseDemoTacticMove(state, cells, profile, rng, teachSigil = tr
   return Bot.chooseTacticSwap(state, cells, profile, rng);
 }
 
-/* 사람이 보기 좋은 속도. 너무 빠르면 뭘 하는지 안 보이고, 느리면 지루하다 */
+/* Pace actions slowly enough to read without making the demo drag. */
 const PACE = {
-  prep: 0.55,        // 준비 단계 행동 사이 (초)
-  tactic: 0.45,      // 전술 스왑 뒤 다음 판단까지
-  afterWave: 1.2,    // 웨이브를 깬 뒤 숨 고르기
-  restart: 12.0,     // 회고와 공유 카드를 읽은 뒤 다시 시작할 시간
+  prep: 0.55,        // Seconds between preparation actions.
+  tactic: 0.45,      // Delay after a tactic swap before the next decision.
+  afterWave: 1.2,    // Pause after clearing a wave.
+  restart: 12.0,     // Allow time to read the retrospective and share card before restarting.
 };
 
 export const demo = {
   active: false,
   profileName: '고수',
-  t: 0,              // 다음 행동까지 남은 시간
-  midT: 0,           // 전투 중 판단 주기
+  t: 0,              // Time remaining until the next action.
+  midT: 0,           // Combat decision interval.
   api: null,
   caption: '',
   detail: '',
@@ -104,10 +93,10 @@ export const demo = {
   tourIndex: -1,
   tourT: 0,
 
-  /* main.js가 자기 함수들을 넘겨 준다 — 데모는 게임 내부를 직접 만지지 않는다 */
+  /* main.js injects player command functions; the demo never directly edits game internals. */
   attach(api) { this.api = api; },
 
-  /* 링크로 공유될 때 한글이 인코딩돼 깨질 수 있으니 영문 별칭도 받는다 */
+  /* Accept English profile aliases for robust shared URLs. */
   resolveProfile(name) {
     if (!name) return null;
     if (Bot.PROFILES[name]) return name;
@@ -176,7 +165,7 @@ export const demo = {
     } else this.guide('firstTactic');
   },
 
-  /* 매 프레임 호출된다. */
+  /* Called every frame. */
   step(dt) {
     if (!this.active || !this.api) return;
     const A = this.api;
@@ -205,15 +194,15 @@ export const demo = {
       return;
     }
 
-    /* ① 막간 이야기가 떠 있으면 읽고 넘긴다 (이야기가 열려 있으면 웨이브가 시작되지 않는다) */
+    /* Read and dismiss interludes; an open story prevents wave startup. */
     if (A.isStoryOpen()) {
       if (this.t <= 0) { A.closeStory(); this.t = 0.5; }
       return;
     }
-    /* ② 전설·신화 연출은 스스로 닫히므로 기다리기만 한다 */
+    /* Wait for legendary/mythic reveals to close themselves. */
     if (A.isRevealOpen()) return;
 
-    /* ③ 게임오버 — 잠깐 보여 주고 새 판 */
+    /* Show defeat briefly, then start another run. */
     if (state.phase === 'over') {
       if (!this.overSeen) {
         this.overSeen = true;
@@ -233,7 +222,7 @@ export const demo = {
     }
     this.overSeen = false;
 
-    /* ④ 준비 단계 — 봇의 판단을 하나씩 소비한다 */
+    /* Consume preparation decisions one at a time. */
     if (state.phase === 'journey') {
       this.guide('journey');
       if (this.t > 0) return;
@@ -292,7 +281,7 @@ export const demo = {
       return;
     }
 
-    /* ⑤ 전투 중 — 실제 전술 스왑 + 별지기 마법 + 여유 골드로 소환·배치 */
+    /* During combat, use legal tactic swaps, champion spells and surplus-gold summons/placement. */
     this.guide('battle');
     this.midT -= dt;
     if (this.midT <= 0) {
@@ -306,7 +295,7 @@ export const demo = {
         this.t = PACE.tactic;
         return;
       }
-      /* 별지기 마법 — 봇과 같은 판단 (bot.js) */
+      /* Champion spells use the shared bot.js policy. */
       if (Bot.wantsUlt(state, P)) {
         this.say('🌌 은하수! 하늘의 별을 전부 쏟아붓습니다',
           '별지기의 궁극기는 퍼즐 전술과 별개로 전장 전체의 위기를 정리합니다.', 'hero');

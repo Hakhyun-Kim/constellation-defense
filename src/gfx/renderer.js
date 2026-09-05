@@ -1,10 +1,6 @@
-/* =====================================================
- * 3D 렌더러 본체 (Three.js)
- * 성이 위(멀리), 몬스터는 아래(카메라 쪽)에서 위로 — 세 갈래 길.
- * 지형·성 짓기는 world.js, 이펙트는 fx.js가 믹스인으로 붙는다.
- * 현재 지형·성·캐릭터·이펙트는 코드 생성이며, 외부 에셋은 별도 로더로 보강한다.
- * ===================================================== */
+/* Three.js renderer with the distant castle above three incoming lanes. world.js supplies terrain/castle construction and fx.js supplies effects; optional external assets supplement procedural models through a separate loader. */
 import * as THREE from 'three';
+import { CastleCosmetics } from './cosmetics.js';
 import * as D from '../data.js';
 import { CHAMP_CHAT } from '../story.js';
 import { S, wx, wz, emojiTexture, blobTexture } from './common.js';
@@ -22,15 +18,11 @@ export class Renderer3D {
     this.container = container;
     this.quality = opts.quality || 'high';
     this.reducedEffects = opts.reducedEffects !== false;
-    /* 외부 아트는 엔진 상태와 분리된 선택적 뷰 의존성이다. null 또는 실패면
-     * 아래 절차형 생성 경로가 언제나 정상 동작한다. */
+    /* External art is an optional view dependency; null or failed loads preserve procedural fallback construction. */
     this.assets = opts.assets || null;
-    /* 배경 장식(바람 잔디 · 바닷가 · 하늘 밴드 · 반딧불이)을 통째로 끄는 스위치.
-     * 모바일은 이걸 끈다 — 화소당 셰이더 비용이 제일 비싼 것들이기도 하고,
-     * 작은 화면에서는 하늘에 내줬던 19%를 전장에 돌려주는 게 훨씬 이득이다.
-     * 시간대 조명(해 각도·안개·색)은 공짜라서 끄지 않는다. */
+    /* Disable expensive grass, sea, sky and fireflies on mobile, returning the sky's screen area to the battlefield. Keep time-of-day lighting and fog. */
     this.decor = opts.decor !== false;
-    /* 발판 클릭 허용 반경(PAD_RADIUS 배수). 터치는 넉넉하게. */
+    /* Pad hit radius as a PAD_RADIUS multiplier, enlarged for touch. */
     this.padSlop = opts.touch ? 2.4 : 1.5;
     this.time = 0;
     this.cameraCutscene = null;
@@ -42,7 +34,7 @@ export class Renderer3D {
     });
     r.setPixelRatio(this._targetDpr());
     r.setClearColor(0xbfe3ff);
-    /* 톤매핑 + 실시간 그림자 — 값싼 "AAA 느낌"의 8할 */
+    /* Tone mapping and real-time shadows improve depth and material readability. */
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.08;
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -54,19 +46,17 @@ export class Renderer3D {
     this.renderer = r;
 
     this.scene = new THREE.Scene();
-    /* 바다가 생기면서 시야가 훨씬 깊어졌다. 예전 far=44 는 수평선을 통째로
-     * 하얗게 지워 버린다 — 전장(거리 ~35)은 그대로 두고 far 만 밀어낸다.
-     * 바다가 없는 모드에서는 볼 게 잔디밭뿐이라 예전 값이 오히려 깊이가 산다. */
+    /* Extend fog range for the sea horizon while preserving battlefield framing. Without sea scenery, retain the shorter ground-only range. */
     if (this.decor) { this.fogNear = 30; this.fogFar = 78; }
     else { this.fogNear = 24; this.fogFar = 44; }
     this.scene.fog = new THREE.Fog(0xcfe9ff, this.fogNear, this.fogFar);
     this.scene.background = new THREE.Color(0xcfe9ff);
-    /* 시간대(실제 시각) → 조명·안개·물빛. 전투 이벤트는 이 전역 팔레트를 바꾸지 않는다. */
+    /* Real time controls light, fog and water color; combat events never override this global palette. */
     this.palette = makePalette();
-    /* ?hour=18.5 로 시간대를 강제할 수 있다 (확인용 · 다른 시간대 구경용) */
+    /* Use ?hour=18.5 to inspect a fixed time of day. */
     const hp = new URLSearchParams(location.search).get('hour');
     this.forcedHour = hp != null && hp !== '' && Number.isFinite(Number(hp)) ? Number(hp) : null;
-    /* 첫 프레임부터 맞는 시간대로 시작한다 — 아침에 켰는데 밤이 한 번 스치면 어색하다 */
+    /* Initialize the correct palette before the first frame to avoid a night-to-day flash. */
     this.dayPhase = clockPhase(this.forcedHour);
     this.dayTarget = this.dayPhase;
     daylightPalette(this.dayPhase, this.palette);
@@ -80,13 +70,7 @@ export class Renderer3D {
     this._regionRoadEdgeColor = new THREE.Color(this.region.roadEdge);
     this._regionWallColor = new THREE.Color(this.region.wall);
 
-    /* 화면 위쪽을 하늘에 내준다. 그만큼 게임이 차지할 자리가 줄어드니
-     * 시야각을 넓혀(내용이 작아진다) + 시선을 살짝 올려(내용이 내려간다)
-     * 성 깃대부터 스폰 포탈까지가 밴드 아래에 들어오게 맞췄다.
-     * 공짜는 없다 — 하늘을 얻는 대신 전장이 조금 작아진다.
-     *
-     * 장식을 끄면 그 19%를 도로 전장에 준다: 시야각을 좁히고 시선을 내려
-     * 발판이 화면에서 커진다. 손가락으로 누르는 화면에서는 이게 곧 조작성이다. */
+    /* Reserve the upper band for sky by widening FOV and raising the look target. Without scenery, reclaim that area and enlarge pads for touch interaction. */
     this.skyFraction = this.decor ? 0.19 : 0;
     this.camera = new THREE.PerspectiveCamera(this.decor ? 54 : 46, 16 / 10, 0.1, 120);
     this.camBase = this.decor ? new THREE.Vector3(0, 13.2, 13.6)
@@ -115,20 +99,19 @@ export class Renderer3D {
 
     this._buildTerrain();
     this._buildCastle();
+    this.cosmetics = new CastleCosmetics(this.castle);
     this._buildParticles();
     this._buildDamageNumbers();
     this.regions = new RegionScenery(this.scene);
     this.setRegionTheme('verdant-dawn');
 
-    /* 자연 배경 — 잔디 물결 · 성 뒤편 바다 · 밤 반딧불이 · 하늘 밴드.
-     * 장식을 끄면 아예 만들지 않는다(감추는 게 아니라). 지오메트리도 셰이더
-     * 컴파일도 없으니 첫 화면이 뜨는 시간까지 같이 짧아진다. */
+    /* Construct scenery only when enabled, avoiding hidden geometry and shader compilation costs on lightweight devices. */
     this.moonPhase = 0.15;
     if (this.decor) {
       this.grass = new WindGrass(this.scene, this.quality, wx, wz);
       this.sea = new Sea(this.scene, this.quality);
       this.fireflies = new Fireflies(this.scene, this.quality);
-      /* 하늘 밴드 — 카메라 자식이라 카메라가 씬에 들어가 있어야 그려진다 */
+      /* The sky band is a camera child, so the camera must belong to the scene. */
       this.scene.add(this.camera);
       this.sky = new SkyBand(this.camera, this.skyFraction);
     }
@@ -199,10 +182,10 @@ export class Renderer3D {
     this.renderer.domElement.style.height = '100%';
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    if (this.sky) this.sky.layout();     // 절두체가 바뀌면 밴드 크기도 다시 잡는다
+    if (this.sky) this.sky.layout();     // Resize the sky band when the frustum changes.
   }
 
-  /* ---------- 뷰 생성 ---------- */
+  /* View creation. */
   _attachGatePilot() {
     const slot = landmarkPilotSlot(this.region?.id);
     if (!slot || !this.assets?.enabled || this.gatePilotRequest) return;
@@ -227,8 +210,7 @@ export class Renderer3D {
         return instance;
       };
 
-      /* 중앙 문틀은 비율을 지키고, 양옆 모듈만 가로로 늘린다. 카메라에서 먼
-       * 랜드마크라 실루엣은 선명해지고 인스턴스/드로우콜 수는 제한된다. */
+      /* Preserve the central gate's proportions and stretch only side modules for a readable distant silhouette with bounded instances and draw calls. */
       add(wallAsset, { height: 2.22, x: 0, z: -3.98 });
       for (const x of [-4.45, -2.05, 2.05, 4.45]) {
         add(straightAsset, { height: 2.22, x, z: -4.0, stretchX: 1.72 });
@@ -317,7 +299,7 @@ export class Renderer3D {
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.145;
     holder.add(ring);
-    /* 특수 직업: 은은한 보라 보조 링 */
+    /* Special classes receive a subtle purple secondary ring. */
     if (isSpecial) {
       const sring = new THREE.Mesh(
         new THREE.RingGeometry(0.66, 0.72, 24),
@@ -350,15 +332,15 @@ export class Renderer3D {
     return view;
   }
 
-  /* ---------- 별지기 뷰 ---------- */
-  /* 옷장에서 갈아입으면 뷰를 새로 짓는다 — 위치·방향은 이어받아 그 자리에서 변신한다 */
+  /* Champion view. */
+  /* Rebuild the view after wardrobe changes while preserving position and facing. */
   setChampLook(look) {
     this.champLook = D.champLookOf(look);
     if (this.champView) {
       const old = this.champView;
       this.scene.remove(old.holder);
       this._champCarry = { pos: { ...old.pos }, dest: { ...old.dest }, faceY: old.faceY };
-      this.champView = null;               // 다음 sync가 새 모습으로 되살린다
+      this.champView = null;               // The next sync reconstructs the updated appearance.
     }
   }
 
@@ -376,7 +358,7 @@ export class Renderer3D {
     shadow.position.y = 0.05;
     holder.add(shadow);
 
-    /* 오각 링 — 별지기의 발밑에는 별이 그려져 있다 (별빛 색을 따른다) */
+    /* A pentagonal star ring beneath the champion follows the selected starlight color. */
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.5, 0.62, 5),
       new THREE.MeshBasicMaterial({ color: refs.starColor || 0xffe27a, transparent: true, opacity: 0.8, depthWrite: false })
@@ -402,7 +384,7 @@ export class Renderer3D {
     bar.visible = false;
     holder.add(bar);
 
-    /* 옷을 갈아입은 직후라면 서 있던 자리를 이어받는다 */
+    /* Preserve the previous position when changing clothes. */
     const carry = this._champCarry;
     this._champCarry = null;
     const pos = carry ? carry.pos : { x: D.CHAMP_HOME.x, y: D.CHAMP_HOME.y };
@@ -418,8 +400,7 @@ export class Renderer3D {
     };
   }
 
-  /* 준비 단계의 배회 — 순수 연출. 엔진은 준비 중 별지기를 움직이지 않으므로
-   * 어디를 걷고 누구와 수다를 떠는지는 전부 렌더러의 몫이다. */
+  /* Preparation wandering is presentation-only. The engine does not move the champion during preparation; the renderer chooses idle destinations and chatter. */
   _champWander(dt, state, v) {
     if (v.chatSeq) {
       const s = v.chatSeq;
@@ -438,7 +419,7 @@ export class Renderer3D {
     if (!arrived) return;
     v.wanderT -= dt;
     if (v.wanderT > 0) {
-      /* 도착해 서 있는 동안 — 곁에 용사가 있으면 말을 걸고, 없으면 혼잣말 */
+      /* At a destination, talk to nearby heroes or use idle dialogue. */
       if (v.chatCd <= 0) {
         const h = v.chatWith != null ? state.field.find(x => x.id === v.chatWith) : null;
         if (h && Math.hypot(h.x - v.pos.x, h.y - v.pos.y) < 70) {
@@ -454,7 +435,7 @@ export class Renderer3D {
       }
       return;
     }
-    /* 새 목적지: 용사 곁 또는 길가의 아무 곳 */
+    /* Choose a new destination near a hero or beside a path. */
     v.wanderT = 1.6 + Math.random() * 2.2;
     const heroes = state.field;
     if (heroes.length && Math.random() < 0.6) {
@@ -479,7 +460,7 @@ export class Renderer3D {
     const c = state.champ;
     const wave = state.phase === 'wave';
 
-    /* 목적지: 전투는 엔진이, 준비는 배회가 정한다 */
+    /* Combat destinations come from the engine; preparation destinations come from visual wandering. */
     if (wave || state.phase === 'over' || v.ko) {
       v.dest.x = c.x; v.dest.y = c.y;
       v.chatSeq = null;
@@ -487,7 +468,7 @@ export class Renderer3D {
       this._champWander(dt, state, v);
     }
 
-    /* 이동 — 목적지가 멀면 전력 질주로 따라잡는다 (웨이브 시작 때 광장으로 달려간다) */
+    /* Catch up quickly to distant targets, including the wave-start plaza. */
     const dx = v.dest.x - v.pos.x, dy = v.dest.y - v.pos.y;
     const dist = Math.hypot(dx, dy);
     let moving = false;
@@ -502,14 +483,14 @@ export class Renderer3D {
     }
     v.holder.position.set(wx(v.pos.x), 0, wz(v.pos.y));
 
-    /* 얼굴 방향 (논리 y = 월드 z 방향과 부호가 같다) */
+    /* Facing uses the same sign for logical y and world z. */
     let dyaw = v.targetFaceY - v.faceY;
     while (dyaw > Math.PI) dyaw -= Math.PI * 2;
     while (dyaw < -Math.PI) dyaw += Math.PI * 2;
     v.faceY += dyaw * Math.min(1, dt * 10);
     v.model.rotation.y = v.faceY;
 
-    /* KO — 쓰러져 눕고, 별이 어깨에 내려앉는다 */
+    /* Knockout pose: lie down with the companion star near the shoulder. */
     v.koT += ((v.ko ? 1 : 0) - v.koT) * Math.min(1, dt * 4);
     v.model.rotation.x = -1.35 * v.koT;
     v.model.position.y = 0.14 * v.koT;
@@ -518,7 +499,7 @@ export class Renderer3D {
       this.burst(v.holder.position.x, 0.5, v.holder.position.z, 0xaab4d4, 1, 0.5, { grav: -0.6, ttl: 0.9, size: 0.5 });
     }
 
-    /* 걷기 — 다리 스윙 + 반대 위상 팔 스윙 */
+    /* Walking swings legs and arms in opposite phases. */
     v.walkPhase += dt * (moving ? 11 : 0);
     const swing = moving ? Math.sin(v.walkPhase) * 0.55 : 0;
     const k14 = Math.min(1, dt * 14);
@@ -526,7 +507,7 @@ export class Renderer3D {
     v.refs.legs[1].rotation.x += (-swing - v.refs.legs[1].rotation.x) * k14;
     if (v.attackT <= 0) v.refs.armL.rotation.x += (swing * -0.5 - v.refs.armL.rotation.x) * k14;
 
-    /* 숨쉬기 · 망토 · 동반 별 */
+    /* Breathing, cape and companion-star motion. */
     v.refs.body.scale.y = 1 + Math.sin(t * 2.8) * 0.025;
     v.refs.cape.rotation.x = 0.16 + Math.sin(t * 3.2) * 0.1 + (moving ? 0.28 : 0);
     const sa = t * 2.2;
@@ -535,7 +516,7 @@ export class Renderer3D {
     v.refs.emblem.rotation.y = t * 2;
     if (v.refs.staffOrb) v.refs.staffOrb.scale.setScalar(1 + Math.sin(t * 5) * 0.15);
 
-    /* 공격 스윙 */
+    /* Attack swing. */
     if (v.attackT > 0) {
       v.attackT = Math.max(0, v.attackT - dt * 3.6);
       const k = Math.sin((1 - v.attackT) * Math.PI);
@@ -572,22 +553,16 @@ export class Renderer3D {
     for (const view of this.enemyViews?.values?.() || []) this._syncPilotVisibility(view);
   }
 
-  /* ---------- 시간대: 지금 몇 시인가 ----------
-   * 예전에는 웨이브가 지날수록 저물었는데, 13웨이브를 넘기면 계속 밤이었다.
-   * 오래 버틸수록 화면이 어두워지기만 하니 잘하는 사람이 벌을 받는 꼴이었다.
-   * 이제 **실제 시각**이 정한다 — 낮에 켜면 낮, 밤에 켜면 밤. 달도 진짜 위상을 따른다.
-   * (?hour=18.5 로 강제할 수 있다 — 확인용이자 "다른 시간대를 보고 싶을 때"용)
-   *
-   * 전투 이벤트나 보스 등장으로 이 팔레트를 덮어쓰지 않는다. */
+  /* Real time, not wave progression, controls day/night and lunar phase. ?hour overrides it for inspection. Combat events and bosses must never overwrite this palette. */
   _updateDaylight(dt, state) {
-    /* 시계는 1초에 한 번만 본다 — 매 프레임 Date를 만들 이유가 없다 */
+    /* Read the clock once per second instead of allocating Date objects every frame. */
     this._clockT = (this._clockT || 0) - dt;
     if (this._clockT <= 0) {
       this._clockT = 1;
       this.dayTarget = this.forcedHour == null ? this.region.phase : clockPhase(this.forcedHour);
       this.moonPhase = Math.max(0.12, moonPhaseNow());
     }
-    /* 웨이브가 넘어갈 때 뚝 끊기지 않게 천천히 따라간다 */
+    /* Interpolate smoothly rather than abruptly switching palette values. */
     this.dayPhase += (this.dayTarget - this.dayPhase) * Math.min(1, dt * 0.5);
     const p = daylightPalette(this.dayPhase, this.palette);
 
@@ -596,7 +571,7 @@ export class Renderer3D {
     this.sun.color.copy(p.sun);
     this.hemi.color.copy(p.hemiSky);
     this.hemi.groundColor.copy(p.hemiGnd);
-    /* 그림자 카메라 범위가 고정이라 거리는 유지하고 방향만 돌린다 */
+    /* Rotate light direction at a fixed distance to preserve the shadow-camera bounds. */
     this.sun.position.copy(p.sunPos).setLength(17);
     this.baseSunI = p.sunI;
     this.baseHemiI = p.hemiI;
@@ -606,7 +581,7 @@ export class Renderer3D {
     this.scene.fog.far = this.fogFar;
     this.hemi.intensity = this.baseHemiI;
     this.sun.intensity = this.baseSunI;
-    /* 밤에는 땅도 같이 가라앉아야 한다 — 조명만으로는 잔디가 형광으로 뜬다 */
+    /* Darken ground at night so grass does not look fluorescent under lighting alone. */
     const n = p.night;
     this.ground.material.color.setRGB(0.82 - n * 0.65, 0.89 - n * 0.71, 0.76 - n * 0.56);
     this.ground.material.color.lerp(this._regionGroundColor, 0.38);
@@ -630,8 +605,7 @@ export class Renderer3D {
     shadow.position.y = 0.03;
     g.add(shadow);
 
-    /* 엘리트 — 금빛 테두리 하나로 "이건 특별하다"를 즉시 알린다.
-     * 등급을 여러 단계로 나누는 대신 보통/특별 두 가지만 두기로 한 결정의 시각적 절반이다. */
+    /* A single gold outline identifies elite enemies immediately without introducing extra tier categories. */
     let eliteRing = null;
     if (e.elite) {
       const ring = new THREE.Mesh(
@@ -642,7 +616,7 @@ export class Renderer3D {
       ring.position.y = 0.05;
       g.add(ring);
       eliteRing = ring;
-      /* 살짝 붉게 물들여 같은 이모지라도 달라 보이게 */
+      /* Tint slightly red to distinguish the same base icon. */
       spr.material.color.setHex(0xffd9a8);
     }
 
@@ -657,7 +631,7 @@ export class Renderer3D {
       ring.position.y = 0.06;
       g.add(ring);
       auraRing = ring;
-      /* 발밑에서 피어오르는 기운 */
+      /* Aura rising from the feet. */
       const aura = new THREE.Mesh(
         new THREE.RingGeometry(scale * 0.6, scale * 0.78, 26),
         new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.4, depthWrite: false })
@@ -737,7 +711,7 @@ export class Renderer3D {
     return { group, model, refs, ring, star, attackT: 0 };
   }
 
-  /* ---------- 상태 동기화 ---------- */
+  /* State synchronization. */
   sync(state) {
     const fieldIds = new Set();
     for (const h of state.field) {
@@ -745,7 +719,7 @@ export class Renderer3D {
       let v = this.heroViews.get(h.id);
       if (!v) {
         v = this._makeHeroView(h);
-        /* 처음엔 가장 가까운 길을 바라본다 */
+        /* Initially face the nearest path. */
         let bx = 0, bz = 0, bd = Infinity;
         for (let r = 0; r < D.ROUTES.length; r++) {
           for (let s = 0; s < D.ROUTE_LENS[r]; s += 24) {
@@ -801,7 +775,7 @@ export class Renderer3D {
       }
     }
 
-    /* 별지기 — 성장/체력 상태를 뷰에 비춘다 (위치는 _champFrame이 다룬다) */
+    /* Reflect champion growth and health; _champFrame owns position updates. */
     if (state.champ) {
       if (!this.champView) this.champView = this._makeChampView();
       const v = this.champView;
@@ -871,7 +845,7 @@ export class Renderer3D {
     for (let k = 0; k < this.crystals.length; k++) this.crystals[k].visible = k < state.castle.tower;
     for (let k = 0; k < this.fortifyBands.length; k++) this.fortifyBands[k].visible = k < state.castle.fortify;
 
-    /* 강화 단계마다 실루엣이 실제로 바뀐다 — 띠만 늘어나면 자란 게 안 보인다 */
+    /* Change the castle silhouette at each upgrade, not merely its decorative bands. */
     const fo = state.castle.fortify, tw = state.castle.tower;
     this.castleFortify = fo;
     this.wall.scale.y = 1 + Math.min(fo, 1) * 0.14;
@@ -885,7 +859,7 @@ export class Renderer3D {
     }
     for (let k = 0; k < this.towerPillars.length; k++) this.towerPillars[k].visible = k < tw;
     if (this.towerRing) this.towerRing.visible = tw >= 3;
-    /* 깃발 색이 총 강화도를 말해 준다 — 멀리서도 보이는 가장 싼 신호 */
+    /* Default flag color summarizes castle upgrade level at a distance. */
     const lv = fo + tw;
     const flagColor = lv >= 8 ? 0xff6bd6 : lv >= 6 ? 0x9b7bff : lv >= 4 ? 0x62d0ff : lv >= 2 ? 0x7ff08a : 0xffc93d;
     for (const f of this.flags) f.material.color.setHex(flagColor);
@@ -899,8 +873,7 @@ export class Renderer3D {
     }
 
     if (this.placementMode) {
-      /* 교환 모드(배치된 용사를 고른 상태)에서는 남의 자리도 후보다.
-       * 빈 발판은 초록(이동), 다른 용사 자리는 파랑(교환)으로 구분해 준다. */
+      /* In swap mode, occupied pads are valid targets. Green means move to an empty pad; blue means swap with a hero. */
       for (let i = 0; i < D.PADS.length; i++) {
         const occ = state.field.find(h => h.padIndex === i);
         const self = occ && occ.id === this.selectedHeroId;
@@ -944,13 +917,13 @@ export class Renderer3D {
       head.rotation.z = -Math.PI / 2;
       head.position.x = 0.36;
       g.add(shaft, head);
-      if (p.splash > 0) {   /* 정령궁수: 빛나는 화살 */
+      if (p.splash > 0) {   /* Spirit archer uses glowing arrows. */
         const glowTip = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), new THREE.MeshBasicMaterial({ color: 0xd8b4ff }));
         glowTip.position.x = 0.36;
         g.add(glowTip);
       }
     } else if (p.kind === 'orb') {
-      const color = p.splashSlow ? 0x9fdcff : 0xd08bff;   /* 빙결사는 얼음색 */
+      const color = p.splashSlow ? 0x9fdcff : 0xd08bff;   /* Cryomancer uses icy colors. */
       const orb = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), new THREE.MeshBasicMaterial({ color }));
       g.add(orb);
       g.userData.pulse = true;
@@ -977,7 +950,7 @@ export class Renderer3D {
     return { group: g, lastPos: null };
   }
 
-  /* ---------- 이벤트 → 시각 효과 ---------- */
+  /* Engine events to visual effects. */
   _heroAttackAnim(heroId, tx, ty) {
     const v = this.heroViews.get(heroId);
     if (!v) return;
@@ -995,15 +968,15 @@ export class Renderer3D {
       switch (ev.type) {
         case 'enemyHit': {
           if (ev.tactic === 'flare') {
-            /* Flare는 starfall의 착탄 프레임에서 피해 숫자·충격파를 낸다. */
+            /* Flare damage numbers and rings appear on the starfall impact frame. */
           } else if (ev.kind === 'burn') {
             if (Math.random() < 0.4) this.showNumber(x3, 1.7, z3, `${ev.dmg}`, '#ff9a3d', 0.72);
           } else if (ev.kind === 'slow') {
-            /* 0 피해 숫자는 "아무 일도 없었다"로 읽힌다. 서리 전술의 결과를 말로도 고정한다. */
+            /* Use explicit frost feedback because a zero-damage number would imply nothing happened. */
             this.showNumber(x3, 2.0, z3, '❄ 감속!', '#b9f5ff', 0.82);
             this.burst(x3, 0.9, z3, 0x9fdcff, 5, 1.8, { grav: -0.8, ttl: 0.45, size: 0.65 });
           } else if (ev.kind === 'crit') {
-            /* 치명타는 크고 노랗게 — 근접의 쾌감 */
+            /* Large yellow critical numbers emphasize melee bursts. */
             this.showNumber(x3, 2.0, z3, `${ev.dmg}!`, '#ffd93d', 1.35);
             this.burst(x3, 1.0, z3, 0xffd93d, 10, 4, { grav: 3, ttl: 0.3 });
             this.addShake(0.14);
@@ -1021,7 +994,7 @@ export class Renderer3D {
           break;
         }
         case 'block': {
-          /* 방패 장벽: 바닥에 퍼지는 충격파 + 정지 표시 */
+          /* Shield barrier feedback combines a ground ring with a stopped marker. */
           this._blockWave(x3, z3, ev.range * S);
           this.burst(x3, 0.5, z3, 0x9fd0ff, 16, 3.2, { grav: 1.5, ttl: 0.4 });
           this.showNumber(x3, 2.4, z3, '🛡️ 멈춰!', '#9fd0ff', 1.1);
@@ -1099,7 +1072,7 @@ export class Renderer3D {
           this.burst(x3, 0.9, z3, col, n, spd);
           if (ev.boss) this.burst(x3, 1.4, z3, 0xffffff, 24, 4.5);
           this.showNumber(x3, 2.2, z3, `+${ev.gold}💰`, '#ffd93d', ev.boss ? 1.3 : (ev.midBoss ? 1.1 : 0.9));
-          /* 배율이 "올라가는 순간"에만 알린다 — 처치마다 띄우면 글자가 겹쳐 쌓인다 */
+          /* Announce only multiplier increases, not every kill, to prevent overlapping text. */
           if (ev.combo === D.COMBO.x2At || ev.combo === D.COMBO.x3At) {
             this.showNumber(x3, 3.0, z3, `골드 ${ev.mul}배!`, '#ff8a3d', 1.25);
           }
@@ -1123,7 +1096,7 @@ export class Renderer3D {
           this._heroAttackAnim(ev.heroId, ev.tx, ev.ty);
           break;
         case 'explode': {
-          /* 폭발 반경을 링으로 그려 "어디까지 맞았는지" 확실히 보인다 */
+          /* Show blast radius with a ring so the affected area is readable. */
           const r3 = (ev.radius || 62) * S;
           if (ev.frost) {
             this._shockRing(x3, z3, r3, 0x9fdcff, 0.45, 0.2);
@@ -1171,7 +1144,7 @@ export class Renderer3D {
           }
           break;
         case 'bossWarn':
-          /* 포탈이 붉게 요동친다 */
+          /* Local red portal feedback. */
           this.burst(0, 1.0, wz(430), ev.tier === 'great' ? 0xff2222 : 0xff9a3d, ev.tier === 'great' ? 26 : 14, 3.2, { grav: -1 });
           this.addShake(ev.tier === 'great' ? 0.22 : 0.12);
           break;
@@ -1201,7 +1174,7 @@ export class Renderer3D {
           this.burst(0, 1.5, -4.5, 0xff5533, 60, 6);
           break;
 
-        /* ---------- 별지기 ---------- */
+        /* Champion feedback. */
         case 'champAttack': {
           const v = this.champView;
           if (v) {
@@ -1212,7 +1185,7 @@ export class Renderer3D {
           break;
         }
         case 'champHurt':
-          /* 매 틱 1씩 깎일 수 있어 다 그리면 숫자가 도배된다 — 가끔만 */
+          /* Throttle small repeated damage numbers to avoid filling the screen. */
           if (Math.random() < 0.35) this.showNumber(x3, 2.3, z3, `-${ev.dmg}`, '#ff8a8a', 0.78);
           break;
         case 'champKo':
@@ -1254,14 +1227,14 @@ export class Renderer3D {
           if (ev.perfect) this.burst(0, 2.5, -4.3, 0xffe27a, 26, 4, { grav: 2 });
           break;
         case 'feast': {
-          /* 승급한 용사의 모델을 새 등급으로 다시 짓는다 (망토 색·왕관이 바뀐다) */
+          /* Rebuild a promoted hero's model with its new tier cape and crown. */
           const hv = this.heroViews.get(ev.heroId);
           if (hv) {
             this._disposePilotView(hv);
             this.scene.remove(hv.holder);
             this.heroViews.delete(ev.heroId);
           }
-          /* 잔치 — 승급한 용사 자리(벤치면 광장)에서 색색 폭죽 + 빛기둥 */
+          /* Feast effects use the promoted hero's pad or the plaza when benched. */
           const fx = ev.pad >= 0 ? wx(D.PADS[ev.pad].x) : 0;
           const fz = ev.pad >= 0 ? wz(D.PADS[ev.pad].y) : 2.6;
           this._lightPillar(fx, fz, ev.to);
@@ -1273,7 +1246,7 @@ export class Renderer3D {
           }
           if (this.champView) {
             this.showBubble(this.champView.pos.x, this.champView.pos.y, '잔치다~!! 🎉', 2.4);
-            /* 별지기도 잔치 자리로 달려간다 (준비 단계 배회 목적지 변경) */
+            /* Redirect the champion's preparation wandering toward the feast. */
             this.champView.dest = ev.pad >= 0
               ? { x: D.PADS[ev.pad].x + 30, y: D.PADS[ev.pad].y + 16 }
               : { x: 350, y: 300 };
@@ -1286,7 +1259,7 @@ export class Renderer3D {
     }
   }
 
-  /* ---------- 프레임 ---------- */
+  /* Frame updates. */
   frame(dt, state) {
     this.time += dt;
     const t = this.time;
@@ -1404,7 +1377,7 @@ export class Renderer3D {
         v.externalPilot.root.position.y = v.externalPilot.baseY + hop * 0.3;
         v.externalPilot.mixer.update(dt);
       }
-      /* 보스 발밑 기운이 회전·맥동 */
+      /* Rotate and pulse the local boss foot aura. */
       if (v.group.userData.aura) {
         const a = v.group.userData.aura;
         a.rotation.z = t * (v.boss ? 1.6 : 1.1);
@@ -1416,7 +1389,7 @@ export class Renderer3D {
       if (v.enraged && Math.random() < dt * 9) {
         this.burst(v.group.position.x, 0.8, v.group.position.z, 0xff3311, 1, 1.4, { grav: -2, ttl: 0.5, size: 0.8 });
       }
-      /* 정지된 적: 제자리에서 부르르 떨고 파란 기운. 별지기에게 붙잡힌 적도 떤다 */
+      /* Stopped or champion-held enemies shiver locally with a blue aura. */
       if (v.stunned) {
         v.spr.position.x = Math.sin(t * 40 + id) * 0.05;
         if (Math.random() < dt * 5) {
@@ -1438,7 +1411,7 @@ export class Renderer3D {
       } else if (v.enraged) {
         v.spr.material.color.setRGB(1, 0.55, 0.5);
       } else if (v.slowed) {
-        /* 감속: 더 진한 청색 + 발밑 서리 고리 + 눈발 */
+        /* Slow feedback uses a deeper blue tint, frost ring and snow particles. */
         v.spr.material.color.setRGB(0.48, 0.74, 1);
         if (!v.frostRing) {
           const fr = new THREE.Mesh(
@@ -1502,8 +1475,7 @@ export class Renderer3D {
       this.sky.frame(dt, t, this.palette, this.moonPhase);
     }
 
-    /* 접근성 계약: 전투 피드백이 카메라 전체를 흔들거나 밝기를 펄스시키지 않는다.
-     * 생동감 설정은 착탄 지점의 국소 파티클 밀도만 바꾼다. */
+    /* Combat feedback never shakes the camera or pulses global brightness. Effects preferences change only local impact particle density. */
     this.camera.position.copy(this.camBase);
     this.camera.lookAt(this.camLook);
     if (this.cameraCutscene) {
@@ -1523,7 +1495,7 @@ export class Renderer3D {
     this.renderer.render(this.scene, this.camera);
   }
 
-  /* ---------- 입력 ---------- */
+  /* Input handling. */
   _screenToLogical(clientX, clientY) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
@@ -1544,8 +1516,7 @@ export class Renderer3D {
       const d = Math.hypot(D.PADS[i].x - p.x, D.PADS[i].y - p.y);
       if (d < bd) { bd = d; best = i; }
     }
-    /* 손가락은 마우스보다 훨씬 뭉툭하다. 폰에서는 발판이 화면상 20px 남짓이라
-     * 1.5배 반경으로는 자꾸 빗나간다 — 터치 기기에서만 넉넉하게 잡는다. */
+    /* Increase hit tolerance on touch devices where pads are only around 20 pixels wide. */
     return bd <= D.PAD_RADIUS * this.padSlop ? best : null;
   }
 
@@ -1560,12 +1531,13 @@ export class Renderer3D {
   setPlacementMode(on, rangePx = 0, swap = false) {
     this.placementMode = on;
     this.placeRange = rangePx;
-    this.swapMode = !!swap;      // 배치된 용사 자리도 후보(= 자리 교환 가능)
+    this.swapMode = !!swap;      // Occupied pads are valid swap targets.
   }
   setSelectedHero(id) { this.selectedHeroId = id; }
 
   dispose() {
     this.disposed = true;
+    this.cosmetics.dispose();
     this.gatePilotRequest = null;
     this.ro.disconnect();
     for (const part of this.gatePilot?.parts || []) part.dispose();
@@ -1588,6 +1560,5 @@ export class Renderer3D {
   }
 }
 
-/* 지형·성 짓기(world)와 이펙트(fx)는 별 파일의 믹스인으로 조립한다 —
- * 한 파일 2,500줄짜리 클래스를 기능별로 쪼개기 위한 장치다. */
+/* Compose world construction and effects from separate mixins to keep the renderer organized by responsibility. */
 Object.assign(Renderer3D.prototype, worldMethods, fxMethods);

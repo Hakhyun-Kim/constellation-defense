@@ -1,9 +1,4 @@
-/* =====================================================
- * 전투 공통 효과 — 피해·상태이상
- *
- * 기본 전투, 별지기, 별자리 전술이 같은 처치 보상·상태 이상 규칙을 공유한다.
- * 전술 모듈이 combat.js 내부 함수에 의존하지 않게 분리한 낮은 계층이다.
- * ===================================================== */
+/* Shared damage, status and kill-reward rules for ordinary combat, champions and tactics. Keep this layer below combat.js so tactics need not import combat internals. */
 import * as D from '../data.js';
 import { champKillXp, gainChampXp, chargeUlt } from './champion.js';
 import { gainHeroXp, heroKillXp } from './squad.js';

@@ -1,13 +1,4 @@
-/* =====================================================
- * 외부 .bin/.png를 참조하는 glTF를 가벼운 단일 GLB로 만든다.
- *
- * 멀리 보이는 랜드마크 파일럿은 2K normal/roughness가 화면상 이득보다 첫 로딩
- * 비용이 훨씬 크다. base-color만 최대 512px JPEG로 줄이고, 나머지 PBR 값은
- * material 상수로 보존한다. sharp는 제작 도구일 뿐 런타임 의존성이 아니다.
- *
- * node scripts/pack-web-gltf.mjs input.gltf output.glb \
- *   --sharp-module C:/path/to/node_modules/sharp --texture-size 512
- * ===================================================== */
+/* Pack glTF with external buffers/textures into a compact GLB. For distant landmarks, reduce base color to a 512px JPEG and preserve other PBR values as material constants; 2K maps cost more than they add visually. Sharp is an authoring tool, not a runtime dependency. Usage: node scripts/pack-web-gltf.mjs input.gltf output.glb --sharp-module C:/path/to/node_modules/sharp --texture-size 512 */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -49,8 +40,7 @@ if (!Array.isArray(gltf.buffers) || gltf.buffers.length !== 1 || !gltf.buffers[0
 const sourceBuffer = readFileSync(resolve(sourceDir, gltf.buffers[0].uri));
 if (sourceBuffer.length !== gltf.buffers[0].byteLength) throw new Error('외부 buffer 길이 불일치');
 
-/* 멀리 있는 건축물에는 base color만 남긴다. 사용하지 않는 texture/image까지
- * GLB에 넣지 않도록 인덱스를 새로 매긴다. */
+/* Keep only base color for distant buildings and remap indices to omit unused textures and images. */
 const usedTextureIndices = [];
 for (const material of gltf.materials || []) {
   delete material.normalTexture;

@@ -1,19 +1,9 @@
-/* Firestore 원장 — JsonRepository 와 같은 인터페이스, 다른 보장.
- *
- * JsonRepository 의 멱등성은 한 프로세스 안의 프로미스 큐에서 나온다. Cloud Run
- * 처럼 인스턴스가 여러 개면 그 보장이 사라진다 — 같은 웹훅이 두 인스턴스에
- * 동시에 도착하면 둘 다 "아직 처리 안 됨"을 읽고 둘 다 지급한다. 그래서 이
- * 구현의 핵심은 저장 위치가 아니라 fulfill 을 감싸는 트랜잭션이다.
- *
- * 환경(sandbox/production)으로 네임스페이스를 나눈다. 웹훅에서 isSandbox 를
- * 확인하는 것과 같은 이유로, 데이터도 섞이면 안 된다. */
-/* 이 모듈은 팩토리에서 동적 import 로만 불린다 — JSON 경로와 브라우저 번들은
- * @google-cloud/firestore 를 아예 건드리지 않는다. */
+/* Firestore ledger implements the JSON interface using transactions across instances. An in-process promise queue cannot prevent two Cloud Run instances from granting the same webhook concurrently. Separate sandbox and production namespaces as well as validating isSandbox. */
+/* The factory dynamically imports this module; JSON operation and browser bundles do not load the Firestore SDK. */
 import { FieldPath, FieldValue } from '@google-cloud/firestore';
 import { PermanentRejection } from './repository.mjs';
 
-/* Neon 의 재시도 창(36시간)보다 훨씬 길게 잡는다. TTL 정책을 켜면 Firestore 가
- * expiresAt 을 보고 알아서 지운다 — 직접 도는 정리 루프가 필요 없다. */
+/* Retention exceeds Neon's 36-hour retry window. An enabled Firestore TTL policy deletes expired documents without an application cleanup loop. */
 const PENDING_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -48,9 +38,7 @@ export class FirestoreRepository {
     return stored;
   }
 
-  /* 지급은 여기 한 곳에서만, 그리고 반드시 트랜잭션 안에서 일어난다.
-   * Firestore 는 트랜잭션 안의 모든 읽기가 쓰기보다 먼저 오기를 요구하므로,
-   * 검증에 필요한 문서를 앞에서 한꺼번에 읽는다. */
+  /* Fulfillment occurs only here, inside a transaction. Firestore requires all reads before writes, so load validation documents first. */
   async fulfill(event) {
     const eventRef = this.events.doc(event.eventId);
     const checkoutRef = this.checkouts.doc(event.externalReferenceId);
@@ -59,8 +47,7 @@ export class FirestoreRepository {
       if (seen.exists) return { duplicate: true };
       if (!pendingSnapshot.exists) throw new PermanentRejection('unknown checkout reference');
       const pending = pendingSnapshot.data();
-      /* refunded 도 막는다 — 환불 웹훅이 지급 웹훅보다 먼저 도착하면
-       * 뒤늦은 지급이 회수를 되돌려 버린다. */
+      /* Reject refunded intents so a late fulfillment cannot restore revoked ownership. */
       if (pending.status !== 'pending') throw new PermanentRejection(`checkout is already ${pending.status}`);
       if (pending.accountId !== event.accountId) throw new PermanentRejection('account does not match checkout');
       if (pending.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
@@ -73,8 +60,7 @@ export class FirestoreRepository {
         tx.set(eventRef, { purchaseId: event.purchaseId, at });
         return { ignored: 'purchase was refunded before fulfillment' };
       }
-      /* 결제 통화가 우리가 만든 그대로면 금액도 그대로여야 한다. 플레이어가 결제
-       * 페이지에서 국가를 바꾼 경우는 Neon 이 환산한 값이므로 비교 대상이 아니다. */
+      /* Compare the amount when settlement currency matches the checkout currency. Neon-converted amounts after a country change are not directly comparable. */
       if (event.currency && event.currency === pending.currency && event.price != null && event.price !== pending.price) {
         throw new PermanentRejection('amount does not match checkout');
       }
@@ -108,11 +94,7 @@ export class FirestoreRepository {
     return snapshot.exists ? snapshot.data() : null;
   }
 
-  /* 환불은 지급의 거울상이다 — 같은 트랜잭션, 같은 멱등성 원장, 반대 방향.
-   *
-   * 결제 의도를 되찾는 길이 두 개인 이유: 환불 이벤트의 externalReferenceId 는
-   * null 로 올 수 있고(문서 예시가 그렇다), 분쟁 이벤트는 purchaseId 하나만
-   * 싣는다. purchaseId 질의는 단일 필드 동등 비교라 복합 색인이 필요 없다. */
+  /* Refunds mirror fulfillment with the same transaction and deduplication ledger. externalReferenceId can be null, so also look up by purchaseId; the single-field equality query needs no composite index. */
   async revoke(event) {
     const eventRef = this.events.doc(event.eventId);
     return this.db.runTransaction(async (tx) => {
@@ -146,23 +128,20 @@ export class FirestoreRepository {
       const granted = checkout.status === 'fulfilled';
       if (granted) {
         const playerRef = this.players.doc(checkout.accountId);
-        /* 권리 키에 점이 들어 있다(cosmetic.celestial_banner). 문자열 경로로
-         * 쓰면 중첩 필드로 해석되므로 FieldPath 로 감싸야 한다. */
+        /* Entitlement keys contain dots. Use FieldPath so Firestore does not interpret them as nested paths. */
         tx.update(playerRef, new FieldPath('entitlements', checkout.entitlement), FieldValue.delete());
         tx.set(playerRef.collection('purchases').doc(checkout.purchaseId), {
           refundedAt: at, refundId: event.refundId || null,
         }, { merge: true });
       }
-      /* 아직 pending 이어도 refunded 로 넘긴다 — 뒤늦은 지급 웹훅을 fulfill 이 거절한다. */
+      /* Mark even pending intents refunded so late fulfillment is rejected. */
       tx.update(checkoutSnapshot.ref, { status: 'refunded', refundedAt: at, expiresAt: FieldValue.delete() });
       tx.set(eventRef, { refundId: event.refundId || null, at, expiresAt: new Date(this.now() + EVENT_TTL_MS) });
       return { duplicate: false, revoked: granted };
     });
   }
 
-  /* checkouts 를 accountId+createdAt 으로 질의하면 복합 색인이 필요하고, 색인
-   * 배포가 한 단계 더 늘어난다. 계정당 문서 하나에 최근 시각만 들고 있으면
-   * 읽기 한 번으로 끝나고 색인이 필요 없다. */
+  /* Keep recent timestamps in one document per account to avoid an accountId/createdAt composite index and extra query cost. */
   async recentCheckoutCount(accountId, windowMs) {
     const snapshot = await this.limits.doc(accountId).get();
     if (!snapshot.exists) return 0;
@@ -178,10 +157,9 @@ export class FirestoreRepository {
   get transfers() { return this.root.collection('transferCodes'); }
   get saves() { return this.root.collection('saves'); }
 
-  /* --- 계정 인계 ---
-   * 코드는 해시를 문서 id 로 쓴다. 원문은 어디에도 남지 않는다. */
+  /* Account transfer stores only the code hash as the document ID, never the plaintext code. */
   async issueTransferCode({ accountId, hash, expiresAt }) {
-    /* 계정당 하나만 살아 있게 한다. 단일 필드 동등 질의라 색인이 필요 없다. */
+    /* Invalidate previously issued codes for the account using a single-field query. Concurrent issuance still needs stronger serialization. */
     const previous = await this.transfers.where('accountId', '==', accountId).get();
     const batch = this.db.batch();
     previous.docs.forEach((doc) => batch.delete(doc.ref));
@@ -200,7 +178,7 @@ export class FirestoreRepository {
       const snapshot = await tx.get(ref);
       if (!snapshot.exists) return null;
       const record = snapshot.data();
-      /* 한 번 쓰면 사라진다 — 기한이 지났더라도 지운다. */
+      /* Consume the code once, including expired codes. */
       tx.delete(ref);
       const expires = record.expiresAt?.toDate ? record.expiresAt.toDate().getTime() : Date.parse(record.expiresAt);
       if (expires < this.now()) return null;
@@ -208,7 +186,7 @@ export class FirestoreRepository {
     });
   }
 
-  /* --- 계정 저장본 --- */
+  /* Account save snapshots. */
   async readSave(accountId) {
     const snapshot = await this.saves.doc(accountId).get();
     return snapshot.exists ? snapshot.data() : null;
@@ -227,7 +205,7 @@ export class FirestoreRepository {
     });
   }
 
-  /* 준비 상태 점검 — 존재하지 않아도 되는 문서를 한 번 읽어 연결을 확인한다. */
+  /* Read a document that need not exist to verify database connectivity for readiness. */
   async healthy() {
     await this.root.get();
     return true;

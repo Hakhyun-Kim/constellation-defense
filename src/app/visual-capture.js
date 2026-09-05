@@ -8,8 +8,7 @@ export function supportedVideoMime(MediaRecorderClass = globalThis.MediaRecorder
   return candidates.find((mime) => MediaRecorderClass.isTypeSupported?.(mime)) || 'video/webm';
 }
 
-/* 측정 URL에서만 쓰는 캔버스 캡처다. 게임 규칙이나 시간은 건드리지 않고,
- * perf 모드가 고정한 같은 장면의 실제 WebGL 프레임만 기록한다. */
+/* Capture actual WebGL frames only on measurement URLs. Preserve game rules and timing while recording the scene fixed by performance mode. */
 export function captureCanvasVideo(canvas, {
   durationMs = 10000,
   fps = 30,

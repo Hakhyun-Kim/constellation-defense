@@ -1,23 +1,14 @@
-/* =====================================================
- * 효과음 (Web Audio 합성 + 선택적 CC0 전투 샘플)
- * UI·마법 신호는 tone()/noise()로 유지하고, art-v2에서는 짧은 실제 샘플로
- * 무기·타격·성벽의 물성을 보강한다. 샘플 실패 시 기존 합성음이 폴백이다.
- *
- * 외부 음원을 쓰지 않는 대신, 합성음이 "삑삑"거리지 않도록 세 가지를 건다:
- *   ① 마스터 리미터  — 전투 중 소리 20개가 겹쳐도 찢어지지 않는다
- *   ② 스테레오 패닝  — 적의 필드 x좌표를 좌우 위치로 옮긴다
- *   ③ 피치 랜덤화    — 같은 소리를 연타해도 기계적으로 들리지 않는다
- * ===================================================== */
+/* Web Audio synthesis with optional CC0 combat samples. Keep synthesized UI/magic cues as fallbacks; samples add weapon and impact texture. A limiter, spatial panning and pitch variation reduce clipping and repetitive synthetic sound. */
 import { sampleCue } from './audio/sample-plan.js';
 
 let ctx = null;
-let master = null;      // 음악 + 효과음이 함께 들어오는 지점
-let sfxBus = null;      // 효과음 전용 (여기에만 살짝 공간감을 준다)
-let masterFilter = null; // 몰입/위기 상태 Dynamic Lowpass Flow
+let master = null;      // Shared input for music and sound effects.
+let sfxBus = null;      // Effects-only path with subtle spatial ambience.
+let masterFilter = null; // Dynamic lowpass for immersion and danger states.
 const sampleBank = new Map();
 let sampleDecodeRequested = false;
 
-/* 효과음과 배경음을 따로 끌 수 있다 — 배경음만 끄고 싶은 요구가 가장 흔하다 */
+/* Allow effects and music to be muted independently. */
 const AUDIO_KEY = 'constellation-defense.audio.';
 const LEGACY_AUDIO_KEY = 'mathdef_';
 
@@ -55,7 +46,7 @@ export function getAc() {
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-      /* 리미터: 합성음이 동시에 터질 때 생기는 클리핑(찌직) 제거 */
+      /* Limit overlapping synthesized sounds to prevent clipping. */
       const limiter = ctx.createDynamicsCompressor();
       limiter.threshold.value = -10;
       limiter.knee.value = 6;
@@ -63,16 +54,16 @@ export function getAc() {
       limiter.attack.value = 0.003;
       limiter.release.value = 0.18;
 
-      /* 고역 셸빙: 사각파·톱니파의 날카로운 배음을 눌러 귀가 편하게 */
+      /* High shelving softens sharp square/sawtooth harmonics. */
       const tame = ctx.createBiquadFilter();
       tame.type = 'highshelf';
       tame.frequency.value = 5200;
       tame.gain.value = -5;
 
-      /* Dynamic Lowpass Flow Filter: 게임 위기 상태나 몰입 시 소리 전체 분위기를 변화 */
+      /* Dynamic lowpass changes the audio mix during danger or focused moments. */
       masterFilter = ctx.createBiquadFilter();
       masterFilter.type = 'lowpass';
-      masterFilter.frequency.value = 20000; // 기본은 전체 통과
+      masterFilter.frequency.value = 20000; // Pass the full spectrum by default.
       masterFilter.Q.value = 0.7;
 
       master = ctx.createGain();
@@ -85,7 +76,7 @@ export function getAc() {
       sfxBus = ctx.createGain();
       sfxBus.gain.value = 1;
       sfxBus.connect(master);
-    } catch (e) { /* 오디오 미지원 */ }
+    } catch (e) { /* Fallback when audio is unsupported. */ }
   }
   if (ctx && ctx.state === 'suspended') ctx.resume();
   return ctx;
@@ -115,8 +106,7 @@ export function registerSfxAssets(assets = []) {
   return registered;
 }
 
-/* 최초 사용자 입력에서만 AudioContext를 깨우고 decode한다. 다운로드는 preload가
- * 맡고, 디코딩 전 이벤트에는 합성 폴백을 사용하므로 전투가 기다리지 않는다. */
+/* Resume AudioContext and decode only after the first user gesture. Preload handles downloads; events use synthesized fallback until decoding completes. */
 export async function prepareSfxSamples() {
   sampleDecodeRequested = true;
   return Promise.all([...sampleBank.values()].map(decodeSample));
@@ -155,7 +145,7 @@ function playSample(cueName, { pan = null, gain = 1, rate = 1 } = {}) {
   return true;
 }
 
-/* 게임 상태(체력 비상 등)에 따른 마스터 오디오 플로우 튜닝 */
+/* Tune the master audio filter from game conditions such as low health. */
 export function updateAudioFlow(hpRatio = 1) {
   const c = getAc();
   if (!c || !masterFilter) return;
@@ -163,7 +153,7 @@ export function updateAudioFlow(hpRatio = 1) {
   masterFilter.frequency.setTargetAtTime(targetFreq, c.currentTime, 0.2);
 }
 
-/* 필드 x좌표(0~700)를 좌우 위치로. 패너가 없는 브라우저면 그냥 통과 */
+/* Map logical field x from 0–700 to stereo pan; pass through when StereoPanner is unavailable. */
 function panNode(pan) {
   const c = getAc();
   if (pan == null || !c || !c.createStereoPanner) return null;
@@ -173,7 +163,7 @@ function panNode(pan) {
 }
 export const panOf = (x) => (x == null ? null : Math.max(-0.85, Math.min(0.85, ((x - 350) / 350) * 0.8)));
 
-/* 랜덤 피치 흔들기: cents 단위 (100 = 반음) */
+/* Random pitch variation in cents, where 100 equals a semitone. */
 const wobble = (cents) => (cents ? Math.pow(2, ((Math.random() * 2 - 1) * cents) / 1200) : 1);
 
 /* opts: { pan, cutoff, vary(cents) } */
@@ -202,7 +192,7 @@ export function tone(freq, start = 0, dur = 0.1, type = 'triangle', vol = 0.1, g
   o.start(t0); o.stop(t0 + dur + 0.05);
 }
 
-/* flowTone: 미끄러지는 피치(Smooth Pitch Bend Flow) + LFO 바이브라토 + Filter Cutoff Sweep */
+/* flowTone combines smooth pitch bends, optional LFO vibrato and filter cutoff sweeps. */
 export function flowTone(freqs = [], start = 0, dur = 0.2, type = 'sine', vol = 0.1, opts = {}) {
   if (sfxMuted || !freqs.length) return;
   const c = getAc(); if (!c) return;
@@ -213,14 +203,14 @@ export function flowTone(freqs = [], start = 0, dur = 0.2, type = 'sine', vol = 
   const g = c.createGain();
   o.type = type;
 
-  // 피치 플로우 (Smooth Curve Ramp)
+  // Smooth pitch ramp.
   const stepDur = dur / Math.max(1, freqs.length - 1);
   o.frequency.setValueAtTime(freqs[0] * k, t0);
   for (let i = 1; i < freqs.length; i++) {
     o.frequency.exponentialRampToValueAtTime(Math.max(20, freqs[i] * k), t0 + i * stepDur);
   }
 
-  // LFO Vibrato Flow (옵션)
+  // Optional LFO vibrato.
   if (opts.vibratoFreq && opts.vibratoDepth) {
     const lfo = c.createOscillator();
     const lfoGain = c.createGain();
@@ -241,7 +231,7 @@ export function flowTone(freqs = [], start = 0, dur = 0.2, type = 'sine', vol = 
 
   let node = g;
 
-  // Filter Sweep Flow (옵션)
+  // Optional filter sweep.
   if (opts.filterSweep) {
     const filter = c.createBiquadFilter();
     filter.type = opts.filterType || 'lowpass';
@@ -285,9 +275,8 @@ export function noise(start = 0, dur = 0.08, vol = 0.1, freq = 1200, q = 0.8, op
   src.start(t0);
 }
 
-/* ---------- 음소거 ---------- */
-/* 자동화·테스트용 강제 음소거. localStorage에 쓰지 않는다 —
- * 검증하느라 켠 무음 상태가 사용자의 실제 설정을 덮어쓰면 안 된다. */
+/* Mute controls. */
+/* Force mute for tests without persisting to localStorage or overwriting user preferences. */
 export function forceMute() {
   sfxMuted = true;
   musicMuted = true;
@@ -303,7 +292,7 @@ export function toggleMusic() {
   writeAudioSetting('music', musicMuted);
   return musicMuted;
 }
-/* 전체 음소거 토글 (M키): 하나라도 켜져 있으면 둘 다 끈다 */
+/* M toggles both channels off if either is currently audible. */
 export function toggleAll() {
   const off = !(sfxMuted && musicMuted);
   sfxMuted = off; musicMuted = off;
@@ -314,7 +303,7 @@ export function toggleAll() {
 export const isSfxMuted = () => sfxMuted;
 export const isMusicMuted = () => musicMuted;
 
-/* ---------- 빈도 제한 ---------- */
+/* Rate limiting. */
 const last = {};
 function limit(key, ms) {
   const n = performance.now();
@@ -323,12 +312,11 @@ function limit(key, ms) {
   return false;
 }
 
-/* ---------- 효과음 레시피 ---------- */
+/* Sound recipes. */
 export const SFX = {
   tap()        { flowTone([660, 780], 0, 0.05, 'sine', 0.06); },
 
-  /* 전술 효과가 실제 전장에 닿기 전의 짧은 확인음. 유효 매치를 먼저 귀로 알려 주고,
-   * 적이 없어 시전이 거부되더라도 "매치는 됐다"는 사실은 남긴다. */
+  /* A short confirmation marks a legal match before its battlefield effect arrives, even if no target exists for the tactic. */
   match(kind, size = 3) {
     if (limit(`match-${kind}`, 90)) return;
     const boosted = size >= 5;
@@ -342,8 +330,7 @@ export const SFX = {
       { filterSweep: kind === 'tide' ? [4400, 2400] : [1700, 5200] });
   },
 
-  /* 매치 확인음 뒤 실제 전장이 받는 주문의 도착음. match()와 분리해야
-   * "맞췄다"와 "효과가 적용됐다"가 서로 다른 순간으로 읽힌다. */
+  /* Separate the battlefield arrival cue from match confirmation so input success and effect delivery are audibly distinct. */
   tactic(kind, size = 3) {
     if (limit(`tactic-${kind}`, 120)) return;
     const bonus = size >= 6 ? 3 : size === 5 ? 2 : size === 4 ? 1 : 0;
@@ -364,7 +351,7 @@ export const SFX = {
   summon(tier) {
     flowTone([330 + tier * 60, 660 + tier * 120], 0, 0.12, 'triangle', 0.09);
     if (tier >= 2) flowTone([880, 1100, 1320], 0.08, 0.16, 'triangle', 0.09, { filterSweep: [2000, 6000] });
-    if (tier >= 3) { /* 전설 팡파레 Flow */
+    if (tier >= 3) { /* Legendary fanfare. */
       const scale = [523, 659, 784, 1047, 1319, 1568, 2093];
       flowTone(scale, 0.15, 0.35, 'triangle', 0.11, { vibratoFreq: 12, vibratoDepth: 35, filterSweep: [1500, 8000] });
       noise(0.16, 0.5, 0.05, 5000, 0.4);
@@ -376,17 +363,17 @@ export const SFX = {
   },
   place()      { if (!playSample('place')) { flowTone([220, 140, 110], 0, 0.09, 'sine', 0.1); noise(0, 0.06, 0.07, 700, 0.6); } },
   upgrade()    { flowTone([392, 523, 659, 784], 0, 0.2, 'square', 0.07, { filterSweep: [2000, 6000] }); },
-  /* --- 전투음: x(필드 좌표)를 받아 좌우로 벌리고, 매번 피치를 살짝 흔든다 --- */
+  /* Combat sounds pan from field x and vary pitch slightly on each play. */
   shoot(x)     { if (limit('shoot', 55)) return; const p = panOf(x); if (!playSample('shoot', { pan: p, rate: wobble(45) })) flowTone([880, 520, 440], 0, 0.05, 'triangle', 0.035, { pan: p, vary: 55, cutoff: 4200 }); },
   orb(x)       { if (limit('orb', 80)) return; const p = panOf(x); flowTone([520, 390, 260], 0, 0.1, 'sine', 0.045, { pan: p, vary: 45 }); },
   bolt(x)      { if (limit('bolt', 80)) return; const p = panOf(x); flowTone([1200, 800, 500], 0, 0.08, 'sawtooth', 0.032, { pan: p, vary: 60, cutoff: 3600 }); },
   hit(x)       { if (limit('hit', 45)) return; const p = panOf(x); if (!playSample('hit', { pan: p, rate: wobble(70) })) noise(0, 0.045, 0.06, 1600, 0.7, { pan: p, vary: 90 }); },
-  /* 치명타: 쨍! 하고 시원하게 미끄러지는 피치 플로우 */
+  /* Critical strike: a bright sliding metallic pitch. */
   crit(x)      { if (limit('crit', 80)) return; const p = panOf(x); triggerDuck(0.2, 0.2);
                  const sampled = playSample('crit', { pan: p, rate: wobble(35) });
                  flowTone([1760, 1320, 880], 0, 0.12, 'square', sampled ? 0.035 : 0.06, { pan: p, vary: 40, filterSweep: [6000, 2000] });
                  if (!sampled) noise(0, 0.09, 0.07, 2600, 0.6, { pan: p, vary: 60 }); },
-  /* 방패 장벽: 금속 쿵 + 지면 울림 */
+  /* Shield barrier: metal impact with a ground rumble. */
   block(x)     { if (limit('block', 180)) return; const p = panOf(x); const sampled = playSample('block', { pan: p, rate: wobble(25) });
                  flowTone([220, 140, 80], 0, 0.18, 'square', sampled ? 0.045 : 0.09, { pan: p, vary: 30, cutoff: 1800 });
                  if (!sampled) noise(0, 0.2, 0.08, 700, 0.5, { pan: p });
@@ -415,20 +402,20 @@ export const SFX = {
     triggerDuck(0.25, 0.3);
     flowTone([523, 659, 784, 880, 1047, 1319], 0, 0.35, 'triangle', 0.095, { filterSweep: [2000, 7000] });
   },
-  /* 대보스: 낮게 깔리는 포효 + 굉음 플로우 */
+  /* Main boss: low roar and heavy rumble. */
   bossRoar() {
     triggerDuck(0.5, 0.6);
     flowTone([120, 70, 45, 30], 0, 0.8, 'sawtooth', 0.15, { filterSweep: [1500, 300] });
     noise(0, 0.75, 0.1, 200, 0.3);
     flowTone([65, 45, 30], 0.25, 0.65, 'sawtooth', 0.13);
   },
-  /* 중간보스: 짧고 묵직한 으르렁 */
+  /* Commander: short, weighty growl. */
   midBossRoar() {
     triggerDuck(0.35, 0.4);
     flowTone([160, 100, 60], 0, 0.38, 'sawtooth', 0.11, { filterSweep: [1200, 400] });
     noise(0, 0.35, 0.06, 320, 0.4);
   },
-  /* 등장 경고 사이렌 — 음이 위아래로 흔들린다 */
+  /* Spawn-warning siren with rising and falling pitch. */
   bossWarn(great) {
     triggerDuck(great ? 0.45 : 0.3, 0.5);
     const base = great ? 520 : 660;
@@ -438,13 +425,13 @@ export const SFX = {
     }
     if (great) tone(60, 0, 1.2, 'sine', 0.07);
   },
-  /* 분노 페이즈: 급상승 굉음 */
+  /* Enrage: sharply rising roar. */
   bossEnrage() {
     tone(120, 0, 0.55, 'sawtooth', 0.13, 400);
     noise(0, 0.5, 0.09, 900, 0.35);
     tone(90, 0.2, 0.5, 'square', 0.09, 320);
   },
-  /* 보스 처치 팡파레 */
+  /* Boss-defeat fanfare. */
   bossDown(great) {
     const notes = great ? [523, 659, 784, 1047, 1319] : [523, 659, 784];
     notes.forEach((f, i) => tone(f, i * 0.11, 0.3, 'triangle', 0.1));
@@ -456,18 +443,18 @@ export const SFX = {
   },
   shard()      { tone(1568, 0, 0.1, 'sine', 0.06); tone(2093, 0.09, 0.16, 'sine', 0.05); },
 
-  /* --- 별지기 --- */
+  /* Champion actions. */
   starfall(x)  { if (limit('star', 120)) return; const p = panOf(x);
-    flowTone([2400, 900, 320], 0, 0.42, 'sine', 0.085, { pan: p, filterSweep: [7000, 500] });     // 떨어지는 휘파람
-    noise(0.34, 0.22, 0.1, 800, 0.5, { pan: p });                                                  // 착탄
+    flowTone([2400, 900, 320], 0, 0.42, 'sine', 0.085, { pan: p, filterSweep: [7000, 500] });     // Descending whistle.
+    noise(0.34, 0.22, 0.1, 800, 0.5, { pan: p });                                                  // Impact.
     flowTone([523, 784, 1047], 0.36, 0.18, 'triangle', 0.05, { pan: p }); },
   ultimate()   { triggerDuck(0.45, 0.8);
-    flowTone([160, 220, 330, 440], 0, 0.9, 'sawtooth', 0.12, { filterSweep: [400, 5200] });        // 차오르는 굉음
-    flowTone([1319, 1568, 2093, 2637], 0.2, 0.75, 'sine', 0.07);                                   // 별의 합창
+    flowTone([160, 220, 330, 440], 0, 0.9, 'sawtooth', 0.12, { filterSweep: [400, 5200] });        // Building roar.
+    flowTone([1319, 1568, 2093, 2637], 0.2, 0.75, 'sine', 0.07);                                   // Star choir.
     noise(0.1, 0.75, 0.08, 420, 0.4); },
   levelUp()    { flowTone([523, 659, 784, 1047], 0, 0.35, 'triangle', 0.1, { filterSweep: [2600, 7000] });
     tone(2093, 0.3, 0.2, 'sine', 0.05); },
-  feast()      { /* 잔치 팡파르 + 왁자지껄 */
+  feast()      { /* Feast fanfare and crowd chatter. */
     flowTone([392, 523, 659, 784], 0, 0.3, 'square', 0.08, { filterSweep: [1800, 5200] });
     flowTone([784, 988, 1319], 0.22, 0.3, 'triangle', 0.07);
     noise(0.1, 0.5, 0.05, 900, 0.4);

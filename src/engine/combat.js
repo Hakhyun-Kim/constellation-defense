@@ -1,8 +1,4 @@
-/* =====================================================
- * 웨이브와 전투 — 웨이브 생성 · 스폰 · 매 틱 시뮬레이션 · 별지기 마법
- *  - 몬스터는 무게 추첨으로 길을 골라 아래→위로 행진
- *  - 공격은 데이터 주도 수정자(다단타/화상/감속/폭발/성회복/관통)
- * ===================================================== */
+/* Wave generation, spawning, combat ticks and champion spells. Enemies choose weighted routes; attacks use data-driven multi-hit, burn, slow, splash, healing and piercing modifiers. */
 import * as D from '../data.js';
 import { champStats, champKillXp, gainChampXp, chargeUlt } from './champion.js';
 import { heroMods } from './roster.js';
@@ -13,7 +9,7 @@ import { completeJourneyWave, journeyBattleProgress, journeyEncounter } from './
 import { updateMonsterBlueprints } from './blueprints.js';
 import { updateConstellationAids } from './constellation-aid.js';
 
-/* ---------- 웨이브 생성 ---------- */
+/* Wave generation. */
 function pickWeighted(state, mix) {
   let total = 0;
   for (const m of mix) total += m.weight;
@@ -31,12 +27,11 @@ function pickRoute(state) {
   return 0;
 }
 
-/* 분대 단위로 몰려오는 웨이브를 만든다 (+ 웨이브 말미의 보스들) */
+/* Create squad-based waves with bosses near the end. */
 export function buildWave(state) {
   const w = state.wave;
   const encounter = journeyEncounter(state);
-  /* 지휘관/결전에서도 일반 몬스터 총량은 유지하되, 마지막 세 마리를
-   * 보스와 동시에 세 갈래로 붙여 '보스만 남는 청소 시간'을 없앤다. */
+  /* Maintain ordinary enemy totals, but send the final three alongside the boss across three lanes to avoid a boss-only cleanup phase. */
   const formationMinions = encounter.kind === 'patrol' ? 0 : 3;
   const total = Math.max(0, Math.round(D.waveCount(w) * state.diff.countMul) - formationMinions);
   const mix = D.waveMix(w);
@@ -45,10 +40,10 @@ export function buildWave(state) {
   let spawned = 0;
   while (spawned < total) {
     const size = Math.min(D.squadSize(w), total - spawned);
-    /* 분대는 같은 종류가 뭉쳐 나오되, 30%는 섞인 혼성 분대 */
+    /* Squads usually share one enemy kind; 30% are mixed. */
     const uniform = state.rng() < 0.7;
     const squadType = pickWeighted(state, mix);
-    const route = pickRoute(state);          // 분대는 같은 길로 함께 진군
+    const route = pickRoute(state);          // Squad members travel the same path together.
     for (let i = 0; i < size; i++) {
       list.push({
         t: t + i * D.SQUAD_INNER_GAP,
@@ -67,7 +62,7 @@ export function buildWave(state) {
     const warnType = encounter.boss ? D.greatBossType(encounter.region, w) : midType;
     list.push({ t: formationT - D.BOSS_WARN_LEAD, warnOnly: true, tier: warnTier, etype: warnType });
 
-    /* 졸개가 먼저 세 길을 열고 지휘관이 그 틈을 파고든다. */
+    /* Troops open all three lanes before the commander advances. */
     for (let route = 0; route < 3; route++) {
       list.push({ t: formationT - 0.42 + route * 0.16, type: pickWeighted(state, mix), route });
     }
@@ -75,8 +70,7 @@ export function buildWave(state) {
     if (encounter.kind === 'commander') {
       list.push({ t: formationT, type: midType, route: w % 3 });
     } else {
-      /* 대보스와 중간보스가 한 편대로 도착한다. 최종 지역은 좌우에
-       * 두 지휘관을 세워 마지막 결전의 실루엣을 확실히 다르게 만든다. */
+      /* The main boss and commanders arrive together. The final region adds commanders on both flanks for a distinct finale silhouette. */
       const bType = D.greatBossType(encounter.region, w);
       list.push({ t: formationT, type: bType });
       const lieutenantRoutes = encounter.chapterFinal ? [0, 2] : [w % 2 ? 0 : 2];
@@ -101,22 +95,21 @@ export function waveSummary(state) {
   return counts;
 }
 
-/* 지금 데리고 있는 신화 용사 수 — 몬스터가 여기에 반응한다 (enemies.js의 신화의 압력) */
+/* Current mythic hero count drives mythic pressure in enemies.js. */
 export const mythicCount = () => 0;
 
 export function startWave(state) {
   if (state.phase !== 'prep') return { ok: false };
   state.phase = 'wave';
-  /* 웨이브가 시작될 때 한 번만 센다 — 전투 중 조합으로 몬스터가 갑자기 단단해지면
-   * 방금 본 체력바와 어긋나서 "버그처럼" 보인다 */
+  /* Snapshot mythic pressure at wave start so a mid-combat combination does not unexpectedly change visible enemy health. */
   state.mythicPress = 0;
   state.spawnQueue = [...(state.pendingWave || buildWave(state))];
   state.waveT = 0;
   state.blueprintSummons = [];
   state.constellationAids = [];
-  state.waveDmgTaken = 0;                  // 완벽 방어 판정 재료 (수리로 되돌려도 완벽은 아니다)
+  state.waveDmgTaken = 0;                  // Track damage for perfect defense; repairs do not restore eligibility.
   for (const hero of state.field) hero.activeCd = 0;
-  if (state.champ) {                       // 별지기는 성문 앞에서 웨이브를 맞는다
+  if (state.champ) {                       // The champion starts each wave at the gate plaza.
     state.champ.x = D.CHAMP_HOME.x;
     state.champ.y = D.CHAMP_HOME.y;
     state.champ.targetId = null;
@@ -131,16 +124,15 @@ function spawnEnemy(state, type, events, presetRoute, spawn = {}) {
   const E = D.ENEMY_TYPES[type];
   const w = state.wave;
   const rampMul = E.midBoss ? D.midBossRamp(w) : 1;
-  /* 엘리트 — 일반 몬스터 중 일부가 "성난" 개체로 나온다.
-   * 등급을 여러 단계로 쪼개는 대신 보통/특별 두 가지로만 나눠 한눈에 읽히게 했다. */
+  /* Some ordinary enemies spawn as elites; use one clear normal/elite distinction rather than multiple enemy tiers. */
   const elite = !E.boss && !E.midBoss && state.rng() < D.eliteChance(w);
   const press = state.mythicPress || 0;
-  const loop = state.loop || 0;          // 별의 시련 — 회차만큼 세지고, 그만큼 더 준다
+  const loop = state.loop || 0;          // Star Trial loops increase both enemy strength and rewards.
   const lieutenant = spawn.lieutenant ? D.BOSS_LIEUTENANT : null;
   const hp = Math.round(E.hp * D.hpScale(w) * state.diff.hpMul * rampMul
     * (lieutenant?.hpMul || 1)
     * (elite ? D.ELITE.hpMul : 1) * D.mythicHpMul(press) * D.loopHpMul(loop));
-  /* 대보스는 지름길로 돌진 */
+  /* The main boss takes the shortcut. */
   const route = E.boss ? D.BOSS_ROUTE : (presetRoute != null ? presetRoute : pickRoute(state));
   const start = D.routePoint(route, 0);
   const e = {
@@ -174,7 +166,7 @@ function firstInRange(state, x, y, range) {
   for (const e of state.enemies) {
     if (e.dead) continue;
     if (Math.hypot(e.x - x, e.y - y) <= range) {
-      /* 루트 길이가 달라 진행률(%)로 비교 — 성문에 가까운 적 우선 */
+      /* Compare normalized route progress because path lengths differ; prioritize enemies nearest the gate. */
       const prog = e.s / D.ROUTE_LENS[e.route];
       if (prog > best) { best = prog; target = e; }
     }
@@ -185,7 +177,7 @@ function firstInRange(state, x, y, range) {
 function meleeStrike(state, h, mods, e, events) {
   const baseDmg = Math.round(h.dmg * (state.squad ? 1 : resonanceDamageMul(state, e.route)));
   for (let k = 0; k < mods.hits; k++) {
-    /* 치명타: 짧은 사거리를 보상하는 한 방 */
+    /* Critical strikes compensate for short attack range with burst damage. */
     const crit = mods.crit && state.rng() < mods.crit.chance;
     const dmg = crit ? Math.round(baseDmg * mods.crit.mul) : baseDmg;
     damageEnemy(state, e, dmg, events, crit ? 'crit' : 'hit', mods.healOnKill, null, h.id);
@@ -202,7 +194,7 @@ function updateHeroes(state, dt, events) {
     if (h.activeCd > 0) h.activeCd = Math.max(0, h.activeCd - dt);
     const mods = heroMods(h);
 
-    /* 방패 장벽: 주기적으로 사거리 안 모든 적을 잠시 멈춘다 */
+    /* Shield barriers periodically stop every enemy in range. */
     if (mods.block) {
       h.blockCd = (h.blockCd == null ? mods.block.period * 0.5 : h.blockCd) - dt;
       if (h.blockCd <= 0) {
@@ -217,7 +209,7 @@ function updateHeroes(state, dt, events) {
             range: mods.range, count: stunned, dur: mods.block.dur,
           });
         } else {
-          h.blockCd = 0;                    // 멈출 대상이 없으면 대기
+          h.blockCd = 0;                    // Wait when there are no targets to block.
         }
       }
     }
@@ -264,12 +256,12 @@ function updateHeroes(state, dt, events) {
   }
 }
 
-/* ---------- 별지기 전투 ---------- */
+/* Champion combat. */
 function champStrike(state, e, dmg, crit, S, events) {
   damageEnemy(state, e, dmg, events, crit ? 'crit' : 'hit', 0);
   if (e.dead) {
     state.champKills++;
-    /* 직접 처치 보너스 — damageEnemy가 이미 기본 경험치를 줬으니 차액만 */
+    /* Add only the direct-kill XP bonus; damageEnemy already awarded base XP. */
     gainChampXp(state, champKillXp(e) * (D.CHAMP_XP.ownKillMul - 1), events);
     if (S.healOnKill > 0 && state.castleHp < state.castleMax) {
       state.castleHp = Math.min(state.castleMax, state.castleHp + S.healOnKill);
@@ -283,7 +275,7 @@ const enemyProg = (e) => e.s / D.ROUTE_LENS[e.route];
 function updateChampion(state, dt, events) {
   const c = state.champ;
   if (!c) return;
-  /* 붙잡기는 매 틱 다시 계산한다 — 별지기가 쓰러지든 자리를 뜨든 남은 held가 적을 영원히 세워 두면 안 된다 */
+  /* Recompute holds every tick so leaving or being knocked out cannot leave enemies stopped forever. */
   for (const e of state.enemies) e.held = false;
   if (c.ko) return;
   const S = champStats(state);
@@ -292,11 +284,7 @@ function updateChampion(state, dt, events) {
   c.cd -= dt;
   if (c.spellCd > 0) { c.spellCd = Math.max(0, c.spellCd - dt); c.spellReadyT = 0; }
 
-  /* 목표: 성문에 가장 가까운(진행률 최고) **일반** 몬스터.
-   * 보스는 다른 적이 없을 때만 맞붙는다 — 보스에게 달려들면 반격에 순삭당해
-   * 정작 마법이 필요한 보스전에 마법이 잠긴다. 보스전은 별똥별·은하수의 몫이고,
-   * 별지기의 일은 그 동안 잡졸이 성문에 닿지 않게 막는 것이다.
-   * 자주 갈아타면 지그재그만 하다 끝나므로 "확실히 더 앞선" 적이 나타날 때만 바꾼다. */
+  /* Prioritize the ordinary enemy closest to the gate. Engage bosses only when no ordinary targets remain, preserving the champion's spells during boss fights. Switch only for a clearly more advanced target to avoid zigzagging. */
   let cur = c.targetId != null ? state.enemies.find(e => e.id === c.targetId && !e.dead) : null;
   let bestN = null, bpN = -1, bestB = null, bpB = -1;
   for (const e of state.enemies) {
@@ -308,12 +296,12 @@ function updateChampion(state, dt, events) {
   const best = bestN || bestB;
   const bp = bestN ? bpN : bpB;
   if (!cur) cur = best;
-  else if ((cur.boss || cur.midBoss) && bestN) cur = bestN;   // 잡졸이 나타나면 보스에게서 물러난다
+  else if ((cur.boss || cur.midBoss) && bestN) cur = bestN;   // Disengage the boss when ordinary enemies appear.
   else if (best && best !== cur && bp > enemyProg(cur) + 0.12) cur = best;
   c.targetId = cur ? cur.id : null;
 
   if (!cur) {
-    /* 적이 없으면 광장으로 돌아간다 */
+    /* Return to the plaza when no targets remain. */
     c.holdT = 0;
     const hx = D.CHAMP_HOME.x - c.x, hy = D.CHAMP_HOME.y - c.y;
     const hd = Math.hypot(hx, hy);
@@ -341,17 +329,17 @@ function updateChampion(state, dt, events) {
   c.dirX = dist > 0.01 ? dx / dist : c.dirX;
   c.dirY = dist > 0.01 ? dy / dist : c.dirY;
 
-  /* 붙잡기 — 일반 몬스터는 별지기와 싸우는 동안 멈춘다 (보스는 밀고 지나간다) */
+  /* Ordinary enemies stop while held by the champion; bosses push through. */
   if (!cur.boss && !cur.midBoss && (cur.holdImmuneT || 0) <= 0) {
     cur.held = true;
     c.holdT += dt;
     if (c.holdT >= D.CHAMP_HOLD.max) {
-      cur.holdImmuneT = D.CHAMP_HOLD.immune;   // 너무 오래는 못 잡는다 — 교착 방지
+      cur.holdImmuneT = D.CHAMP_HOLD.immune;   // Limit hold duration to prevent stalemates.
       c.holdT = 0;
     }
   }
 
-  /* 공격 */
+  /* Attack. */
   if (c.cd <= 0) {
     c.cd = 1 / S.spd;
     const crit = S.crit && state.rng() < S.crit.chance;
@@ -367,7 +355,7 @@ function updateChampion(state, dt, events) {
     events.push({ type: 'champAttack', x: c.x, y: c.y, tx: cur.x, ty: cur.y, cleave: S.cleave, crit });
   }
 
-  /* 반격 — 맞붙은 상대가 별지기를 때린다. 후반 몬스터일수록(성 피해 곡선) 아프다 */
+  /* The engaged enemy retaliates, scaling with its castle damage at later waves. */
   if (!cur.dead) {
     const retal = cur.castleDmg * D.castleDmgScale(state.wave) * D.CHAMP.contactRatio
       * ((cur.boss || cur.midBoss) ? D.CHAMP.bossContactMul : 1);
@@ -389,7 +377,7 @@ function updateChampion(state, dt, events) {
   }
 }
 
-/* 별똥별 준비 완료 후 한참 안 쓰면 별지기가 알아서 던진다 — 버튼을 잊어도 별은 떨어진다 */
+/* Auto-cast Starfall after it has remained ready and unused for the configured delay. */
 function champAutoCast(state, dt, events) {
   const c = state.champ;
   if (!c || c.ko || c.spellCd > 0) return;
@@ -405,7 +393,7 @@ function champAutoCast(state, dt, events) {
   }
 }
 
-/* ---------- 별지기 마법 (사람이 누른다) ---------- */
+/* Player-triggered champion spells. */
 export function castStar(state) {
   const c = state.champ;
   if (!c || state.phase !== 'wave') return { ok: false, reason: 'phase' };
@@ -414,7 +402,7 @@ export function castStar(state) {
   const alive = state.enemies.filter(e => !e.dead);
   if (!alive.length) return { ok: false, reason: 'none' };
   const S = champStats(state);
-  /* 보스 > 중간보스 > 성문에 가장 가까운 적 순서로 떨어진다 */
+  /* Target priority: main boss, commander, then enemy closest to the gate. */
   const targets = alive.slice().sort((a, b) =>
     ((b.boss ? 1 : 0) - (a.boss ? 1 : 0)) ||
     ((b.midBoss ? 1 : 0) - (a.midBoss ? 1 : 0)) ||
@@ -475,7 +463,7 @@ function updateTower(state, dt, events) {
 }
 
 function updateEnemies(state, dt, events) {
-  /* 서리 결계(오라) 감속 */
+  /* Frost barrier aura slow. */
   const auraHeroes = [];
   for (const h of state.field) {
     const mods = heroMods(h);
@@ -488,7 +476,7 @@ function updateEnemies(state, dt, events) {
       if (Math.hypot(e.x - g.h.x, e.y - g.h.y) <= g.range) e.auraMul = Math.min(e.auraMul, g.aura);
     }
   }
-  /* 별의 결계 (별지기 수호 스킬) — 별지기 곁의 적이 느려진다 */
+  /* The champion's Star Barrier slows nearby enemies. */
   const champ = state.champ;
   if (champ && !champ.ko && (champ.skills.guard3 || 0) > 0) {
     for (const e of state.enemies) {
@@ -531,7 +519,7 @@ function updateEnemies(state, dt, events) {
       }
     }
 
-    /* 대보스 분노: 체력이 절반 아래로 떨어지면 폭주 */
+    /* Main bosses enrage below half health. */
     if (e.enrageAt && !e.enraged && e.hp / e.maxHp <= e.enrageAt) {
       e.enraged = true;
       e.spd *= e.enrageSpd;
@@ -546,14 +534,14 @@ function updateEnemies(state, dt, events) {
 
     if (e.stunImmuneT > 0) e.stunImmuneT -= dt;
     if (e.holdImmuneT > 0) e.holdImmuneT -= dt;
-    /* 정지(방패 장벽)에 걸리면 아예 못 움직인다 */
+    /* A shield block prevents movement entirely. */
     if (e.stunT > 0) {
       e.stunT -= dt;
       e.stunned = true;
       continue;
     }
     e.stunned = false;
-    /* 별지기에게 붙잡혔다 — 그 자리에서 맞붙는다 (updateChampion이 매 틱 다시 정한다) */
+    /* The champion holds this enemy in place; updateChampion recomputes it every tick. */
     if (e.held) continue;
 
     e.s += e.spd * mul * dt;
@@ -679,8 +667,7 @@ function endWave(state, events) {
       total: journeyProgress.total,
     },
   });
-  /* 별지기 — 쓰러졌어도 다음 준비 단계엔 다시 일어난다.
-   * 클리어 보너스 경험치, 성이 무피해였으면(완벽 방어) 더 크게 + 별조각 1. */
+  /* Revive knocked-out champions during preparation. Wave clears grant XP; perfect defense grants extra XP and one shard. */
   const c = state.champ;
   grantSquadWaveXp(state, events);
   if (c) {
@@ -715,8 +702,7 @@ function endWave(state, events) {
     state.pendingWave = buildWave(state);
     return;
   }
-  /* 서른 번째 아침 — 30웨이브를 버텨 냈다. 회차당 한 번만 울린다(웨이브는 되돌아가지 않으므로).
-   * 엔진은 알리기만 한다: 별조각 지급·연출·다음 회차 시작은 main의 몫이다. */
+  /* Emit the thirtieth-dawn victory once per loop. main.js owns persistent shard rewards, presentation and starting the next loop. */
   if (state.wave === D.VICTORY_WAVE) {
     events.push({
       type: 'victory', wave: state.wave, loop: state.loop || 0,
@@ -729,7 +715,7 @@ function endWave(state, events) {
   state.pendingWave = buildWave(state);
 }
 
-/* ---------- 틱 ---------- */
+/* Simulation tick. */
 export function tick(state, dt) {
   const events = [];
   state.time += dt;

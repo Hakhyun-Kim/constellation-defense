@@ -1,15 +1,9 @@
-/* =====================================================
- * 용사 — 등급 사다리 / 직업 정의 / 조합 레시피 그래프
- *
- * 이 파일은 "구조"에 가깝다: CLASSES와 RECIPES가 만드는 3세대 조합 그래프는
- * 게임의 정체성이라 타깃(어린이/성인)이 달라져도 대부분 그대로 간다.
- * 반대로 dmg/spd/range 같은 개별 수치는 밸런스 봇으로 흔드는 대상이다.
- * ===================================================== */
+/* Hero tier ladder, class definitions and three-generation recipe graph define the legacy army structure. Individual damage, speed and range values are balance-bot inputs. */
 
-/* 소환 확률(%) — 고정. 전설은 소환으로 거의 안 나오고 조합으로 얻는 게 정석 */
+/* Fixed summon probabilities. Legendary heroes normally come from combining rather than summoning. */
 export const SUMMON_PROBS = [64, 26.5, 8, 1.5];
 
-/* 등급 사다리. 레벨 개념은 없다 — 강해지는 길은 오직 "조합". */
+/* Legacy army tier ladder: combining provides progression; fixed-party hero levels are handled separately. */
 export const TIERS = [
   { name: '일반', color: '#8a97a8', mult: 1 },
   { name: '희귀', color: '#3b82f6', mult: 2.8 },
@@ -18,27 +12,15 @@ export const TIERS = [
   { name: '신화', color: '#ff4d9d', mult: 14 },
 ];
 export const MAX_TIER = 4;
-/* ★ 등급 천장은 이제 하나다: **모든 직업이 신화(4)까지.**
- * 예전엔 기본·특수 용사가 전설(3)에서 끝났는데, 후반에 전설이 쌓이면
- * 조합 재료도 못 되고 팔기도 아까운 "끝난 카드"가 됐다 — 제일 재미있어야 할
- * 구간에서 할 일이 사라졌다. 이제 규칙은 한 줄이다:
- *   같은 등급 2명 = 등급 UP, 천장은 모두 신화.
- * 신화 용사(검성/대마도사/수호천사)의 정점 자리는 그대로다 — 기본 수치가
- * 두 배쯤 높아서, 같은 신화 등급이라도 급이 다르다. */
+/* All classes share the mythic tier ceiling. Two same-tier heroes rank up, preventing surplus legendary cards from becoming unusable. Mythic classes retain substantially higher base stats than ordinary classes of the same tier. */
 export const maxTierOf = () => MAX_TIER;
-/* 태어날 수 있는 최저 등급 — 도감 칸의 하한.
- * 특수는 레시피 결과라 1부터(재료 0등급 짝 → 결과 1), 신화는 특수 짝이라 2부터. */
+/* Lowest possible birth tier determines codex bounds: special classes start at tier 1 and mythic classes at tier 2 through their recipes. */
 export const minTierOf = (cls) => CLASSES[cls].mythic ? 2 : CLASSES[cls].special ? 1 : 0;
 
-/* 직업 정의 — 기본 4종(소환으로만 등장) + 특수 6종(레시피 조합으로만 탄생)
- * atk: melee(근접 즉시) | arrow(화살 투사체) | orb(구슬 투사체)
- * 수정자: hits(다단타), burn(화상 비율), slowOnHit, splash, splashSlow, healOnKill, pierce */
-/* 사거리가 짧을수록 "확실한 기술"로 보상한다:
- *  - 검사 계열 → 치명타(crit): 압도적 순간 화력
- *  - 수호병 계열 → 방패 장벽(block): 적을 잠시 완전히 멈춘다 (킹덤러시식 길막)
- *  - 성기사 = 둘 다 가진 프리미엄 근접 */
+/* Four basic summonable classes and six recipe-only special classes. Attack kinds are melee, arrow and orb; modifiers include hits, burn, slowOnHit, splash, splashSlow, healOnKill and pierce. */
+/* Short-range classes gain strong mechanics: knights deal critical bursts, guardians temporarily block enemies, and paladins combine both. */
 export const CLASSES = {
-  /* --- 기본 --- */
+  /* Basic classes. */
   knight: {
     name: '검사', emoji: '⚔️', atk: 'melee', dmg: 15, spd: 1.1, range: 100,
     crit: { chance: 0.3, mul: 2.5 },
@@ -53,7 +35,7 @@ export const CLASSES = {
   archer: { name: '궁수',   emoji: '🏹', atk: 'arrow', dmg: 9,  spd: 1.6, range: 200, desc: '멀리까지 화살을 쏘아요' },
   mage:   { name: '마법사', emoji: '🔮', atk: 'orb',   dmg: 14, spd: 0.7, range: 155, splash: 62, desc: '폭발 마법으로 여럿을 공격해요' },
 
-  /* --- 특수 (레시피 조합 전용) --- */
+  /* Special classes, available through recipes. */
   spellblade: {
     name: '마검사', emoji: '🗡️', special: true, recipe: ['knight', 'mage'],
     atk: 'melee', dmg: 15, spd: 1.0, range: 105, burn: 0.22,
@@ -89,7 +71,7 @@ export const CLASSES = {
     desc: '화살이 별빛으로 폭발해요',
   },
 
-  /* --- 신화 (특수 + 특수 = 3세대 조합의 정점) --- */
+  /* Mythic classes: the third generation combines two special classes. */
   swordsaint: {
     name: '검성', emoji: '⚡', mythic: true, recipe: ['spellblade', 'windblade'],
     atk: 'melee', dmg: 20, spd: 1.3, range: 115, hits: 2, burn: 0.3,
@@ -111,16 +93,16 @@ export const CLASSES = {
   },
 };
 
-/* 정지(길막) 관련 */
-export const STUN_BOSS_MUL = 0.35;      // 보스는 정지에 강하게 저항
-/* 한 번 멈춘 적은 잠시 면역 — 수호병을 여러 명 겹쳐 영구 정지시키는 것을 막는다 */
+/* Enemy blocking rules. */
+export const STUN_BOSS_MUL = 0.35;      // Bosses strongly resist blocking.
+/* Temporary immunity after a block prevents stacked guardians from stopping enemies permanently. */
 export const STUN_IMMUNE = 2.6;
-export const RANGE_MAX = 260;           // UI 사거리 바의 기준(최댓값)
+export const RANGE_MAX = 260;           // Maximum value used to scale the UI range bar.
 export const CLASS_KEYS = Object.keys(CLASSES);
-/* 소환으로는 기본 4종만 — 특수·신화는 조합으로만 얻는다 */
+/* Only four basic classes are summonable; special and mythic classes require recipes. */
 export const GACHA_KEYS = CLASS_KEYS.filter(k => !CLASSES[k].special && !CLASSES[k].mythic);
 
-/* 레시피 목록 (UI 도감·봇 공용). gen 2 = 특수, gen 3 = 신화 */
+/* Recipe list shared by codex and bots. Generation 2 is special; generation 3 is mythic. */
 export const RECIPES = CLASS_KEYS
   .filter(k => CLASSES[k].recipe)
   .map(k => ({
@@ -130,7 +112,7 @@ export const RECIPES = CLASS_KEYS
     gen: CLASSES[k].mythic ? 3 : 2,
   }));
 
-/* 전설 등급 특수능력: 수치가 아니라 "행동"이 바뀐다 */
+/* Legendary abilities change behavior, not only numbers. */
 export const LEGEND_ABILITIES = {
   knight:       { name: '회전베기',   desc: '사거리 안 모든 적을 한 번에 벤다! 치명타 40%·3배' },
   guard:        { name: '서리 결계',  desc: '주변이 계속 느려지고, 방패 장벽이 더 자주·더 길게!' },
@@ -144,7 +126,7 @@ export const LEGEND_ABILITIES = {
   spiritarcher: { name: '유성우',     desc: '폭발이 커지고 적을 불태운다!' },
 };
 
-/* 전설이 되면 덮어씌워지는 수정자 */
+/* Modifiers applied at legendary tier. */
 export const LEGEND_OVERRIDES = {
   knight:       { cleave: true, crit: { chance: 0.4, mul: 3 } },
   guard:        { aura: 0.5, block: { period: 4, dur: 1.9 } },
@@ -156,13 +138,13 @@ export const LEGEND_OVERRIDES = {
   frostmage:    { splashMul: 1.3, splashSlow: { mul: 0.45, dur: 2.0 } },
   sentinel:     { pierce: 2 },
   spiritarcher: { splashMul: 1.6, burn: 0.15 },
-  /* 신화 클래스가 전설 등급일 때 (신화 등급 전 단계) */
+  /* Mythic classes at legendary tier, one step before mythic tier. */
   swordsaint:   { crit: { chance: 0.4, mul: 2.8 } },
   archmage:     { splashMul: 1.15 },
   seraph:       { pierce: 2 },
 };
 
-/* 신화(4) 등급에서 추가로 덮어씌워지는 수정자 — 등급 자체가 능력을 준다 */
+/* Additional modifiers applied at mythic tier. */
 export const MYTHIC_OVERRIDES = {
   knight:       { crit: { chance: 0.45, mul: 3.4 } },
   guard:        { aura: 0.42, block: { period: 3.4, dur: 2.2 } },
@@ -179,8 +161,7 @@ export const MYTHIC_OVERRIDES = {
   seraph:       { pierce: 3, healOnKill: 4, block: { period: 3.8, dur: 1.9 } },
 };
 
-/* 신화 등급 특수능력 이름 — 이제 모든 직업이 신화가 되므로 전원 몫이 있다.
- * 내용은 MYTHIC_OVERRIDES가 실제로 바꾸는 것과 일치해야 한다(과장 금지). */
+/* Every class has a mythic ability name; descriptions must accurately reflect MYTHIC_OVERRIDES. */
 export const MYTHIC_ABILITIES = {
   knight:       { name: '섬광 회전베기', desc: '사거리 안 전부 베고, 치명타 45%·3.4배!' },
   guard:        { name: '절대 결계',     desc: '결계가 더 짙어지고 장벽이 더 자주·더 길게!' },
@@ -199,18 +180,16 @@ export const MYTHIC_ABILITIES = {
 
 export const PIERCE_WIDTH = 46;
 export const BURN_DUR = 3;
-/* 등급업 조합 시 "럭키!" 확률: 한 번에 두 등급 점프 (럭키 디펜스 참고).
- * 단, 전설은 럭키로 건너뛸 수 없다 — 정규 비용을 치러야 한다. */
+/* Lucky rank-ups can jump two tiers, inspired by Lucky Defense, but cannot skip legendary costs. */
 export const LUCKY_JUMP = 0.05;
 export const LUCKY_MAX_TIER = 2;
 
-/* ---------- 용사 능력치 ----------
- * 레벨 개념 없음 — 강해지는 유일한 길은 조합(등급 상승 / 상위 직업). */
+/* Legacy army stats scale through tier and class combinations; fixed-party levels are handled separately. */
 export function heroStats(cls, tier) {
   const C = CLASSES[cls];
   return { dmg: Math.round(C.dmg * TIERS[tier].mult) };
 }
 
-/* 투사체 속도 */
+/* Projectile speed. */
 export const ARROW_SPEED = 540;
 export const ORB_SPEED = 300;

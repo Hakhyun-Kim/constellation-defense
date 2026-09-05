@@ -1,27 +1,22 @@
-/* Neon 체크아웃 클라이언트.
- *
- * 이 파일은 아무것도 "지급"하지 않는다 — 결제 후 돌아온 리다이렉트는 UI 신호일
- * 뿐이고, 소유 여부는 항상 서버에 물어본다. 주소창에 ?purchase=return 을 직접
- * 쳐 넣어도 아무 일도 일어나지 않아야 한다. */
+import { paymentEvent, redactPayment } from './neon-events.js';
+/* Neon checkout client. Redirects are UI signals only; query the server for ownership. Manually entering purchase=return must never grant an item. */
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const POLL_ATTEMPTS = 12;
 const POLL_INTERVAL_MS = 1500;
-const BANNER_ENTITLEMENT = 'cosmetic.celestial_banner';
+
 const TOKEN_KEY = 'cd_neon_player';
 
-/* API 가 다른 도메인에 있을 수 있다 — 게임을 정적 호스팅에 두고 결제 API 만
- * 따로 두는 구성이 흔하다. 비어 있으면 같은 오리진을 쓴다. */
+/* An optional API origin supports separate static-game and payment-service hosting; empty means same origin. */
 const API_BASE = (document.querySelector('meta[name="neon-api-base"]')?.content || '').replace(/\/$/, '');
 
-/* 신원 토큰. 같은 오리진이면 서버가 쿠키로도 알아보지만, 교차 오리진이나
- * 네이티브 클라이언트에서는 이것만 동작한다 — 그래서 항상 같이 보낸다. */
+/* Always send persisted bearer identity for native/cross-origin compatibility, even when same-origin cookies also work. */
 function playerToken() {
   try { return localStorage.getItem(TOKEN_KEY) || null; } catch { return null; }
 }
 
 function rememberPlayer(id) {
-  try { if (id) localStorage.setItem(TOKEN_KEY, id); } catch { /* 사생활 보호 모드 — 쿠키로 버틴다 */ }
+  try { if (id) localStorage.setItem(TOKEN_KEY, id); } catch { /* Storage unavailable: same-origin cookies remain a fallback. */ }
 }
 
 async function request(path, options = {}) {
@@ -33,6 +28,7 @@ async function request(path, options = {}) {
     headers,
   });
   const data = await response.json().catch(() => ({}));
+  paymentEvent('request', { path, method: options.method || 'GET', status: response.status, request: options.body ? redactPayment(JSON.parse(options.body)) : null, response: redactPayment(data) });
   if (!response.ok) throw new Error(data.error || `Store request failed (${response.status})`);
   return data;
 }
@@ -74,13 +70,12 @@ function copy(locale) {
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
-  /* 상품명·소개는 서버가 준 값이다. 지금은 서버 상수라 안전하지만 결제 화면에
-   * innerHTML을 쓰지 않는 규칙을 여기서부터 지킨다. */
+  /* Render server-provided product text with textContent, never innerHTML. */
   if (text !== undefined) node.textContent = text;
   return node;
 }
 
-export function initNeonStore({ locale = 'ko' } = {}) {
+export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPreview = () => {} } = {}) {
   const button = document.querySelector('#neonStoreBtn');
   const modal = document.querySelector('#neonStoreModal');
   if (!button || !modal) return;
@@ -90,14 +85,18 @@ export function initNeonStore({ locale = 'ko' } = {}) {
   const close = modal.querySelector('#neonStoreClose');
   const words = copy(locale);
   let catalog = null;
-  let owned = false;
+  let entitlements = {};
+  let busy = false;
+  let selectedSku = null;
+  let pending = null;
+  let lastReference = null;
   let polling = false;
 
   title.textContent = `✦ ${words.title}`;
   close.textContent = words.close;
   close.addEventListener('click', () => modal.classList.add('hidden'));
   modal.addEventListener('click', (event) => { if (event.target === modal) modal.classList.add('hidden'); });
-  button.addEventListener('click', () => modal.classList.remove('hidden'));
+  button.addEventListener('click', () => { modal.classList.remove('hidden'); paymentEvent('store'); });
 
   function renderRegion() {
     if (!catalog || catalog.markets.length < 2) return null;
@@ -110,8 +109,7 @@ export function initNeonStore({ locale = 'ko' } = {}) {
       if (market.code === catalog.country) option.selected = true;
       select.append(option);
     }
-    /* 국가는 여기서만 바뀐다 — 게임 언어를 바꾼다고 청구 국가가 따라가면
-     * 세금과 결제수단이 틀어진다. 서버도 언어에서 국가를 유추하지 않는다. */
+    /* Only explicit billing selection changes country; game language must not alter tax or payment methods. */
     select.addEventListener('change', async () => {
       try {
         await postJson('/api/store/market', { country: select.value });
@@ -122,8 +120,7 @@ export function initNeonStore({ locale = 'ko' } = {}) {
     return row;
   }
 
-  /* 계정 인계. 이 통합의 가장 정직한 약점이 "신원이 기기에 묶여 있다"였고,
-   * 여기가 그것을 계정으로 옮기는 자리다. 코드는 발급 순간 한 번만 보인다. */
+  /* Account transfer moves device-held identity; the code is shown only once when issued. */
   function renderAccount() {
     const row = element('div', 'neon-account');
     row.append(element('span', null, words.account));
@@ -140,8 +137,7 @@ export function initNeonStore({ locale = 'ko' } = {}) {
 
     const useCode = element('button', 'neon-linkish', words.useCode);
     useCode.addEventListener('click', async () => {
-      /* prompt 를 쓰는 이유: 이 데모에서 필요한 것은 코드가 계정을 옮긴다는
-       * 사실이지 입력 폼의 완성도가 아니다. 실제 타이틀이라면 화면이 따로 있다. */
+      /* The demo uses prompt for transfer-code entry; a production title should provide a dedicated account screen. */
       const entered = window.prompt(words.codePrompt);
       if (!entered) return;
       try {
@@ -157,31 +153,100 @@ export function initNeonStore({ locale = 'ko' } = {}) {
     return row;
   }
 
+  const label = (en, ko) => locale === 'en' ? en : ko;
+  const owns = (item) => Boolean(entitlements[item.entitlement]);
+  function action(text, run, className = 'neon-linkish') {
+    const node = element('button', className, text);
+    node.disabled = busy;
+    node.addEventListener('click', async () => {
+      busy = true; render();
+      try { await run(); } catch (error) { status.textContent = words[error.message] || error.message; }
+      finally { busy = false; render(); }
+    });
+    return node;
+  }
   function render() {
     if (!catalog) return;
-    const item = catalog.items[0];
     product.replaceChildren();
-    const art = element('div', 'neon-product-art', '🚩');
-    art.setAttribute('aria-hidden', 'true');
-    const body = element('div', 'neon-product-copy');
-    body.append(element('b', null, item.name), element('small', null, item.subtitle), element('em', null, words.cosmetic));
-    if (catalog.checkoutMode === 'mock') body.append(element('em', 'neon-mock', words.mock));
-    const buy = element('button', 'big amber', owned ? words.owned : `${words.buy} · ${item.displayPrice}`);
-    buy.id = 'neonBuyBtn';
-    buy.disabled = owned;
-    buy.addEventListener('click', startCheckout);
-    product.append(art, body, buy);
+    const icons = ['🚩', '💎', '🛡'];
+    for (const [index, item] of catalog.items.entries()) {
+      const card = element('article', 'neon-item');
+      card.dataset.sku = item.sku;
+      const art = element('div', 'neon-product-art', icons[index] || '✦');
+      art.setAttribute('aria-hidden', 'true');
+      const body = element('div', 'neon-product-copy');
+      body.append(element('b', null, item.name), element('small', null, item.subtitle));
+      const buy = action(owns(item) ? words.owned : `${words.buy} · ${item.displayPrice}`, () => startCheckout(item), 'big amber');
+      buy.dataset.buy = item.sku;
+      if (index === 0) buy.id = 'neonBuyBtn';
+      buy.disabled = busy || owns(item) || Boolean(pending);
+      card.append(art, body, buy); product.append(card);
+    }
+    product.append(element('small', null, words.cosmetic));
+    if (catalog.checkoutMode === 'mock') {
+      product.append(element('small', 'neon-mock', words.mock));
+      if (pending) {
+        const panel = element('section', 'neon-checkout');
+        panel.append(element('b', null, label('Mock checkout — your confirmation', '모의 결제 — 구매 확인')),
+          element('p', null, `${pending.item.name} · ${pending.item.displayPrice}`),
+          element('small', null, label('No hosted page or signature is simulated here. Confirm calls the real fulfillment ledger. Keep this pending to demonstrate delayed delivery.', '호스팅 화면·서명을 흉내 내지 않습니다. 확인하면 실제 지급 원장을 호출합니다. 지연 지급을 보려면 대기 상태로 두세요.')));
+        panel.append(action(label('Confirm test purchase', '테스트 구매 확인'), async () => {
+          await postJson('/api/store/mock-complete', { reference: pending.reference });
+          pending = null; await refreshEntitlements();
+          status.textContent = label('Delivered. Close the store to see your castle.', '지급 완료. 상점을 닫고 성을 확인하세요.');
+          paymentEvent('fulfilled');
+        }, 'big amber'), action(label('Cancel / leave unpaid', '취소 / 미결제 유지'), () => {
+          pending = null; status.textContent = label('Unpaid checkout: nothing granted.', '미결제 상태: 지급되지 않았습니다.'); paymentEvent('cancelled');
+        }));
+        product.append(panel);
+      }
+      const inventory = element('section', 'neon-inventory');
+      inventory.append(element('b', null, label('Test inventory & refunds', '테스트 보관함 · 환불')),
+        element('small', null, label('Refund removes only that decoration. You can buy it again. No money moves.', '선택한 장식만 회수하고 재구매할 수 있습니다. 실제 돈은 이동하지 않습니다.')));
+      let count = 0;
+      for (const item of catalog.items.filter(owns)) {
+        const purchaseId = entitlements[item.entitlement].purchaseId;
+        if (!purchaseId?.startsWith('mock-purchase-')) continue;
+        count++;
+        const row = element('div', 'neon-refund-row');
+        row.append(element('span', null, item.name), action(label('Test refund', '테스트 환불'), async () => {
+          lastReference = purchaseId.slice('mock-purchase-'.length);
+          await postJson('/api/store/mock-refund', { reference: lastReference });
+          await refreshEntitlements(); paymentEvent('refunded', { sku: item.sku });
+          status.textContent = label('Refunded. Decoration removed; other items remain.', '환불 완료. 다른 아이템은 유지됩니다.');
+        }));
+        inventory.append(row);
+      }
+      if (!count) inventory.append(element('p', null, label('No mock purchases to refund yet.', '환불할 모의 구매가 없습니다.')));
+      const failures = element('details', 'neon-failures');
+      failures.append(element('summary', null, label('Try delivery failure cases', '지급 실패 사례 테스트')));
+      failures.append(action(label('Send forged webhook (expect 403)', '위조 웹훅 전송 (403 예상)'), async () => {
+        try { await postJson('/api/webhooks/neon', { id: 'inspector-forgery', type: 'purchase.completed' }); }
+        catch (error) { status.textContent = error.message; }
+        await refreshEntitlements();
+      }));
+      if (lastReference) failures.append(action(label('Replay last delivery', '마지막 지급 재전송'), async () => {
+        const result = await postJson('/api/store/mock-complete', { reference: lastReference, distinct: true });
+        await refreshEntitlements();
+        status.textContent = JSON.stringify(result);
+        paymentEvent('replayed');
+      }));
+      inventory.append(failures);
+      product.append(inventory);
+    }
     const region = renderRegion();
     if (region) product.append(region);
     product.append(renderAccount());
-    document.querySelector('#paidCosmeticBadge')?.classList.toggle('hidden', !owned);
+    document.querySelector('#paidCosmeticBadge')?.classList.toggle('hidden', !Object.keys(entitlements).length);
   }
 
   async function refreshEntitlements() {
     const data = await request('/api/store/entitlements');
-    owned = Boolean(data.entitlements?.[BANNER_ENTITLEMENT]);
+    entitlements = data.entitlements || {};
+    onEntitlements(entitlements);
     render();
-    return owned;
+    paymentEvent('inventory', { items: Object.keys(entitlements) });
+    return entitlements;
   }
 
   async function loadCatalog() {
@@ -190,16 +255,16 @@ export function initNeonStore({ locale = 'ko' } = {}) {
     render();
   }
 
-  /* 리다이렉트가 웹훅보다 먼저 도착할 수 있다고 Neon 문서가 명시한다. 그래서
-   * 돌아온 뒤에는 기다리며 물어보고, 그래도 늦으면 사라지지 말고 다시 확인할
-   * 방법을 남긴다 — 지급 자체는 이미 서버에 안전하게 기록돼 있다. */
+  /* The return redirect may precede the webhook. Poll ownership and offer a retry when delivery takes longer; the return itself grants nothing. */
   async function pollEntitlements() {
     if (polling) return;
     polling = true;
     status.textContent = words.pending;
     try {
       for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt += 1) {
-        if (await refreshEntitlements()) {
+        await refreshEntitlements();
+        const item = catalog.items.find(item => item.sku === selectedSku);
+        if (item && owns(item)) {
           status.replaceChildren(document.createTextNode(words.owned));
           return;
         }
@@ -207,52 +272,62 @@ export function initNeonStore({ locale = 'ko' } = {}) {
       }
       status.replaceChildren(document.createTextNode(`${words.slow} `));
       const retry = element('button', 'neon-retry', words.retry);
-      retry.addEventListener('click', () => { polling = false; pollEntitlements(); });
+      retry.addEventListener('click', () => { polling = false; pollEntitlements().catch(error => { status.textContent = error.message; }); });
       status.append(retry);
     } finally {
       polling = false;
     }
   }
 
-  async function startCheckout() {
+  async function startCheckout(item) {
     status.textContent = '';
-    try {
-      /* 서버로 보내는 것은 SKU와 표시 언어뿐이다. 가격도, 국가도 보내지 않는다. */
-      const data = await postJson('/api/store/checkout', { sku: catalog.items[0].sku, locale });
+    selectedSku = item.sku;
+    const data = await postJson('/api/store/checkout', { sku: item.sku, locale });
+    if (catalog.checkoutMode === 'mock') {
+      const reference = new URL(data.redirectUrl).searchParams.get('reference');
+      if (!reference) throw new Error('Missing mock checkout reference');
+      pending = { reference, item };
+      lastReference = reference;
+      paymentEvent('checkout', { sku: item.sku });
+      status.textContent = label('Checkout created. No entitlement until you confirm.', '결제 생성 완료. 확인 전에는 지급되지 않습니다.');
+    } else {
       location.assign(data.redirectUrl);
-    } catch (error) { status.textContent = words[error.message] || error.message; }
+    }
   }
 
   async function boot() {
     try {
       await loadCatalog();
+      onPreview(modal.querySelector('#neonCastlePreview'));
       button.classList.remove('hidden');
       await refreshEntitlements();
       const params = new URLSearchParams(location.search);
       const outcome = params.get('purchase');
+      selectedSku = params.get('sku') || catalog.items[0]?.sku;
       if (outcome === 'mock' && params.get('reference')) {
         await postJson('/api/store/mock-complete', { reference: params.get('reference') });
       }
+      if (outcome === 'cancelled') status.textContent = label('Checkout cancelled. No item granted by the return URL.', '결제가 취소되었습니다. 복귀 주소로 지급되지 않습니다.');
       if (params.get('store') === '1') modal.classList.remove('hidden');
       if (outcome === 'mock' || outcome === 'return') {
         modal.classList.remove('hidden');
         params.delete('purchase');
         params.delete('reference');
+        params.delete('sku');
         history.replaceState({}, '', `${location.pathname}?${params}${location.hash}`);
         await pollEntitlements();
       }
     } catch {
-      /* 서버가 없는 정적 배포(GitHub Pages)에서는 상점이 조용히 사라진다. */
+      /* Hide the unavailable store on static-only deployments such as GitHub Pages. */
       button.classList.add('hidden');
       status.textContent = words.error;
     }
   }
   boot();
 
-  /* 안내 투어가 상점을 실제로 조작할 수 있게 손잡이를 넘긴다 — 투어가
-   * 설명만 하지 않고 같은 코드 경로를 지나게 하기 위해서다. */
+  /* Expose store controls to the inspector so demonstration actions use the same UI and request paths. */
   return {
-    open: () => modal.classList.remove('hidden'),
+    open: () => { modal.classList.remove('hidden'); paymentEvent('store'); },
     close: () => modal.classList.add('hidden'),
     refresh: () => refreshEntitlements().catch(() => {}),
   };

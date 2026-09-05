@@ -1,18 +1,10 @@
-/* =====================================================
- * 절차 생성 BGM v2 — 음원 파일 0개 (라이선스 걱정 없음)
- *
- * 이전판은 단선 베이스 + 단음 멜로디여서 "삑삑" 소리가 났다.
- * 이번엔 실제 음악의 최소 요소를 갖춘다:
- *   ① 코드 진행(화성)  ② 패드(지속음)  ③ 아르페지오  ④ 베이스
- *   ⑤ 드럼(킥·스네어·하이햇)  ⑥ 리버브(피드백 딜레이)
- * 트랙: prep(준비) / battle(전투) / midboss(중간보스) / boss(대보스)
- * ===================================================== */
+/* Procedural BGM with harmony, sustained pads, arpeggios, bass, drums and feedback-delay reverb. Tracks cover preparation, battle, commander and boss encounters without bundled music files. */
 import { getAc, getMaster, isMusicMuted } from './sfx.js';
 
 const semi = (n) => Math.pow(2, n / 12);
 const NOTE = (s, base = 220) => base * semi(s);
 
-/* ---------- 코드 정의 (근음 반음 + 구성음) ---------- */
+/* Chord definitions: root semitone and chord tones. */
 const MIN7 = [0, 3, 7, 10];
 const MAJ  = [0, 4, 7];
 const MAJ7 = [0, 4, 7, 11];
@@ -20,14 +12,9 @@ const MIN  = [0, 3, 7];
 const SUS4 = [0, 5, 7];
 const DIM  = [0, 3, 6];
 
-/* ---------- 트랙 ----------
- * chords: [근음 반음, 코드 종류] × 마디
- * arp: 코드 구성음 인덱스 패턴(16스텝, null=쉼표)
- * bass: 마디당 스텝 패턴 (0=근음, 다른 수=반음 오프셋)
- * drums: k(킥) s(스네어) h(하이햇) 문자열 16칸
- */
+/* Track schema: chords are root/type pairs per bar; arp is a 16-step chord-tone index pattern with null rests; bass uses root/offset steps; drums use k/s/h for kick, snare and hi-hat. */
 const TRACKS = {
-  /* 준비: 평화롭고 따뜻한 왈츠풍 — Am7 - Fmaj7 - Cmaj - Gsus4 */
+  /* Preparation: warm waltz-like Am7–Fmaj7–Cmaj–Gsus4. */
   prep: {
     bpm: 96, swing: 0.14,
     chords: [[0, MIN7], [-4, MAJ7], [3, MAJ], [-2, SUS4]],
@@ -39,7 +26,7 @@ const TRACKS = {
     drums: 'h...h...h...h..h',
   },
 
-  /* 전투: 몰아치는 록/칩튠 — Am - F - G - Am */
+  /* Battle: driving rock/chiptune Am–F–G–Am. */
   battle: {
     bpm: 132, swing: 0,
     chords: [[0, MIN], [-4, MAJ], [-2, MAJ], [0, MIN]],
@@ -51,7 +38,7 @@ const TRACKS = {
     drums: 'k..hs..hk.khs..h',
   },
 
-  /* 중간보스: 무겁고 불안한 반음 진행 — Am - A#dim - Am - Gm */
+  /* Commander: tense chromatic Am–A#dim–Am–Gm. */
   midboss: {
     bpm: 118, swing: 0,
     chords: [[0, MIN], [1, DIM], [0, MIN], [-2, MIN]],
@@ -63,7 +50,7 @@ const TRACKS = {
     drums: 'k..ks..hk.k.s.h.',
   },
 
-  /* 대보스: 질주하는 오스티나토 — Dm - Bb - C - Dm (반음 낮게) */
+  /* Boss: driving Dm–Bb–C–Dm ostinato, transposed down a semitone. */
   boss: {
     bpm: 148, swing: 0,
     chords: [[0, MIN], [-3, MAJ], [-1, MAJ], [0, MIN]],
@@ -76,8 +63,8 @@ const TRACKS = {
   },
 };
 
-/* ---------- 오디오 그래프 ---------- */
-let musicGain = null;   // 음악 전체 볼륨
+/* Audio graph. */
+let musicGain = null;   // Master music volume.
 let dryGain = null;
 let wetGain = null;
 let delayA = null;
@@ -100,7 +87,7 @@ function ensureGraph() {
   dryGain.gain.value = 1;
   dryGain.connect(duckGainNode);
 
-  /* 간단한 리버브: 피드백 딜레이 + 로우패스 (합성음의 건조함을 없애 준다) */
+  /* Feedback delay and lowpass add simple reverb to dry synthesized tones. */
   wetGain = c.createGain();
   wetGain.gain.value = 0.34;
   delayA = c.createDelay(1.0);
@@ -128,7 +115,7 @@ export function duckBgm(amount = 0.4, dur = 0.4) {
   duckGainNode.gain.exponentialRampToValueAtTime(1, t + dur);
 }
 
-/* 악기 하나 = 오실레이터 + 게인 엔벨로프 (dry + reverb 양쪽으로) */
+/* Each instrument uses an oscillator and gain envelope feeding dry and reverb paths. */
 function voice(freq, t, dur, type, vol, opts = {}) {
   const c = getAc();
   if (!c || !ensureGraph()) return;
@@ -149,7 +136,7 @@ function voice(freq, t, dur, type, vol, opts = {}) {
     g.connect(f);
     node = f;
   }
-  /* 스테레오 폭: 디튠된 두 겹을 좌우로 벌리면 합성 패드가 훨씬 넓게 들린다 */
+  /* Pan two detuned layers apart to widen the synthesized pad. */
   if (opts.pan != null && c.createStereoPanner) {
     const p = c.createStereoPanner();
     p.pan.value = Math.max(-1, Math.min(1, opts.pan));
@@ -166,7 +153,7 @@ function voice(freq, t, dur, type, vol, opts = {}) {
 function drum(kind, t) {
   const c = getAc();
   if (!c || !ensureGraph()) return;
-  if (kind === 'k') {                      /* 킥: 피치가 떨어지는 사인 */
+  if (kind === 'k') {                      /* Kick: a descending sine pitch. */
     const o = c.createOscillator(), g = c.createGain();
     o.type = 'sine';
     o.frequency.setValueAtTime(150, t);
@@ -177,7 +164,7 @@ function drum(kind, t) {
     o.start(t); o.stop(t + 0.2);
     return;
   }
-  /* 스네어/하이햇: 노이즈 + 필터 */
+  /* Snare and hi-hat: filtered noise. */
   const len = kind === 's' ? 0.16 : 0.05;
   const buf = c.createBuffer(1, Math.max(1, Math.floor(c.sampleRate * len)), c.sampleRate);
   const d = buf.getChannelData(0);
@@ -196,7 +183,7 @@ function drum(kind, t) {
   src.start(t);
 }
 
-/* ---------- 시퀀서 ---------- */
+/* Sequencer. */
 let current = null;
 let step = 0;
 let nextTime = 0;
@@ -208,7 +195,7 @@ function schedule() {
   if (!c || !current || isMusicMuted()) return;
   const T = TRACKS[current];
   const bpm = T.bpm + waveBoost;
-  const stepDur = 60 / bpm / 4;                 // 16분음표
+  const stepDur = 60 / bpm / 4;                 // Sixteenth note.
   const barSteps = 16;
 
   while (nextTime < c.currentTime + 0.5) {
@@ -216,10 +203,10 @@ function schedule() {
     const i = step % barSteps;
     const bar = Math.floor(step / barSteps) % T.chords.length;
     const [root, shape] = T.chords[bar];
-    /* 스윙: 홀수 16분음표를 살짝 늦춘다 */
+    /* Swing delays alternating sixteenth notes slightly. */
     const t = nextTime + (i % 2 === 1 ? stepDur * (T.swing || 0) : 0);
 
-    /* 패드: 마디 첫 스텝에 코드 전체를 길게 */
+    /* Sustain the full pad chord on the first step of each bar. */
     if (i === 0 && T.pad) {
       const dur = stepDur * barSteps * 0.98;
       for (const s of shape) {
@@ -227,23 +214,23 @@ function schedule() {
         voice(NOTE(root + s, T.pad.base), t, dur, 'sawtooth', T.pad.vol * 0.8, { atk: 0.14, cutoff: T.pad.cutoff, detune: +7, pan: +0.38 });
       }
     }
-    /* 아르페지오: 코드 구성음을 순서대로 */
+    /* Arpeggiate chord tones. */
     if (T.arp) {
       const idx = T.arp.steps[i];
       if (idx != null) {
         const s = shape[idx % shape.length] + (idx >= shape.length ? 12 : 0);
-        /* 아르페지오가 좌우로 살짝 튀면 단조로움이 줄어든다 */
+        /* Subtle alternating pan reduces arpeggio monotony. */
         voice(NOTE(root + s, T.arp.base), t, T.arp.len, T.arp.type, T.arp.vol, { pan: (i % 4 - 1.5) * 0.16 });
       }
     }
-    /* 베이스 */
+    /* Bass. */
     if (T.bass) {
       const off = T.bass.steps[i];
       if (off != null) {
         voice(NOTE(root + off, T.bass.base), t, T.bass.len, T.bass.type, T.bass.vol, { wet: false, cutoff: 700 });
       }
     }
-    /* 드럼 */
+    /* Drums. */
     if (T.drums) {
       const ch = T.drums[i];
       if (ch && ch !== '.') drum(ch, t);
@@ -268,7 +255,7 @@ export const music = {
     current = null;
     if (timer) { clearInterval(timer); timer = null; }
   },
-  /* 웨이브가 오를수록 전투 템포 상승 (최대 +26bpm) */
+  /* Battle tempo rises with wave number, capped at +26 BPM. */
   setWave(w) { waveBoost = Math.min(26, w * 1.6); },
   duck(amount = 0.4, dur = 0.4) { duckBgm(amount, dur); },
   sync() {

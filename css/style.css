@@ -12,16 +12,13 @@
 html, body { height: 100%; }
 body {
   font-family: "Jua", "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
-  /* 폰트 미로딩(오프라인) 시에도 위 시스템 폰트로 자연스럽게 대체된다 */
+  /* System fonts remain a readable fallback when web fonts are unavailable. */
   background: linear-gradient(180deg, #bfe3ff 0%, #dff3ff 45%, #e8f7dd 100%);
   color: var(--ink);
   padding: 10px;
 }
 
-/* ===== 화면 한 판에 담기 =====
- * 전에는 오른쪽 패널이 세로로 계속 자라 페이지가 화면 두 배 길이가 됐다.
- * 이제 화면 높이에 맞춰 두 열을 잡고, 넘치는 목록만 그 안에서 스크롤한다.
- * (좁은 화면에서는 아래 미디어 쿼리가 다시 한 줄 세로 배치로 되돌린다) */
+/* Fit two columns to viewport height and scroll overflowing lists internally. Narrow-screen media queries restore a single scrolling column. */
 .wrap {
   display: flex;
   gap: 12px;
@@ -44,7 +41,7 @@ body {
   gap: 8px;
   min-height: 0;
 }
-/* 위쪽 고정 카드는 줄어들지 않고, 탭 내용만 남는 높이를 먹고 스크롤한다 */
+/* Fixed top cards retain their size; tab contents use and scroll the remaining height. */
 .right .fixed { flex: 0 0 auto; }
 .tabbody {
   flex: 1;
@@ -53,7 +50,7 @@ body {
   overscroll-behavior: contain;
 }
 
-/* ===== 상단 ===== */
+/* Top bar. */
 .topbar {
   display: flex;
   align-items: center;
@@ -99,7 +96,7 @@ body {
 }
 #metaBtn:active { transform: translateY(2px); box-shadow: none; }
 
-/* ===== 성 체력바 (잔상 포함) ===== */
+/* Castle health bar with delayed damage trail. */
 .castlebar-wrap { margin-bottom: 8px; }
 .castlebar-label {
   font-weight: 700;
@@ -129,13 +126,11 @@ body {
 }
 #castleGhost {
   background: #ffd76e;
-  transition: width 0.6s ease 0.3s;   /* 잃은 체력이 잔상으로 보인다 */
+  transition: width 0.6s ease 0.3s;   /* Show recently lost health as a trailing segment. */
   z-index: 1;
 }
 
-/* ===== 전장 (3D) =====
- * 남는 세로 공간을 전부 전장이 먹는다 — 화면이 크면 전장이 커지고,
- * 작으면 최소 높이(320px)까지만 줄어든 뒤 페이지가 스크롤된다. */
+/* The 3D battlefield uses remaining vertical space, down to a 320px minimum before the page scrolls. */
 .stage {
   position: relative;
   border-radius: 16px;
@@ -143,8 +138,7 @@ body {
   box-shadow: 0 8px 24px rgba(30, 60, 90, 0.25);
   flex: 1;
   min-height: 320px;
-  /* 세로가 남는 화면에서 전장이 정사각형에 가까워지면 카메라가 좌우를 잘라 먹는다.
-   * 왼쪽 열 폭(= wrap 폭 − 오른쪽 패널 340 − gap 12)의 1/1.6 을 높이 상한으로 둔다. */
+  /* Cap battlefield height relative to the left-column width so a near-square canvas does not crop the camera's sides. */
   max-height: calc((min(100vw - 20px, 1320px) - 352px) / 1.6);
 }
 #scene3d {
@@ -152,9 +146,9 @@ body {
   height: 100%;
   background: #bfe3ff;
 }
-/* 캔버스 위 손가락 제스처는 페이지 스크롤이 아니라 "용사 끌기"로 쓴다 */
+/* Canvas touch gestures drag heroes rather than scroll the page. */
 #scene3d canvas { display: block; touch-action: none; }
-/* 끌어서 옮기는 중 — 손 모양으로 "잡고 있다"를 알린다 */
+/* Use a grabbing cursor while dragging. */
 #scene3d.dragging, #scene3d.dragging canvas { cursor: grabbing; }
 
 #bossBanner {
@@ -219,7 +213,7 @@ body {
 #bossBanner.cutscene-title span { color: #d6d8e6; font-size: 10px; }
 #bossBanner.cutscene-title.mid b { font-size: 19px; }
 
-/* 등장 예고 경고 배너 */
+/* Incoming enemy warning banner. */
 #bossWarnBanner {
   position: absolute;
   top: 28%;
@@ -256,7 +250,7 @@ body {
   white-space: nowrap;
   border: 1.5px solid rgba(255, 157, 61, 0.6);
 }
-/* 골드 배율이 붙으면 강조 */
+/* Emphasize active gold multipliers. */
 #comboChip.boost {
   background: linear-gradient(180deg, #ff9d3d, #ff6a00);
   color: #fff;
@@ -267,8 +261,7 @@ body {
 #comboChip.pop { animation: combopop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1); }
 @keyframes combopop { 0% { transform: scale(1.5); } 100% { transform: scale(1); } }
 
-/* 3매치의 결과를 전장에도 고정한다. 보드의 빛줄기만으로는 시선이 전장으로
- * 돌아왔을 때 무슨 일이 일어났는지 놓치기 쉬워, 주문·대상 길·결과를 한 칩에 묶는다. */
+/* Summarize tactic, lane and result on the battlefield so players returning their gaze from the board can understand the effect. */
 .tactic-impact {
   position: absolute;
   top: 12px;
@@ -493,8 +486,7 @@ body {
   align-items: center;
   pointer-events: none;
   width: 90%;
-  /* 모달(z-index 50)보다 위. 문제창이 떠 있을 때 뜨는 안내가 제일 중요한데
-     그동안 스크림 뒤에 깔려 아무에게도 안 보였다. */
+  /* Keep important guidance above modal scrims at z-index 50. */
   z-index: 60;
 }
 .toast {
@@ -513,8 +505,7 @@ body {
 @keyframes toast-in  { from { opacity: 0; transform: translateY(-8px); } }
 @keyframes toast-out { to   { opacity: 0; transform: translateY(-8px); } }
 
-/* ===== 전장 아래 줄 =====
- * 조작법 설명 두 문단이 늘 자리를 차지하던 걸 "❓ 조작법" 토글 안으로 넣었다. */
+/* Collapse controls instructions behind a help toggle beneath the battlefield. */
 .under-row {
   margin-top: 8px;
   display: flex;
@@ -585,7 +576,7 @@ body {
   margin-left: 3px;
 }
 
-/* ===== 카드 ===== */
+/* Cards. */
 .card {
   background: var(--card);
   border-radius: 14px;
@@ -603,7 +594,7 @@ body {
   font-size: 15px;
 }
 .stat b { font-size: 17px; }
-/* 학년 선택은 카드 하나를 통째로 쓸 만큼 중요하진 않다 — 통계 줄 밑에 붙인다 */
+/* Compact legacy selector beneath the statistics row. */
 .gradebar {
   display: flex;
   align-items: center;
@@ -620,7 +611,7 @@ body {
   cursor: help;
 }
 
-/* ===== 오른쪽 패널 탭 ===== */
+/* Right-panel tabs. */
 .tabs { display: flex; gap: 6px; flex: 0 0 auto; }
 .tabs button {
   flex: 1;
@@ -653,7 +644,7 @@ body {
 }
 .tabdot.hidden { display: none; }
 .pane.hidden { display: none; }
-/* 탭 바로 아래에 붙으므로 위쪽 모서리는 각지게 */
+/* Square upper corners join the panel to the tab bar. */
 .tabbody .pane { border-radius: 0 0 14px 14px; }
 .minibtns {
   min-width: 0;
@@ -674,7 +665,7 @@ body {
   font-family: inherit;
   white-space: nowrap;
 }
-/* 꺼진 소리 버튼은 회색으로 눌린 듯이 */
+/* Muted sound buttons use subdued gray styling. */
 .minibtns button.off {
   background: #e3e7ee;
   color: #98a3b4;
@@ -687,7 +678,7 @@ body {
   border-color: #bfc9d7;
 }
 
-/* ===== 버튼 ===== */
+/* Buttons. */
 button { font-family: inherit; }
 .big {
   width: 100%;
@@ -704,7 +695,7 @@ button { font-family: inherit; }
 .big:active { transform: translateY(2px); box-shadow: none; }
 .big:disabled { background: #c5cedb; box-shadow: none; cursor: not-allowed; }
 
-/* ===== 학년 ===== */
+/* Legacy selector styling. */
 .grades { display: flex; gap: 5px; flex: 1; }
 .grades button {
   flex: 1;
@@ -719,7 +710,7 @@ button { font-family: inherit; }
 }
 .grades button.on { border-color: #2478e0; background: #e3f0ff; color: #1a5cb0; }
 
-/* ===== 소환 공개 카드 ===== */
+/* Summon reveal card. */
 .reveal {
   position: absolute;
   top: 34%;
@@ -756,7 +747,7 @@ button { font-family: inherit; }
   100% { transform: translate(-50%, -50%) scale(1) rotate(0); }
 }
 
-/* ===== 벤치 ===== */
+/* Bench. */
 .benchhint {
   background: #e8ffe3;
   border: 2px dashed #45b02e;
@@ -821,7 +812,7 @@ button { font-family: inherit; }
 .growth-skill.ready { border-color: #c493ee; color: #4d357b; cursor: pointer; background: #fff9eb; box-shadow: 0 0 0 2px #f3ddff; }
 .combine-row.feast { display: none; }
 
-/* ===== 별자리 원정 지도 ===== */
+/* Constellation expedition map. */
 .journey-modal {
   position: fixed; inset: 0; z-index: 45; overflow: auto; color: #f6f2ff;
   background:
@@ -875,7 +866,7 @@ button { font-family: inherit; }
   padding: 8px 0;
 }
 .hcard {
-  position: relative;               /* 판매 체크(✓) 배지의 기준 */
+  position: relative;               /* Anchor for the selected-for-sale checkmark. */
   border: 2.5px solid var(--t0);
   border-radius: 10px;
   background: #fafcff;
@@ -889,7 +880,7 @@ button { font-family: inherit; }
 .hcard .em { font-size: 22px; line-height: 1.1; position: relative; }
 .hcard .nm { font-size: 10px; font-weight: 700; }
 .hcard .tr { font-size: 9px; font-weight: 800; }
-/* 카드에 표시되는 사거리 */
+/* Range displayed on hero cards. */
 .hcard .rg {
   font-size: 9.5px;
   font-weight: 800;
@@ -898,10 +889,10 @@ button { font-family: inherit; }
   padding: 0 2px;
   color: #fff;
 }
-.hcard .rg.r1 { background: #e07a5f; }   /* 근접 */
-.hcard .rg.r2 { background: #d9a13b; }   /* 중거리 */
-.hcard .rg.r3 { background: #4f9e57; }   /* 장거리 */
-.hcard .rg.r4 { background: #3b82f6; }   /* 초장거리 */
+.hcard .rg.r1 { background: #e07a5f; }   /* Melee. */
+.hcard .rg.r2 { background: #d9a13b; }   /* Medium range. */
+.hcard .rg.r3 { background: #4f9e57; }   /* Long range. */
+.hcard .rg.r4 { background: #3b82f6; }   /* Very long range. */
 .hcard .bdgs {
   position: absolute;
   top: -2px;
@@ -911,7 +902,7 @@ button { font-family: inherit; }
 }
 .hcard .bdg { display: block; }
 
-/* ===== 상세 정보 툴팁 ===== */
+/* Detailed tooltips. */
 #tooltip {
   position: fixed;
   z-index: 100;
@@ -1005,7 +996,7 @@ button { font-family: inherit; }
   font-size: 10px;
   color: #8496b4;
 }
-/* 용사 패널에서도 같은 마크업 재사용 */
+/* Reuse the same markup in the hero panel. */
 #hpInfo #tooltip, #hpInfo .tt-head { color: var(--ink); }
 #hpInfo b { color: #23304a; }
 #hpInfo .tt-rnum { color: #6a7a94; }
@@ -1029,14 +1020,14 @@ button { font-family: inherit; }
   background: #eaffea;
 }
 
-/* ===== 시작 메뉴 (이어하기 / 처음부터) ===== */
+/* Startup menu: resume or start over. */
 .modal-card.start { text-align: center; max-width: 420px; }
 .modal-card.start .big { width: 100%; margin-top: 10px; }
 .continue-info { font-size: 14px; color: #4a5a74; line-height: 1.7; margin: 8px 0 4px; }
 .continue-info b { color: #1c2b4a; }
 .start-note { font-size: 11px; color: #93a0b4; margin-top: 12px; }
 
-/* ===== 여러 명 판매 ===== */
+/* Bulk selling. */
 .sellbar { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .sellbar button {
   border: 1.5px solid #d5ddea;
@@ -1055,7 +1046,7 @@ button { font-family: inherit; }
 #sellGoBtn { background: linear-gradient(180deg, #ffb37a, #e07a3f); border-color: #d06a30; color: #fff; }
 #sellGoBtn:hover:not(:disabled) { filter: brightness(1.06); background: linear-gradient(180deg, #ffb37a, #e07a3f); }
 #sellGoBtn:disabled { background: #c5cedb; border-color: #c5cedb; cursor: not-allowed; }
-/* 판매 모드의 카드: 고르면 주황 테두리 + ✓ */
+/* Selected sale cards use an orange outline and checkmark. */
 .hcard.sellsel {
   outline: 3px solid #e07a5f;
   outline-offset: 1px;
@@ -1086,7 +1077,7 @@ button { font-family: inherit; }
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
-/* ===== 조합/성 관리 행 ===== */
+/* Combination and castle-management rows. */
 .combine-row {
   display: flex;
   align-items: center;
@@ -1123,8 +1114,7 @@ button { font-family: inherit; }
 .combine-empty { font-size: 11px; color: #9aa7ba; padding: 4px 0; }
 .combine-row.recipe { font-size: 12px; gap: 4px; }
 .combine-row .rarrow { color: #9aa7ba; font-weight: 400; }
-.combine-row /* 재료 표시 — 예전엔 "없는 재료"를 가장 안 보이게 흐려 놨다.
-   정작 알아야 하는 건 "무엇이 비었나"라서 강조를 뒤집었다. */
+.combine-row /* Emphasize missing materials instead of making them the least visible elements. */
 .ing {
   display: inline-flex;
   align-items: center;
@@ -1144,7 +1134,7 @@ button { font-family: inherit; }
   50%      { border-color: #ffd9ae; }
 }
 
-/* 지금 바로 되는 조합 — 스크롤 없이 맨 위에서 착착 */
+/* Immediately available combinations appear at the top without scrolling. */
 .combine-now {
   background: linear-gradient(180deg, #fffdf0, #fff8dc);
   border: 2px solid #ffd76a;
@@ -1198,13 +1188,10 @@ button { font-family: inherit; }
 .now-res { font-weight: 900; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .now-cost { font-weight: 800; color: #7a6a3a; }
 
-/* 재료가 모자란 줄에서 눌러 바로 행동 */
+/* Direct actions from missing-material rows. */
 .combine-row button.need { background: #fff2e0; border-color: #f0b071; color: #8a5a12; }
 
-/* ===== 💰 부족 =====
- * 돈이 없어서 못 하는 것과 재료가 없어서 못 하는 것은 다른 문제다.
- * 전에는 골드가 모자라도 초록 버튼이 그대로 있어서 "된다"로 읽혔다 —
- * 이제 얼마가 모자란지 동전으로 적고, 버튼은 회색 자물쇠로 잠근다. */
+/* Distinguish insufficient gold from missing materials: show the coin shortfall and a disabled action rather than an apparently available green button. */
 .gshort {
   margin-left: auto;
   flex-shrink: 0;
@@ -1228,7 +1215,7 @@ button { font-family: inherit; }
   opacity: 1;
 }
 .combine-row button.lack::before { content: '🔒 '; }
-/* 돈만 모자란 줄은 "재료는 다 모았다"는 뜻이라 흐리지 않는다 — 테두리로만 잠금을 알린다 */
+/* Keep completed materials readable when only gold is missing; indicate the lock with the border. */
 .combine-row.broke,
 .combine-row.recipe.s-gold {
   background: #fbfbfd;
@@ -1236,7 +1223,7 @@ button { font-family: inherit; }
   border-radius: 8px;
   padding: 4px 6px;
 }
-/* 소환 버튼도 같은 규칙 — 돈이 모자라면 잠긴 얼굴 */
+/* Apply the same insufficient-gold state to summoning. */
 .big.lack { background: #dbe2ec; color: #7b8698; box-shadow: none; cursor: not-allowed; }
 .big.lack::before { content: '🔒 '; }
 .combine-row.flash { animation: rowflash 1.4s ease-out; }
@@ -1286,7 +1273,7 @@ button { font-family: inherit; }
   margin-bottom: 8px;
 }
 
-/* ===== 용사 패널 ===== */
+/* Hero panel. */
 #hpInfo { font-size: 13px; line-height: 1.65; margin-bottom: 8px; }
 #hpInfo .lv { color: #c98a00; font-weight: 800; }
 #hpInfo .cdesc { color: #7a879c; }
@@ -1323,7 +1310,7 @@ button { font-family: inherit; }
 #overMetaBtn { background: #efe6ff; color: #5b2fb8; }
 #shareBtn { background: #e3f0ff; color: #1a5cb0; }
 
-/* ===== 모달 ===== */
+/* Modals. */
 .modal {
   position: fixed;
   inset: 0;
@@ -1381,7 +1368,7 @@ button { font-family: inherit; }
   margin-bottom: 12px;
 }
 .mproblem {
-  /* 손글씨풍 Gaegu — 숫자·수식이 또렷하고 아이들 눈에 친근하다 */
+  /* Gaegu provides legible handwritten-style display text. */
   font-family: "Gaegu", "Jua", system-ui, sans-serif;
   font-size: 27px;
   font-weight: 800;
@@ -1393,8 +1380,7 @@ button { font-family: inherit; }
   word-break: keep-all;
   white-space: pre-line;
 }
-/* 세로 분수 — 분자 위, 분모 아래, 가운데 가로줄.
-   한 줄짜리 "3/6"은 15÷3÷6 으로 읽히기 쉬워서 아이가 헷갈린다. */
+/* Legacy unused fraction layout with numerator, denominator and a horizontal separator. */
 .frac {
   display: inline-flex;
   flex-direction: column;
@@ -1483,7 +1469,7 @@ button { font-family: inherit; }
 .over-msg { font-size: 13px; color: #6a7a94; margin-bottom: 10px; }
 .modal-card.over .rowbtns { margin-bottom: 10px; }
 
-/* ===== 별의 축복 ===== */
+/* Star Blessings. */
 .meta-desc { font-size: 13px; color: #5a6a84; margin-bottom: 12px; line-height: 1.6; }
 .meta-row {
   display: flex;
@@ -1513,13 +1499,13 @@ button { font-family: inherit; }
 
 .hidden { display: none !important; }
 
-/* ===== 좁은 화면 ===== */
+/* Narrow screens. */
 @media (max-width: 920px) {
   .wrap { flex-direction: column; }
   .right { width: 100%; }
 }
 
-/* ===== 신화(4) 등급 ===== */
+/* Mythic tier 4. */
 :root { --t4: #ff4d9d; }
 .hcard.t4 {
   border-color: var(--t4);
@@ -1543,7 +1529,7 @@ button { font-family: inherit; }
 }
 .prob.t4 { background: var(--t4); }
 
-/* 신화 조합 섹션 */
+/* Mythic combination section. */
 .combine-sub.mythic { color: #c2185b; border-top-color: #ffc2dd; }
 .combine-row.mythic { background: linear-gradient(90deg, #fff0f8, transparent); border-radius: 8px; }
 .combine-row .found { color: #16a34a; font-weight: 900; }
@@ -1557,7 +1543,7 @@ button { font-family: inherit; }
 }
 #hpInfo .tt-mythic { background: #fff0f8; border-color: #ff9ecb; color: #c2185b; }
 
-/* 조합 규칙 안내 */
+/* Combination rule guidance. */
 .combine-rule {
   background: #eef4fb;
   border: 1px solid #d5e2f2;
@@ -1569,7 +1555,7 @@ button { font-family: inherit; }
   margin-bottom: 6px;
 }
 .combine-rule b { color: #1a5cb0; }
-/* 재료 등급 배지 */
+/* Material tier badges. */
 .combine-row .ingt {
   display: inline-block;
   font-size: 8.5px;
@@ -1581,10 +1567,9 @@ button { font-family: inherit; }
   vertical-align: super;
 }
 
-/* ===== 수학 난이도 / 제한 시간 =====
- * 조합이 셀수록 문제가 세진다 — 그 사실을 "누르기 전"과 "푸는 중" 모두에서 보이게 한다. */
+/* Legacy unused challenge difficulty and timer styling; not part of current progression. */
 
-/* 조합 목록의 난이도 미리보기 배지 */
+/* Legacy difficulty preview badge. */
 .combine-row .mlv {
   font-size: 8.5px;
   font-weight: 900;
@@ -1598,7 +1583,7 @@ button { font-family: inherit; }
 }
 .combine-row .mlv + button { margin-left: 6px; }
 
-/* 문제창 상단 메타 줄 */
+/* Legacy challenge metadata row. */
 .mmeta {
   display: flex;
   align-items: center;
@@ -1627,7 +1612,7 @@ button { font-family: inherit; }
   50% { transform: scale(1.08); }
 }
 
-/* 남은 시간 바 */
+/* Remaining-time bar. */
 .mtimer {
   position: relative;
   height: 22px;
@@ -1663,9 +1648,7 @@ button { font-family: inherit; }
   50% { box-shadow: 0 0 12px rgba(229, 57, 53, 0.75); }
 }
 
-/* ===== 세로셈 칸 =====
- * 문제집의 계산 칸. 몇 초 지나면 슬쩍 나타나 자리를 맞출 곳을 준다.
- * 손글씨풍 폰트 + 연한 격자로 "종이"처럼 보이게 했다. */
+/* Legacy unused worksheet grid with handwritten text and subtle ruled-paper styling. */
 .mvert {
   margin: 0 auto 12px;
   padding: 10px 12px;
@@ -1693,7 +1676,7 @@ button { font-family: inherit; }
   font-weight: 800;
   color: #2f3d55;
 }
-/* 빈칸에만 연한 상자를 그린다 — 숫자가 적힌 칸까지 두르면 표가 시끄러워진다 */
+/* Outline empty cells only to avoid visual clutter. */
 .mv-c.mv-blank, .mv-c.mv-carry {
   border: 1.5px dashed #d8cfae;
   border-radius: 6px;
@@ -1708,23 +1691,21 @@ button { font-family: inherit; }
   margin: 3px 0;
 }
 
-/* 남은 도전 횟수 — 마지막 한 번이면 빨갛게 */
+/* Highlight the final remaining attempt. */
 .mtries { background: #4a5a72; }
 .mtries.last { background: #e0483a; animation: streakpulse 1.1s ease-in-out infinite; }
-/* 포기 버튼은 결과가 있다는 걸 색으로도 알린다 */
+/* Color communicates that abandoning has a consequence. */
 #mClose.giveup { background: #ffe9e6; color: #a02c1c; border-color: #f0b3aa; }
 
-/* 긴 문제(전술 문제 등)는 글자를 줄여 입력칸이 화면 밖으로 밀리지 않게 */
+/* Reduce long legacy prompt text to keep inputs inside the viewport. */
 .mproblem.long { font-size: 21px; line-height: 1.42; padding: 14px 12px; }
-/* 그래도 안 들어가는 낮은 화면에서는 창 안에서 스크롤 — 입력칸을 잃는 것보다 낫다 */
+/* Allow internal scrolling on short screens rather than hiding inputs. */
 #mathModal .modal-card { max-height: calc(100vh - 20px); overflow-y: auto; }
 
-/* 새 문제가 뜰 때 한 번 튕겨 준다 */
+/* Local card-entry animation. */
 .mproblem.pop { animation: probpop 0.32s cubic-bezier(0.2, 1.5, 0.4, 1); }
 @keyframes probpop { from { transform: scale(0.9); opacity: 0.2; } }
-/* 관문이 열리는 순간 난이도 배지가 "뿅" — 이번엔 어떤 문제가 나왔는지 알리는 신호.
- * (예전엔 세 장을 펼쳐 룰렛을 돌렸는데, 뽑는 과정이 요란해서 뽑기 게임처럼 보였다.
- *  변덕은 남기고 연출만 이 한 줄로 줄였다) */
+/* Legacy difficulty badge entry cue replaces a more distracting selection animation. */
 .mdiff.pop { animation: diffpop 0.5s cubic-bezier(0.2, 1.8, 0.4, 1); }
 @keyframes diffpop {
   0% { transform: scale(0.5); opacity: 0; }
@@ -1732,7 +1713,7 @@ button { font-family: inherit; }
   100% { transform: scale(1); }
 }
 
-/* 난이도별 문제창 분위기 — 고난도일수록 카드가 뜨거워진다 */
+/* Legacy challenge difficulty styling. */
 .modal-card.lv4 { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35), 0 0 0 3px #f59e0b; }
 .modal-card.lv5 {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 0 0 3px #ff4d9d;
@@ -1749,25 +1730,18 @@ button { font-family: inherit; }
 }
 .modal-card.lv6 .mproblem { background: #fff0f3; }
 
-/* ===== 좁거나 낮은 화면 =====
- * 두 열이 들어갈 폭이 안 되거나 세로가 너무 짧으면, 한 줄로 쌓고 페이지 스크롤을 되살린다.
- * (전장은 다시 16:10 비율로 고정 — 낮은 화면에서 납작해지지 않게) */
+/* Stack columns and restore page scrolling when width or height is limited; preserve a 16:10 battlefield. */
 @media (max-width: 1080px) {
   body { padding: 8px; }
   .wrap { flex-direction: column; height: auto; }
-  /* 두 열의 상자를 없애 손자들을 .wrap 의 직접 자식으로 만든다.
-   * 그래야 order 로 왼쪽/오른쪽 것을 섞어 쌓을 수 있다 — DOM 은 그대로 두고. */
+  /* Use display:contents to reorder column descendants without changing DOM structure. */
   .left, .right { display: contents; }
   .stage { flex: none; min-height: 0; max-height: none; }
   #scene3d { height: auto; aspect-ratio: 16 / 10; }
   .tabbody { overflow: visible; }
 
-  /* ---- 폰 순서: 소환·벤치를 전장 바로 밑으로 ----
-   * 원래는 전장(y121~355)과 벤치(y620~695) 사이에 골드·설정·난이도가 끼어
-   * 265px 떨어져 있었다. 폰에서는 둘을 동시에 볼 수 없으니
-   * "카드 고르고 → 발판 누르기"가 스크롤 왕복이 됐다. */
-  /* .placebar 를 보이게 하는 건 파일 끝에서 한다 —
-   * 기본 규칙(.placebar{display:none})이 여기보다 뒤에 있어서 여기서 켜면 덮인다 */
+  /* On phones, keep bench and summoning directly below the field so selecting a card and a pad does not require scrolling between distant sections. */
+  /* Placement-bar visibility is declared after its default hidden rule to avoid being overwritten. */
   .topbar        { order: 1; }
   .castlebar-wrap { order: 2; }
   .stage         { order: 3; }
@@ -1781,7 +1755,7 @@ button { font-family: inherit; }
   .under-row     { order: 10; }
   #helpBox       { order: 11; }
 }
-/* 세로가 짧은 노트북: 두 열은 유지하고 전장만 더 납작하게 (넓은 건 안 잘린다) */
+/* On short laptops, retain two columns with a shallower battlefield. */
 @media (min-width: 1081px) and (max-height: 660px) {
   .topbar { margin-bottom: 5px; }
   .topbar h1 { font-size: 20px; }
@@ -1789,7 +1763,7 @@ button { font-family: inherit; }
   .stage { min-height: 240px; }
   .under-row { margin-top: 5px; }
 }
-/* 아주 좁은 화면: 벤치를 3열로, 글자를 조금 줄인다 */
+/* Very narrow screens use three bench columns and smaller text. */
 @media (max-width: 560px) {
   .topbar { flex-wrap: wrap; gap: 6px; }
   .topbar h1 { width: 100%; font-size: 20px; }
@@ -1803,7 +1777,7 @@ button { font-family: inherit; }
 }
 
 
-/* ===== 막간 이야기 ===== */
+/* Interlude story. */
 .modal-card.story {
   max-width: 460px;
   text-align: center;
@@ -1836,8 +1810,7 @@ button { font-family: inherit; }
   cursor: pointer;
 }
 
-/* ===== 전설·신화 탄생 연출 =====
-   z-index 70 — 수학 모달(50)과 토스트(60) 위를 덮는다 */
+/* Legendary/mythic reveals at z-index 70 sit above ordinary modals and toasts. */
 #revealModal {
   position: fixed;
   top: 14%;
@@ -1863,7 +1836,7 @@ button { font-family: inherit; }
   60%  { transform: scale(1.06) rotate(2deg); opacity: 1; }
   100% { transform: scale(1) rotate(0); }
 }
-/* 뒤에서 도는 빛줄기 — 이미지 없이 원뿔 그라디언트로 */
+/* Procedural conic-gradient light rays behind the reveal. */
 .reveal-rays {
   position: absolute;
   inset: -40%;
@@ -1922,7 +1895,7 @@ button { font-family: inherit; }
 .reveal-card.short .reveal-hint { display: none; }
 
 
-/* ===== AI 관전 모드 ===== */
+/* AI spectator mode. */
 #demoBtn.on { background: #ffe0e0; border-color: #ff8a8a; color: #a33; }
 #demoBar {
   position: absolute;
@@ -1972,28 +1945,26 @@ button { font-family: inherit; }
   font-weight: 800;
   cursor: pointer;
 }
-/* 데모 중에는 화면 테두리가 살짝 빛나 "지금 내가 조작하는 게 아니다"를 알린다 */
+/* A restrained border treatment identifies automated control. */
 body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 
-/* 빠른 풀이로 태어난 용사 — 카드에서 바로 알아보게 노란 번개 */
+/* Legacy fast-result card badge. */
 .hcard .bdg.spark { color: #ffb300; text-shadow: 0 0 6px rgba(255, 179, 0, 0.6); }
 
-/* 신화의 압력 — 몬스터가 세진 만큼 골드도 는다는 걸 웨이브 미리보기에 붙인다 */
+/* Wave previews explain that mythic pressure raises both enemy strength and rewards. */
 .wchip.myth { background: linear-gradient(180deg, #ff8ac4, #d5399a); color: #fff; font-weight: 800; }
 
-/* 두 번 틀리면 힌트가 공짜 — 포기 말고 이쪽으로 오라는 신호 */
+/* Legacy unused hint state. */
 .hintbtn.free {
   background: #e8ffe3;
   border-color: #45b02e;
   color: #2a7a1a;
   animation: streakpulse 1.2s ease-in-out infinite;
 }
-/* 세로셈: 소수점 칸은 좁게 (숫자 칸과 같은 폭이면 점이 붕 떠 보인다) */
+/* Legacy decimal cells use a narrower width than digit cells. */
 .mv-c.mv-dot { color: #2f3d55; }
 
-/* =====================================================
- * 별지기 루나 — 칩(전장 좌하단) · 별자리(스킬트리) 모달
- * ===================================================== */
+/* Legacy champion HUD chip and constellation skill-tree modal. */
 #champChip {
   position: absolute;
   left: 10px;
@@ -2072,7 +2043,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
   color: rgba(255, 255, 255, 0.75);
   z-index: 3;
 }
-/* 쿨다운/충전 게이지: 아래에서 차오른다 */
+/* Cooldown and charge gauges fill from below. */
 .cdfill {
   position: absolute;
   left: 0; right: 0; bottom: 0;
@@ -2107,7 +2078,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 }
 #skillBtn.has-sp { border-color: #ff9ec4; animation: streakpulse 1.2s ease-in-out infinite; }
 
-/* ---------- 별자리(스킬트리) 모달 ---------- */
+/* Constellation skill-tree modal. */
 .modal-card.skill { max-width: 620px; }
 .skill-desc { font-size: 13px; color: #4a5670; margin-bottom: 10px; }
 #skillCols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -2145,7 +2116,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .skill-node .spips { font-size: 10px; letter-spacing: 1px; color: #f5a93d; }
 .skill-node .slock { font-size: 11px; color: #8a93ad; }
 
-/* 좁은 화면: 별자리 세로로, 칩은 컴팩트하게 */
+/* Stack constellations and compact the chip on narrow screens. */
 @media (max-width: 720px) {
   .tactic-impact { top: 8px; right: 8px; min-width: 142px; padding: 5px 8px 5px 6px; }
   .tactic-impact-icon { width: 29px; height: 29px; font-size: 19px; }
@@ -2158,9 +2129,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
   .champ-btns .bkey { display: none; }
 }
 
-/* =====================================================
- * 별지기의 옷장 — 이름·머리·옷·무기·별빛 꾸미기
- * ===================================================== */
+/* Champion wardrobe: name, hair, clothes, weapon and starlight. */
 #champFace {
   border: none;
   padding: 0;
@@ -2236,14 +2205,8 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
   .claxis { width: 62px; }
 }
 
-/* ===== 배치 중 =====
- * 전장은 폰에서 374×234 밖에 안 되는데, 웨이브 버튼(17%)과 별지기 칩(16%)이
- * 하필 아래쪽 발판 위에 겹쳐 앉아 있었다. 놓으려는 자리를 UI 가 덮고 있던 셈.
- * 배치하는 동안만 비켜 준다 — 어차피 그때는 웨이브를 시작할 수도, 마법을 쓸
- * 수도 없다. 숨기지 않고 흐리게만 두는 이유는 "사라졌다"가 아니라
- * "지금은 이거 말고 발판"이라고 읽히게 하려고. */
-/* 전환은 기본 상태에 걸어 둔다 — .placing 규칙 안에만 두면 들어갈 때만
- * 부드럽고 나올 때는 툭 튄다(빠져나가는 순간 transition 선언도 같이 사라진다). */
+/* Move overlays away from small mobile pads during placement, using reduced emphasis rather than sudden disappearance. */
+/* Declare transitions on the base state so both entering and leaving placement animate consistently. */
 #waveBtn, #champChip, #wavePreview, #coachChip { transition: opacity 0.16s ease; }
 .stage.placing #waveBtn,
 .stage.placing #champChip,
@@ -2254,10 +2217,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 }
 .stage.placing #waveBtn { transform: translateX(-50%) scale(0.9); }
 
-/* 배치 안내 바 — 전장 "아래". 전장 위에 얹으면 또 발판을 가린다.
- * 넓은 화면에서는 띄우지 않는다: 데스크톱은 전장이 flex:1 이라 바가 나타나는
- * 순간 전장이 줄고 캔버스가 다시 잡히면서 화면이 한 번 튄다. 게다가 거기서는
- * 벤치가 바로 옆에 보이니 안내가 필요하지도 않다. */
+/* Show placement guidance below the battlefield only on narrow/touch layouts. Desktop already shows the bench alongside it; adding a bar would resize the canvas. */
 .placebar {
   display: none;
   align-items: center;
@@ -2267,7 +2227,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
   padding: 5px 10px;
   border-radius: 12px;
   font-size: 14px;
-  /* 평소에는 조용한 안내, 배치 중에는 초록으로 깨어난다 */
+  /* Subtle idle guidance becomes green during placement. */
   background: #f2f4f8;
   border: 2px solid #dbe2ec;
   box-shadow: 0 3px 0 #cdd6e2;
@@ -2281,7 +2241,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
   color: #14532d;
 }
 #placeBarText { font-weight: 700; }
-/* 취소는 배치 중에만 — 평소엔 자리만 지키고 안 보인다 */
+/* Reserve cancel-button space but show it only during placement. */
 .placebar:not(.on) #placeBarCancel { visibility: hidden; }
 #placeBarCancel {
   flex-shrink: 0;
@@ -2297,25 +2257,22 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 }
 #placeBarCancel:active { transform: translateY(1px); }
 
-/* 한 줄로 쌓이는 좁은 화면이나 손가락 화면에서만 안내 바를 띄운다.
- * (기본 .placebar{display:none} 바로 뒤여야 한다 — 앞에 두면 덮인다) */
+/* Show guidance on stacked or touch layouts after the default hidden rule. */
 @media (max-width: 1080px), (pointer: coarse) {
   .placebar { display: flex; }
-  /* 벤치 힌트는 접는다 — 안내 바가 같은 말을 하고 있고, 둘 다 나오면
-   * 카드를 고르는 순간 벤치가 밀려 내려간다. 게다가 힌트의 "←→ 고르고 Enter"는
-   * 폰에 없는 키 이야기다. */
+  /* Hide redundant bench hints on mobile to prevent layout shifts and irrelevant keyboard instructions. */
   #benchHint { display: none !important; }
 }
 
-/* 손가락으로 누르는 화면: 누를 것들을 키운다 */
+/* Enlarge interactive targets for touch. */
 @media (pointer: coarse) {
   .placebar { font-size: 15px; padding: 6px 10px; }
   #placeBarCancel { padding: 8px 15px; font-size: 15px; }
-  /* 별지기 마법 버튼이 작아서 옆 발판을 누르려다 자꾸 눌린다 */
+  /* Increase separation around champion spell buttons to reduce accidental taps near pads. */
   #champChip { left: 6px; bottom: 6px; }
 }
 
-/* ===== 도감 · 기록 (📖) ===== */
+/* Codex and records. */
 #bookBtn {
   position: relative;
   border: none;
@@ -2403,7 +2360,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .bkcell:not(.on) { color: #a5aec2; }
 .bkkills { margin-left: auto; font-size: 13px; color: #5b6a84; font-weight: 700; }
 
-/* 업적 줄 */
+/* Achievement rows. */
 .book-row.ach { align-items: flex-start; }
 .book-row.ach .bkemoji { margin-top: 2px; }
 .book-row.ach:not(.done) { opacity: 0.72; }
@@ -2425,7 +2382,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 }
 .bkunlock { font-size: 11px; color: #8a5fd6; font-weight: 700; }
 
-/* 수학 성장 */
+/* Legacy record styling. */
 .tactic-summary { display: flex; gap: 8px; margin-bottom: 10px; }
 .msbox {
   flex: 1;
@@ -2457,7 +2414,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .mrbar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #7fd45e, #3fae57); }
 .mrnum { flex-shrink: 0; font-size: 11.5px; color: #7a86a0; width: 86px; text-align: right; }
 
-/* ===== 서른 번째 아침 (승리) ===== */
+/* Thirtieth-dawn victory. */
 .modal-card.victory {
   width: 470px;
   background: linear-gradient(180deg, #fff9e8, #ffffff 55%);
@@ -2479,7 +2436,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 .victory-msg { font-size: 13px; color: #7a86a0; margin: 8px 0 12px; }
 .victory-note { font-size: 12px; color: #a08a4e; margin: 6px 0 10px; }
 
-/* 회차 칩 (HUD) */
+/* Loop indicator in the HUD. */
 .loopchip {
   margin-left: 6px;
   font-size: 11.5px;
@@ -2492,7 +2449,7 @@ body.demo-on #scene3d { box-shadow: inset 0 0 0 3px rgba(255, 123, 123, 0.55); }
 }
 .loopchip.hidden { display: none; }
 
-/* ===== Constellation Defense — 오른쪽 손 영역의 전술판 ===== */
+/* Constellation Defense tactics board in the right-hand interaction area. */
 #tacticCard {
   width: 100%;
   flex: 0 0 auto;
@@ -2687,7 +2644,7 @@ body.combat-focus #benchCard .bench { margin-top: 4px; }
   body.combat-focus .hero-card-title { display: none; }
 }
 
-/* 옷장 잠금 */
+/* Wardrobe locks. */
 .clopt.locked {
   opacity: 0.55;
   cursor: not-allowed;
@@ -2697,8 +2654,7 @@ body.combat-focus #benchCard .bench { margin-top: 4px; }
 
 /* Neon checkout surface. The server controls price/SKU; this card only presents it. */
 .neon-store { max-width: 620px; }
-/* 구매 버튼은 항상 자기 줄을 쓴다. 예전에 상품명과 같은 줄에 두었더니
- * 모달 폭(430px)에서 설명 칸이 한 글자 너비로 찌그러졌다. */
+/* Purchase buttons use their own row so long descriptions cannot collapse into a one-character column. */
 .neon-product { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px 14px; align-items: center; margin: 18px 0; padding: 16px; border: 1px solid #d9cdfb; border-radius: 16px; background: linear-gradient(135deg, #f7f1ff, #fff8d9); }
 .neon-product > button { grid-column: 1 / -1; }
 .neon-product-art { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 18px; background: #352664; font-size: 38px; }
@@ -2707,10 +2663,10 @@ body.combat-focus #benchCard .bench { margin-top: 4px; }
 .neon-product-copy small { color: #655b7d; }
 .neon-product-copy em { color: #876322; font-size: 11px; font-style: normal; font-weight: 700; }
 .neon-product-copy em.neon-mock { color: #7a4a12; }
-/* 청구 지역은 게임 언어와 분리된 선택이다 — 붙여 놓으면 같은 것으로 읽힌다. */
+/* Billing region is visually separate from game language. */
 .neon-region { display: flex; grid-column: 1 / -1; gap: 8px; align-items: center; padding-top: 10px; border-top: 1px dashed #d9cdfb; color: #655b7d; font-size: 12px; font-weight: 700; }
 .neon-region select { padding: 4px 8px; border: 1px solid #d9cdfb; border-radius: 8px; background: #fff; color: #39285e; font: inherit; }
-/* 계정 인계 — 구매가 기기가 아니라 계정을 따른다는 것을 만질 수 있는 자리. */
+/* Account transfer demonstrates purchases following the account across devices. */
 .neon-account { display: flex; grid-column: 1 / -1; gap: 8px; align-items: center; flex-wrap: wrap; color: #655b7d; font-size: 12px; font-weight: 700; }
 .neon-linkish { padding: 3px 10px; border: 1px solid #d9cdfb; border-radius: 8px; background: #fff; color: #4a3a72; font: inherit; font-size: 12px; cursor: pointer; }
 .neon-linkish:hover { background: #f4efff; }
@@ -2720,9 +2676,7 @@ body.combat-focus #benchCard .bench { margin-top: 4px; }
 .neon-retry { margin-left: 6px; padding: 3px 10px; border: 1px solid #c9b8f0; border-radius: 8px; background: #fff; color: #4a3a72; font: inherit; font-size: 12px; cursor: pointer; }
 .paid-cosmetic { margin-left: 4px; }
 
-/* ===== Neon 안내 투어 =====
- * 게임 위에 겹치되 가리지 않는다 — 뒤에서 봇이 실제로 플레이하는 것이 설명의
- * 절반이기 때문에, 패널은 한쪽 기둥으로 두고 전투는 계속 보이게 한다. */
+/* Neon inspector occupies a side column while gameplay remains visible. */
 #neonTour {
   position: fixed; z-index: 60; top: 12px; right: 12px; width: min(420px, calc(100vw - 24px));
   max-height: calc(100vh - 24px); overflow: auto;
@@ -2754,13 +2708,11 @@ body.combat-focus #benchCard .bench { margin-top: 4px; }
 .tour-actions button:hover { background: #342c63; }
 .tour-diagram svg { display: block; width: 100%; height: auto; }
 .tour-serverdown-note { display: block; margin-top: 8px; color: #9c95bb; font-size: 11px; }
-/* 투어 중에는 상점 모달을 왼쪽으로 밀어 패널과 겹치지 않게 한다. */
+/* Keep the store to the left of the inspector. */
 body.tour-on #neonStoreModal .modal-card { margin-right: min(440px, 45vw); }
-/* 해설자는 하나여야 한다. 봇 관전 자막과 투어 패널이 동시에 말하면 둘 다
- * 읽히지 않고, 관전 자막은 한국어 전용이라 영어 투어와 섞이기까지 한다. */
+/* Hide spectator captions while the inspector provides the explanation. */
 body.tour-on #demoBar { display: none; }
-/* 전투 토스트는 계속 떠야 한다 — 판이 살아 있다는 증거라서. 다만 투어 중에는
- * 상점 카드 위로 겹치므로 왼쪽 위로 비켜 세운다. */
+/* Move combat toasts to the upper left during the tour to avoid store overlap. */
 body.tour-on #toasts {
   top: 10px; left: 12px; width: auto; max-width: 40vw;
   transform: none; align-items: flex-start;
@@ -2776,8 +2728,7 @@ body.tour-on:has(#neonStoreModal:not(.hidden)) #toasts { display: none; }
   .neon-product-art { width: 52px; height: 52px; }
 }
 
-/* ===== 저자극 연출 =====
- * 기본값이며 운영체제의 모션 감소 설정도 같은 안전한 표현을 강제한다. */
+/* Restrained effects are the default and respect the operating system's reduced-motion preference. */
 .reduced-effects #bossWarnBanner,
 .reduced-effects #bossBanner,
 .reduced-effects #comboChip.pop,
@@ -2815,3 +2766,39 @@ body.tour-on:has(#neonStoreModal:not(.hidden)) #toasts { display: none; }
 }
 @font-face { font-family: "Jua"; src: url("../assets/fonts/Jua-Regular.ttf") format("truetype"); font-display: swap; font-weight: 400; }
 @font-face { font-family: "Gaegu"; src: url("../assets/fonts/Gaegu-Bold.ttf") format("truetype"); font-display: swap; font-weight: 700; }
+
+/* Interactive checkout inspector and a mock-only inventory workbench. */
+.neon-product { display: flex; flex-direction: column; align-items: stretch; padding: 10px; }
+.neon-item { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; padding: 10px 0; border-bottom: 1px solid #d9cdfb; }
+.neon-item .neon-product-art { width: 48px; height: 48px; font-size: 30px; }
+.neon-item > button { grid-column: 1 / -1; font-size: 13px; padding: 9px; }
+.neon-checkout, .neon-inventory { display: grid; gap: 8px; padding: 12px; border-radius: 10px; background: #ede5ff; color: #39285e; }
+.neon-checkout { border: 2px solid #8a5ccd; }
+.neon-refund-row { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+.neon-refund-row button { flex-shrink: 0; }
+.neon-store { max-height: 85vh; overflow: auto; }
+#tourTask { border-left: 3px solid #c6a2ff; padding-left: 10px; color: #fff !important; }
+#tourGame { color: #b9f0d0 !important; font-variant-numeric: tabular-nums; }
+#tourLive { max-height: 190px; overflow: auto; }
+#tourCode { max-height: 250px; overflow: auto; }
+#tourSource { color: #ffd08a; font-size: 11px; overflow-wrap: anywhere; }
+#tourBoundary { font-size: 11px; }
+#neonTour summary { cursor: pointer; color: #ddd4fc; }
+#tourCodeTabs { flex-wrap: wrap; margin: 6px 0; }
+#tourCodeTabs button { font-size: 10px; padding: 3px 6px; }
+body.tour-on #neonStoreModal { background: transparent; pointer-events: none; justify-content: flex-start; align-items: flex-end; padding: 12px; }
+body.tour-on #neonStoreModal .modal-card { pointer-events: auto; width: min(560px, calc(100vw - 480px)); max-height: 62vh; margin: 0; box-shadow: 0 12px 48px #0008; }
+@media (min-width: 901px) {
+  body.tour-on { padding-right: 442px; }
+  #neonTour { width: 420px; box-sizing: border-box; }
+}
+@media (max-width: 900px) {
+  #neonTour { max-height: 34vh; }
+  body.tour-on #neonStoreModal { padding: 8px 8px 36vh; }
+  body.tour-on #neonStoreModal .modal-card { width: min(560px, calc(100vw - 16px)); max-height: 54vh; }
+  .neon-product-copy b { font-size: 15px; }
+}
+
+#neonCastlePreview { height: 190px; width: 100%; background: #202844; border-radius: 12px; overflow: hidden; }
+#neonCastlePreview canvas { display: block; width: 100%; height: 100%; }
+.neon-failures button { display: block; margin-top: 8px; }

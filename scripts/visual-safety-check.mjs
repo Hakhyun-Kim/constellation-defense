@@ -1,9 +1,4 @@
-/* =====================================================
- * 시각 안전 회귀 검사
- *
- * 전장 전체 점멸·후처리 밝기 펄스·카메라 흔들림은 설정과 무관하게 금지한다.
- * 효과는 착탄 지점, 작은 배너, 카드처럼 국소 영역에만 그린다.
- * ===================================================== */
+/* Visual safety regression: no battlefield-wide flashing, brightness pulses or camera shake under any setting. Effects stay local to impacts, small banners and cards. */
 import fs from 'node:fs';
 
 const css = fs.readFileSync(new URL('../css/style.css', import.meta.url), 'utf8');

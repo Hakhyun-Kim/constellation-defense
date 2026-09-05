@@ -1,9 +1,4 @@
-/* =====================================================
- * art-v2 GLB 디코딩과 인스턴스 생성.
- *
- * 모델 파일을 읽는 책임은 RuntimeAssetLoader에 남기고, Three.js 객체를 만드는
- * 부분만 이 파일이 맡는다. 엔진 상태나 전투 규칙은 전혀 참조하지 않는다.
- * ===================================================== */
+/* Decode art-v2 GLBs and instantiate Three.js objects. RuntimeAssetLoader owns file requests; this module never reads engine state or combat rules. */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
@@ -75,7 +70,7 @@ export function instantiateGltfAsset(asset, {
     object.receiveShadow = true;
   });
 
-  /* 팩마다 단위가 달라도 화면상의 높이는 게임 쪽 슬롯이 결정한다. */
+  /* Game slots determine on-screen height regardless of source model units. */
   const sourceBounds = new THREE.Box3().setFromObject(root);
   const sourceHeight = Math.max(0.001, sourceBounds.max.y - sourceBounds.min.y);
   root.scale.setScalar(targetHeight / sourceHeight);

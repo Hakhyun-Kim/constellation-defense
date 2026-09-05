@@ -1,12 +1,4 @@
-/* =====================================================
- * Constellation Defense 밸런스 봇
- *
- * 실제 엔진과 실제 3매치 보드 규칙을 함께 사용한다. 전술은 임의로 시전하지
- * 않는다: 매번 현재 보드에서 유효한 인접 스왑을 찾고, 그 스왑이 만든 각 매치가
- * Flare/Tide/Bloom으로 해당 방어로에 적용된다.
- *
- * 사용법: node scripts/balance-bot.mjs [runs] [difficulty] [profile] [check]
- * ===================================================== */
+/* Constellation Defense balance bot. Uses the real engine and match-3 rules: each legal adjacent swap resolves independent matches into lane-specific Flare, Tide or Bloom commands. Usage: node scripts/balance-bot.mjs [runs] [difficulty] [profile] [check] */
 import * as D from '../src/data.js';
 import * as E from '../src/engine.js';
 import * as Bot from '../src/bot.js';
@@ -50,8 +42,7 @@ function spendTownSpecializations(state) {
   }
 }
 
-/* 화면 어댑터의 resolveQueue와 같은 순서다. 독립 매치는 타입·대상 방어로를
- * 섞지 않고 각각 해소한 뒤, 보충 때문에 새 매치가 생기면 연쇄로 처리한다. */
+/* Match the view adapter's resolveQueue order: resolve independent matches separately, then handle refill cascades. */
 export const TACTIC_POLICIES = ['none', 'random', 'threat'];
 
 function lanePressure(state) {
@@ -116,7 +107,7 @@ export function playRun(profileName, difficulty, seed, options = {}) {
       }
       break;
     }
-    /* 지도 선택과 영입도 실제 플레이와 같은 순수 엔진 명령으로 처리한다. */
+    /* Map travel and recruitment use the same pure engine commands as player input. */
     if (state.phase === 'journey') {
       spendTownSpecializations(state);
       const path = Bot.nextJourneyPath(state);
@@ -143,8 +134,7 @@ export function playRun(profileName, difficulty, seed, options = {}) {
       actionTimer += 0.05;
       waveClock += 0.05;
       if (waveClock > 900) { stalemate = true; break; }
-      /* 실제 보드 애니메이션과 플레이어 판단 간격을 반영한다. 매 틱마다 스왑하면
-       * 손이 없는 봇만 초당 수십 번 전술을 쓰게 되어 사람 플레이 기준선이 아니다. */
+      /* Respect animation and human decision intervals. Swapping every tick would give the bot an unrealistic action rate. */
       if (actionTimer < 6) continue;
       actionTimer = 0;
 

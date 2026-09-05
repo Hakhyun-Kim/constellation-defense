@@ -1,6 +1,4 @@
-/* =====================================================
- * 메인 컨트롤러: 엔진 + 3D 렌더러 + UI + 사운드 배선
- * ===================================================== */
+/* Main controller wires engine, 3D rendering, UI and sound. */
 import * as D from './data.js';
 import * as E from './engine.js';
 import { Renderer3D } from './gfx/renderer.js';
@@ -30,12 +28,14 @@ import {
   KEY_ACTIONS, actionForCode, defaultBindings, keyCodeLabel, normalizeBindings, rebindAction,
 } from './app/preferences.js';
 import { getLocale, installDocumentLocalization, normalizeLocale } from './app/i18n.js';
+import { CastlePreview } from './gfx/castle-preview.js';
 import { initNeonStore } from './app/neon-store.js';
+import { startExposedLaneDemo } from './app/neon-scenario.js';
 import { initNeonTour } from './app/neontour.js';
 
 registerDucker((amt, dur) => music.duck(amt, dur));
 
-/* ---------- 초기화 ---------- */
+/* Initialization. */
 const urlParams = new URLSearchParams(location.search);
 const requestedLocale = urlParams.get('lang');
 const locale = normalizeLocale(requestedLocale || store.language);
@@ -43,8 +43,13 @@ if (requestedLocale) store.language = locale;
 const ui = new UI();
 const tacticFeedback = createTacticFeedback();
 installDocumentLocalization(locale);
-const neonStore = initNeonStore({ locale });
-/* URL로 강제 지정 가능: ?gfx=high|lite|min (min은 테스트/초저사양용) */
+let castlePreview = null;
+const neonStore = initNeonStore({ locale,
+  onPreview: container => { castlePreview = new CastlePreview(container, renderer.castle); },
+  onEntitlements: items => { renderer.cosmetics.setEntitlements(items); castlePreview?.setEntitlements(items); },
+});
+window.addEventListener('pagehide', () => castlePreview?.dispose(), { once: true });
+/* Override graphics with ?gfx=high|lite|min; min is for tests and very slow devices. */
 const urlGfx = urlParams.get('gfx');
 const judgeMode = urlParams.has('judge');
 const demoRoute = urlParams.has('demo');
@@ -56,8 +61,7 @@ const playtestExperience = playtestRoute
   ? normalizePlaytestExperience(urlParams.get('playtest')) : 'unspecified';
 const systemReducedEffects = typeof matchMedia === 'function'
   && matchMedia('(prefers-reduced-motion: reduce)').matches;
-/* 눈이 편한 쪽이 기본값이다. 사용자가 생동감을 명시적으로 켠 경우에만
- * 전체 품질을 쓰며, 운영체제의 동작 줄이기 설정은 항상 우선한다. */
+/* Default to restrained effects; explicit vivid effects never override the operating system's reduced-motion preference. */
 let reducedEffects = systemReducedEffects || store.effectsReduced !== false;
 document.body.classList.toggle('reduced-effects', reducedEffects);
 const weeklyReplay = weeklyChallenge ? createSwapReplay(weeklyChallenge.id) : null;
@@ -84,24 +88,17 @@ if (playtestRoute) {
   badge.textContent = `🧪 ${locale === 'en' ? 'Human playtest' : '사람 플레이테스트'} · ${profileLabel}`;
   ui.el.scene3d.closest('.left')?.querySelector('.topbar')?.appendChild(badge);
 }
-/* 자동화로 열었거나 ?mute를 붙였으면 소리 없이 시작한다.
- * 검증을 돌릴 때마다 옆에서 효과음이 터지면 사람이 못 견딘다.
- * (설정을 저장하지 않으므로 사용자가 평소 쓰던 소리 설정은 그대로 남는다) */
+/* Start muted for automation or ?mute without changing the user's saved sound preferences. */
 if (urlParams.has('mute') || urlParams.has('rafshim')) forceMute();
 
-/* ---------- 모바일이면 배경 장식을 끈다 ----------
- * 잔디 14,000장 · 픽셀마다 도는 파도 셰이더 · 하늘 밴드는 데스크톱 GPU 기준으로
- * 만든 것들이라 폰에서는 프레임을 그대로 먹는다. 게다가 작은 화면에서는
- * 하늘에 내줬던 19%가 아깝다 — 끄면 그만큼 전장이 커져 발판을 누르기 쉬워진다.
- * ?decor=on 으로 폰에서도 켜 볼 수 있고, ?decor=off 로 데스크톱에서 꺼 볼 수 있다. */
+/* Disable expensive scenery on phones and reclaim the sky band for larger touch targets. ?decor=on/off overrides the default for comparison. */
 function detectMobile() {
-  /* ?mobile=1 은 폰 없이 이 경로를 확인하려고 둔다. 데스크톱 브라우저는
-   * 창을 줄여도 pointer:coarse 로 안 바뀌어서 그냥은 검증이 안 된다. */
+  /* ?mobile=1 exercises mobile behavior on a desktop whose pointer remains fine even at narrow widths. */
   const forced = urlParams.get('mobile');
   if (forced != null) return !/^(0|off|no|false)$/i.test(forced);
   try {
     if (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) return true;
-  } catch { /* matchMedia 없는 환경 */ }
+  } catch { /* Fallback when matchMedia is unavailable. */ }
   return /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent || '');
 }
 const urlDecor = urlParams.get('decor');
@@ -109,8 +106,7 @@ const isMobile = detectMobile();
 const useDecor = urlDecor != null ? !/^(0|off|no|false)$/i.test(urlDecor)
                                   : (!isMobile && !store.decorOff);
 const graphicsQuality = urlGfx || (store.gfx === 'lite' || (isMobile && store.gfx == null) ? 'lite' : 'high');
-/* P0 파일럿을 통과한 art-v2가 출시 기본값이다. 저사양 비교·복구에는
- * ?art=procedural을 사용하며, 이 경로는 manifest조차 요청하지 않는다. */
+/* The validated art-v2 pilot is the default; ?art=procedural supports comparison/recovery without requesting the manifest. */
 const requestedArt = urlParams.get('art');
 const artMode = /^(procedural|off|0)$/i.test(requestedArt || '') ? 'procedural' : 'v2';
 const perfMode = urlParams.has('perf');
@@ -132,8 +128,7 @@ const audioProbe = urlParams.has('audioProbe') ? (() => {
 const captureMode = perfMode && urlParams.has('capture');
 
 const renderer = new Renderer3D(ui.el.scene3d, {
-  /* 폰은 처음부터 lite 로 시작한다. high 로 켰다가 7초 뒤에 떨어뜨리면
-   * 그 7초가 하필 제일 버벅이는 구간(첫인상)이 된다. */
+  /* Start phones in lite immediately instead of exposing a slow high-quality opening before adaptation. */
   quality: graphicsQuality,
   preserve: urlParams.has('rafshim') || urlGfx === 'min',
   decor: useDecor,
@@ -188,14 +183,13 @@ if (captureMode) {
   });
 }
 
-/* ?perf=1은 같은 시드 장면의 10초 렌더링을 기계적으로 비교하는 숨은 probe다.
- * DOM output을 쓰므로 브라우저 자동화가 게임 내부 객체를 직접 조작하지 않는다. */
+/* ?perf=1 exposes a ten-second fixed-seed render probe through DOM output, avoiding browser automation that mutates internal game objects. */
 const perfProbe = perfMode ? (() => {
   const output = document.createElement('output');
   output.id = 'perf-probe';
   output.hidden = true;
   document.body.appendChild(output);
-  const bootAt = 0; // performance.now() 기준점은 navigationStart다.
+  const bootAt = 0; // performance.now() is relative to navigationStart.
   const probe = {
     output, bootAt, firstFrameMs: null, assetsReadyMs: null,
     sampleStart: null, lastSample: null, durations: [], complete: false,
@@ -260,14 +254,14 @@ function recordPerformanceProbe(now) {
 
 let state = null;
 let speed = 1;
-let selBench = null;      // 배치 대기 중인 벤치 용사
-let selHero = null;       // 정보 패널에 표시 중인 용사 (벤치/필드)
-let hoverHeroId = null;   // 툴팁 표시 중인 필드 용사
+let selBench = null;      // Benched hero awaiting placement.
+let selHero = null;       // Hero shown in the information panel, from bench or field.
+let hoverHeroId = null;   // Deployed hero shown in the tooltip.
 let overHandled = false;
 let heartbeatT = 0;
 let panelT = 0;
-let sellMode = false;         // 여러 명 판매 모드 (벤치 카드가 체크박스가 된다)
-const sellSel = new Set();    // 판매하려고 고른 용사 id
+let sellMode = false;         // Bulk sell mode turns bench cards into checkboxes.
+const sellSel = new Set();    // Selected hero IDs for selling.
 let tactics = null;
 let autoPhaseClock = createAutoPhaseClock();
 let sessionMeter = null;
@@ -325,10 +319,7 @@ function exportPlaytestLog() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/* ---------- 도감 · 업적 ----------
- * 조건은 전부 값 비교라 아무 때나 다시 평가해도 싸다. 언제 부르는지가 전부다:
- * 용사 탄생 · 전술 시전 · 웨이브 종료 · 레벨 업 · 게임 오버 · 승리.
- * 데모(봇)가 딴 업적은 업적이 아니므로 데모 중엔 기록도 평가도 멈춘다. */
+/* Reevaluate cheap achievement predicates on hero creation, tactics, wave completion, level-up, defeat and victory. Automated demo play does not count toward persistent achievements. */
 function recordHeroBorn(hero) {
   if (demo.active || !hero || state?.squad) return;
   codexAddHero(hero.cls, hero.tier);
@@ -340,7 +331,7 @@ function checkAchievements() {
   const bestStored = Math.max(0, ...Object.keys(D.DIFFICULTIES).map(d => store.best(d)));
   const ctx = {
     state, codex,
-    /* 진행 중엔 "치른 웨이브"(wave-1)도 인정 — 기록 갱신은 게임 오버 때라 늦다 */
+    /* Include completed waves during the current run because the best record is otherwise updated only at defeat. */
     bestWave: Math.max(bestStored, state ? state.wave - 1 : 0),
     victories: store.victories,
     trialClears: store.trialClears,
@@ -363,8 +354,7 @@ function checkAchievements() {
   }
 }
 
-/* 옷장 잠금 — 업적으로 열린다. 단 지금 입고 있는 옷은 잠그지 않는다
- * (해금 기능이 나중에 생겼으므로, 이미 입은 옷이 잠기면 뺏는 셈이 된다) */
+/* Achievements unlock wardrobe options, but never relock an already-equipped option from before this feature existed. */
 function closetLock(axis, key) {
   const lock = D.WARDROBE_LOCKS[axis] && D.WARDROBE_LOCKS[axis][key];
   if (!lock || earned[lock.key]) return null;
@@ -372,7 +362,7 @@ function closetLock(axis, key) {
   return lock;
 }
 
-/* 새 판 공통 리셋 — 새 게임·불러오기·별의 시련이 같은 정리를 밟는다 */
+/* Shared session cleanup for new games, loading and Star Trials. */
 function resetSession() {
   selBench = null;
   selHero = null;
@@ -384,7 +374,7 @@ function resetSession() {
   renderer.setHover(null);
 }
 
-/* 시작 용사 두 명 — 빈 벤치는 "뭘 해야 하지"가 된다. 도감도 여기서 첫 칸이 채워진다 */
+/* Start legacy army mode with two heroes to avoid an empty bench and initialize collection records. */
 function giveStarters() {
   if (state?.squad) return;
   for (const cls of ['knight', 'archer']) {
@@ -403,7 +393,7 @@ function newGame(difficulty, opts = {}) {
       if (opts.retry) retryOf = previous?.sequence || lastSessionSequence;
     }
   }
-  gameOverToken++;                 // 게임오버 연출 예약이 새 판을 덮지 않게
+  gameOverToken++;                 // Invalidate delayed defeat presentation before starting another run.
   weeklyReplay?.clear();
   state = E.createGame({
     difficulty,
@@ -431,12 +421,11 @@ function newGame(difficulty, opts = {}) {
   ui.hideOver();
   ui.hideDefenseVictory();
   music.setWave(1);
-  /* 이어하기 메뉴를 띄울 때는 프롤로그를 잠시 미룬다 — 메뉴 위에 이야기가 겹치면 안 된다 */
+  /* Defer the prologue behind the resume menu so overlays do not overlap. */
   if (!opts.holdStory) playStory('prologue');
 }
 
-/* ---------- 별의 시련 — 승리 후 다음 회차 ----------
- * 별지기의 성장은 그대로, 용사·골드·성은 처음부터, 몬스터는 회차만큼 세게. */
+/* Star Trials preserve champion growth, reset army/gold/castle and scale enemies by loop. */
 function startTrial() {
   if (!state || state.phase === 'over') return;
   gameOverToken++;
@@ -452,11 +441,11 @@ function startTrial() {
   SFX.waveStart();
   const run = (state.loop || 0) + 1;
   ui.toast(`🌟 별의 시련 ${run}회차! 몬스터 체력 ×${D.loopHpMul(state.loop).toFixed(2)} — ${heroName()}의 성장은 그대로예요`, 'good');
-  autoSave();                      // 시련의 첫 준비 단계가 곧 이어하기 지점
+  autoSave();                      // The trial's first preparation is the new resume point.
   checkAchievements();
 }
 
-/* 판매 모드에 들어가면 배치/이동 선택은 모두 풀어 한 번에 한 가지만 하게 한다 */
+/* Entering sell mode clears placement/movement selection to keep one active interaction mode. */
 function setSellMode(on) {
   if (sellMode === !!on) return;
   sellMode = !!on;
@@ -474,7 +463,7 @@ function setSellMode(on) {
 }
 
 function refreshPanels() {
-  /* 조합 등으로 사라진 용사가 판매 선택에 남지 않게 정리 */
+  /* Remove sold/combined heroes from stale sell selections. */
   if (sellSel.size) {
     for (const id of [...sellSel]) if (!state.bench.some(h => h.id === id)) sellSel.delete(id);
   }
@@ -495,9 +484,7 @@ function refreshAll() {
   ui.renderJourney(state);
 }
 
-/* ---------- 막간 이야기 ----------
- * 매 웨이브 띄우면 "스킵을 누르는 게임"이 된다. 초반에 몰고 뒤로 갈수록 성글게,
- * 한 판에 최대 열댓 번. 이미 본 것은 state.seenStory로 걸러진다. */
+/* Interludes are denser early and sparser later; seenStory prevents repeats so the game does not become constant skipping. */
 let storyResume = null;
 function playStory(key, onDone = null) {
   if (store.storyOff || !Story.beat(key, getLocale())) { if (onDone) onDone(); return false; }
@@ -505,7 +492,7 @@ function playStory(key, onDone = null) {
   if (state.seenStory.has(key)) { if (onDone) onDone(); return false; }
   state.seenStory.add(key);
   storyResume = onDone;
-  /* {name} = 옷장에서 지은 별지기 이름 — 이야기가 그 이름을 부른다 */
+  /* Substitute the wardrobe's champion name into story text. */
   const beat = Story.beat(key, getLocale());
   ui.showStory({ ...beat, lines: beat.lines.map(l => l.replace(/\{name\}/g, heroName())) });
   SFX.tap();
@@ -518,15 +505,13 @@ function closeStory() {
   if (fn) fn();
 }
 
-/* ---------- 전설·신화 탄생 연출 ----------
- * 수학 모달이 아직 열려 있는 상태에서 그 위에 덮인다.
- * 예약된 자동 진행을 반드시 끄고, 닫힐 때 원래 흐름을 이어 준다. */
+/* Legendary/mythic reveals cancel pending automatic progression, then resume the normal flow when closed. */
 let revealResume = null;
 function playReveal(hero, onDone) {
   if (store.storyOff) { onDone(); return; }
   if (!state.revealed) state.revealed = new Set();
   const key = `${hero.cls}:${hero.tier}`;
-  const short = state.revealed.has(key);       // 두 번째부터는 짧게
+  const short = state.revealed.has(key);       // Shorten repeat reveals.
   state.revealed.add(key);
   const C = D.CLASSES[hero.cls];
   const T = D.TIERS[hero.tier];
@@ -553,8 +538,7 @@ function closeReveal() {
   if (fn) fn();
 }
 
-/* ---------- 별지기 액션 ----------
- * 마법은 별지기의 것 — 쓰러져 있으면 못 쓴다. 실패 이유는 반드시 말해 준다. */
+/* Champion spells are unavailable while knocked out; always explain failure reasons. */
 function doSpell() {
   if (!state.champ) return;
   const r = E.castStar(state);
@@ -639,9 +623,7 @@ function openSkills() {
   SFX.tap();
 }
 
-/* ---------- 별지기의 옷장 ----------
- * 미리보기는 초상 렌더러가 실시간으로 굽는다 — 고르는 즉시 갈아입은 모습이 보인다.
- * 저장을 눌러야 진짜로 입는다: 닫으면 원래대로. */
+/* Wardrobe previews render immediately, but only Save applies the selection. Closing cancels the draft. */
 let closetDraft = null;
 function openCloset() {
   const cfg = store.champCfg;
@@ -653,7 +635,7 @@ function openCloset() {
 }
 function pickCloset(axis, key) {
   if (!closetDraft || !D.CHAMP_WARDROBE[axis] || !D.CHAMP_WARDROBE[axis].options[key]) return;
-  /* 잠긴 옷 — 버튼은 눌리지 않지만(disabled) 다른 경로도 막아 둔다 */
+  /* Enforce wardrobe locks beyond the disabled button as well. */
   const lock = closetLock(axis, key);
   if (lock) { ui.toast(`🔒 업적 [${lock.emoji} ${lock.name}]을 달성하면 열려요 — ${lock.desc}`, 'bad'); return; }
   closetDraft.look = { ...closetDraft.look, [axis]: key };
@@ -678,7 +660,7 @@ function closeCloset() {
   closetDraft = null;
 }
 
-/* ---------- 잔치 ---------- */
+/* Feast actions. */
 function doFeast() {
   const r = E.holdFeast(state);
   if (!r.ok) {
@@ -689,7 +671,7 @@ function doFeast() {
     return;
   }
   SFX.feast();
-  recordHeroBorn(r.hero);              // 잔치 승급도 도감의 새 칸이 될 수 있다
+  recordHeroBorn(r.hero);              // Feast promotions can unlock a new codex entry.
   const C = D.CLASSES[r.hero.cls];
   ui.toast(`🎉 잔치! ${C.emoji} ${C.name}가 신나게 먹고 ${D.TIERS[r.hero.tier].name}(으)로 승급! (💰-${r.cost})`, 'good');
   renderer.onEvents(state, r.events);
@@ -697,7 +679,7 @@ function doFeast() {
   refreshAll();
 }
 
-/* ---------- 액션 ---------- */
+/* Player actions. */
 function doSummon() {
   const r = E.summon(state);
   if (!r.ok) {
@@ -708,7 +690,7 @@ function doSummon() {
   SFX.summon(r.hero.tier);
   recordHeroBorn(r.hero);
   const C = D.CLASSES[r.hero.cls], T = D.TIERS[r.hero.tier];
-  /* 등급이 높을수록 화려하게 */
+  /* Scale presentation with tier. */
   renderer.summonBurst(r.hero.tier);
   ui.summonReveal(r.hero, r.hero.tier);
   ui.toast(`${T.name} 등급 ${C.name} ${C.emoji} 등장!`, r.hero.tier >= 2 ? 'good' : '');
@@ -716,8 +698,7 @@ function doSummon() {
   refreshAll();
 }
 
-/* 수학 관문은 별자리 전술판으로 옮겼다. 조합은 준비 단계의 경제 판단으로
- * 남겨 두고, 전투 중 손맛과 위험 관리는 3매치가 맡는다. */
+/* Combining remains a preparation economy choice; real-time match-3 provides combat interaction and risk management without a question gate. */
 function doCombineDirect(action) {
   if (state.phase !== 'prep') {
     ui.toast('⚗️ 조합은 웨이브 사이에만! 전투 중엔 별자리 전술판으로 길을 지켜요.', 'bad');
@@ -751,8 +732,7 @@ function doCombineDirect(action) {
 }
 
 function doPlace(padIndex) {
-  /* 이미 용사가 있는 자리를 골랐다면 "거기 놓고 싶다"는 뜻이다 — 거절하지 말고 자리를 바꾼다.
-   * 벤치 ↔ 필드 교환이라 벤치 수가 그대로여서 벤치가 가득 차 있어도 항상 된다. */
+  /* An occupied pad means swap, not rejection. Bench-to-field swaps preserve bench size and work when full. */
   const occ = E.padOccupant(state, padIndex);
   if (occ) {
     const s = E.swapBenchWithPad(state, selBench, padIndex);
@@ -760,7 +740,7 @@ function doPlace(padIndex) {
     SFX.place();
     padFx(s.placed, 0x9fdcff);
     ui.toast(`🔀 ${D.CLASSES[s.placed.cls].name} 배치 · ${D.CLASSES[s.benched.cls].name}은 벤치로!`);
-    deselectAll();      // 배치가 끝나면 선택도 끝 — 다음 클릭이 또 뭔가를 옮기지 않게
+    deselectAll();      // Clear selection after placement to prevent the next click from moving another hero accidentally.
     refreshAll();
     return;
   }
@@ -772,9 +752,9 @@ function doPlace(padIndex) {
   refreshAll();
 }
 
-/* 배치된 용사 선택 — 선택하면 빈 발판(초록)과 다른 용사 자리(파랑)가 함께 빛난다 */
+/* Selecting a deployed hero highlights empty move pads in green and occupied swap pads in blue. */
 function selectField(hero) {
-  if (hero) setSellMode(false);        // 배치/이동을 시작하면 판매 모드는 끝
+  if (hero) setSellMode(false);        // Starting placement or movement exits sell mode.
   selBench = null;
   selHero = hero ? hero.id : null;
   renderer.setSelectedHero(selHero);
@@ -788,9 +768,7 @@ function selectField(hero) {
 const padFx = (h, color) =>
   renderer.burst((h.x - D.FIELD_W / 2) / 36, 0.5, (h.y - D.FIELD_H / 2) / 36, color, 8, 2);
 
-/* 이동 — 목적지에 용사가 있으면 "자리 교환"이 된다 (회수 없이 진형만 바꾼다).
- * 한 번 움직이면 선택을 푼다 — 선택이 남아 있으면 다음 클릭이
- * 의도치 않은 이동/교환이 돼서 "누를 때마다 자리가 바뀌는" 불편이 생긴다. */
+/* Move to empty pads or swap with occupied ones, then clear selection to prevent unintended subsequent moves. */
 function doMove(padIndex) {
   const occ = E.padOccupant(state, padIndex);
   if (occ && occ.id !== selHero) {
@@ -812,7 +790,7 @@ function doMove(padIndex) {
   refreshAll();
 }
 
-/* ---------- 끌어서 옮기기 / 자리 바꾸기 ---------- */
+/* Drag movement and swapping. */
 let dragId = null;
 function onDragStart(cx, cy) {
   if (state.phase === 'over') return false;
@@ -831,10 +809,10 @@ function onDragEnd(cx, cy) {
   const id = dragId;
   dragId = null;
   renderer.setHover(null);
-  if (id == null || selHero !== id || cx == null) return;   // cx == null: 드래그 취소
+  if (id == null || selHero !== id || cx == null) return;   // A null client x coordinate means the drag was cancelled.
   const pad = renderer.screenToPad(cx, cy);
   const hero = state.field.find(h => h.id === id);
-  if (pad == null || !hero || pad === hero.padIndex) return;   // 제자리에 놓으면 그냥 선택만
+  if (pad == null || !hero || pad === hero.padIndex) return;   // Dropping on the same pad only selects the hero.
   doMove(pad);
 }
 
@@ -847,9 +825,7 @@ function doRecall(heroId) {
   refreshAll();
 }
 
-/* ---------- 저장 / 불러오기 (간단한 파일 하나) ----------
- * 저장 = 준비 단계 스냅샷을 JSON으로 내려받기, 불러오기 = 그 파일을 다시 열기.
- * 별조각·최고 기록은 원래 localStorage에 있으니 파일에는 "이번 판"만 담는다. */
+/* Download preparation snapshots as JSON and restore from the file. Device-level shards and records remain in localStorage; the file contains only the current run. */
 function saveGame() {
   if (state.phase === 'wave') {
     ui.toast('⚔️ 전투 중에는 저장할 수 없어요 — 웨이브를 끝내고 눌러 주세요!', 'bad');
@@ -877,7 +853,7 @@ function loadGame(data, { replaceSession = false } = {}) {
     ui.toast('😢 저장 파일을 읽을 수 없어요 — 이 게임에서 저장한 파일이 맞는지 확인해 주세요', 'bad');
     return false;
   }
-  gameOverToken++;                     // 예약된 게임오버 연출이 불러온 판을 덮지 않게
+  gameOverToken++;                     // Invalidate delayed defeat presentation before loading a run.
   if (replaceSession) discardPlaySession();
   else finishPlaySession('load');
   state = next;
@@ -891,17 +867,11 @@ function loadGame(data, { replaceSession = false } = {}) {
   music.setWave(state.wave);
   SFX.tap();
   ui.toast(`📂 불러왔어요! ${state.wave}웨이브 준비부터 이어서 시작해요`, 'good');
-  autoSave();                          // 이어하기도 이 지점을 가리키게
+  autoSave();                          // Update the resume point to the loaded snapshot.
   return true;
 }
 
-/* ---------- 자동 저장 ----------
- * 웨이브가 끝날 때마다 준비 단계 스냅샷을 브라우저(localStorage)에 남긴다.
- * 직렬화는 그 순간(상태가 확실한 준비 단계일 때) 바로 하고, 실제 쓰기는
- * 한가할 때로 미뤄 웨이브 클리어 연출 프레임을 방해하지 않는다.
- * 단 requestIdleCallback은 숨은 탭에서 무기한 미뤄질 수 있어 timeout을 걸고,
- * 탭이 가려지거나 닫힐 때는 그 자리에서 flush한다 — "곧 쓸게"가 유실이 되면 안 된다.
- * 성이 함락되면 슬롯을 지운다 — 끝난 판은 이어하기 대상이 아니다. */
+/* Serialize preparation state immediately after waves, then defer localStorage writes with an idle timeout. Flush on pagehide so deferred work is not lost. Clear autosave on defeat. */
 const idle = window.requestIdleCallback
   ? (fn) => window.requestIdleCallback(fn, { timeout: 400 })
   : (fn) => setTimeout(fn, 60);
@@ -932,8 +902,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function handleEvents(events) {
-  /* 승리(서른 번째 아침)가 낀 배치에서는 waveEnd의 이야기 예약을 승리 쪽이 가져간다 —
-   * 둘이 따로 w30 이야기를 걸면 모달이 겹친다 */
+  /* Victory owns wave-30 story scheduling; scheduling separately from waveEnd would overlap modals. */
   const hasVictory = events.some(e => e.type === 'victory');
   for (const ev of events) {
     switch (ev.type) {
@@ -953,7 +922,7 @@ function handleEvents(events) {
         ui.toast(`${ev.emoji} ${ev.name} · ${['왼쪽', '가운데', '오른쪽'][ev.route]} 길 지원!`, 'good');
         break;
       case 'kill':
-        if (!demo.active) codexAddKill(ev.etype);   // 몬스터 도감 — 봇의 사냥은 세지 않는다
+        if (!demo.active) codexAddKill(ev.etype);   // Automated demo kills do not count toward the monster codex.
         if (ev.boss) {
           SFX.bossDown(true);
           ui.toast(`🎉 대보스 ${ev.name}를 물리쳤어요!! 💰${ev.gold}`, 'good');
@@ -996,11 +965,11 @@ function handleEvents(events) {
         ui.toast(ev.journey
           ? `🎉 ${ev.journey.name} · 방어 ${ev.journey.step}/${ev.journey.total} 완료! 보너스 💰${ev.bonus}`
           : `🎉 ${ev.wave}웨이브 클리어! 보너스 💰${ev.bonus}`, 'good');
-        autoSave();                      // 매 웨이브가 이어하기 지점이 된다
+        autoSave();                      // Each completed wave creates a resume point.
         checkAchievements();
         refreshAll();
         if (demo.active) demo.guide('waveFlow');
-        /* 클리어 토스트/효과음과 겹치지 않게 살짝 늦춘다. 준비 단계라 시뮬레이션 손실은 없다 */
+        /* Delay slightly to avoid overlapping clear feedback; preparation has no running combat simulation. */
         if (!hasVictory && !state.journey) {
           const key = Story.beatForWave(ev.wave);
           if (key) setTimeout(() => playStory(key), 700);
@@ -1035,9 +1004,7 @@ function handleEvents(events) {
         break;
       case 'gameOver': onGameOver(); break;
 
-      /* ---------- 서른 번째 아침 ----------
-       * 엔진은 알렸고, 여기서 갚는다: 별조각·기록·연출·다음 회차 제안.
-       * w30 이야기를 먼저 보여 주고(2회차부터는 이미 봐서 건너뜀) 승리 화면을 연다. */
+      /* The engine announces victory; main applies shards, records, story and the next-loop offer. Show the unseen wave-30 story before the victory screen. */
       case 'victory': {
         store.victories = store.victories + 1;
         if ((ev.loop || 0) >= 1) store.trialClears = store.trialClears + 1;
@@ -1046,7 +1013,7 @@ function handleEvents(events) {
         flushRecords();
         const vLoop = ev.loop || 0, vShards = ev.shards;
         setTimeout(() => playStory('w30', () => {
-          if (state.phase === 'over') return;      // 그 사이 함락됐다면(있을 수 없지만) 겹치지 않게
+          if (state.phase === 'over') return;      // Avoid overlapping defeat even if the state changed unexpectedly.
           SFX.shard();
           renderer.celebrate(0xffd93d, true);
           ui.showVictory({ loop: vLoop, shards: vShards, state });
@@ -1055,7 +1022,7 @@ function handleEvents(events) {
         break;
       }
 
-      /* ---------- 별지기 ---------- */
+      /* Champion feedback. */
       case 'champHurt': SFX.heroHurt(ev.x); break;
       case 'champKo':
         SFX.heroDead();
@@ -1101,25 +1068,24 @@ function onGameOver() {
   finishPlaySession('defeat');
   SFX.gameOver();
   music.stop();
-  pendingAutosave = null;              // 쓰기 대기 중이던 스냅샷도 되살아나면 안 된다
-  store.autosave = null;               // 함락된 판은 이어하기에서 지운다
+  pendingAutosave = null;              // Discard queued snapshots so defeat cannot restore a stale resume point.
+  store.autosave = null;               // Remove defeated runs from resume storage.
   store.shards = store.shards + state.shardsEarned;
   checkAchievements();
-  flushRecords();                      // 게임 오버는 확실한 저장 시점 — 도감·수학 기록을 남긴다
+  flushRecords();                      // Defeat is a reliable point to flush codex and achievement records.
   const best = store.best(state.difficulty);
   if (state.wave > best) store.setBest(state.difficulty, state.wave);
-  /* 900ms 연출 대기 중에 사용자가 Enter로 새 게임을 시작할 수 있다.
-   * 가드가 없으면 새 판 위에 게임오버 화면이 뒤늦게 덮인다. */
+  /* A player may restart during the 900ms defeat delay. Check the session token so the old overlay cannot cover the new run. */
   const overToken = ++gameOverToken;
   setTimeout(() => {
     if (overToken !== gameOverToken || state.phase !== 'over') return;
     SFX.shard();
-    ui.showOver(state);
+    if (!document.body.classList.contains('tour-on')) ui.showOver(state);
     ui.updateHud(state, store.shards, store.best(state.difficulty));
   }, 900);
 }
 
-/* ---------- UI 바인딩 ---------- */
+/* UI bindings. */
 const handlers = {
   onWaveStart() { tryStartWave(); },
   onVillagePresentation(presentation) { villageRenderer.setPresentation(presentation); },
@@ -1155,8 +1121,7 @@ const handlers = {
   },
   onSummon: doSummon,
   onCombine(action) { doCombineDirect(action); },
-  /* 조합 재료가 모자랄 때 "그 용사 뽑으러 가기" — 소환은 무작위라 약속은 못 하지만,
-   * 적어도 무엇을 해야 하는지는 분명해진다. */
+  /* When recipe materials are missing, guide the player toward summoning without promising a random class result. */
   onNeedHero(cls) {
     const C = D.CLASSES[cls];
     if (state.gold < D.SUMMON_COST) {
@@ -1246,18 +1211,14 @@ const handlers = {
       selBench = id;
       selHero = id;
       const hero = state.bench.find(h => h.id === id);
-      /* 세 번째 인자 = 교환 모드: 찬 자리도 후보(파랑)로 표시된다 */
+      /* The third argument enables swap mode, highlighting occupied pads in blue. */
       renderer.setPlacementMode(true, hero ? D.CLASSES[hero.cls].range : 0, true);
       renderer.setSelectedHero(null);
     }
     ui.renderBench(state, selBench);
     ui.renderHeroPanel(state, selHero);
   },
-  /* 배치된 용사를 고른 뒤 —
-   *   빈 발판 클릭    → 회수 없이 이동
-   *   다른 용사 클릭  → 두 용사의 자리 교환 (끌어다 놓기와 같은 결과)
-   *   같은 용사 클릭  → 선택 해제
-   * 다른 용사의 정보만 보고 싶을 땐 마우스를 올리면 툴팁이 뜬다. */
+  /* After selecting a deployed hero: click an empty pad to move, another hero to swap, or the same hero to deselect. Hover provides information without changing selection. */
   onSquadSelect(id) {
     const hero = state.field.find((entry) => entry.id === id);
     if (!hero) return;
@@ -1342,7 +1303,7 @@ const handlers = {
     if (cx == null) { renderer.setHover(null); ui.hideTooltip(); return; }
     const pad = renderer.screenToPad(cx, cy);
     renderer.setHover(pad);
-    /* 배치된 용사에 마우스를 올리면 상세 정보 */
+    /* Hover a deployed hero for details. */
     const hero = pad == null ? null : E.padOccupant(state, pad);
     if (hero) {
       if (hoverHeroId !== hero.id) {
@@ -1364,7 +1325,7 @@ const handlers = {
     renderer.setSelectedHero(null);
     refreshAll();
   },
-  /* --- 여러 명 판매 --- */
+  /* Bulk selling. */
   onSellMode() { setSellMode(!sellMode); SFX.tap(); },
   onSellToggle(id) {
     if (!sellSel.delete(id)) sellSel.add(id);
@@ -1391,12 +1352,12 @@ const handlers = {
     sellSel.clear();
     SFX.coin();
     ui.toast(`💰 용사 ${picked.length}명을 보내주고 ${total} 골드를 받았어요.`, 'good');
-    if (!state.bench.length) setSellMode(false);   // 다 팔았으면 모드도 끝
+    if (!state.bench.length) setSellMode(false);   // Exit sell mode when the selection is exhausted.
     refreshAll();
   },
   onSave: saveGame,
   onLoad: loadGame,
-  /* --- 별지기 --- */
+  /* Champion actions. */
   onSpell: doSpell,
   onUlt: doUlt,
   onSkillOpen: openSkills,
@@ -1418,17 +1379,17 @@ const handlers = {
     ui.renderSkills(state);
     ui.updateChampChip(state);
   },
-  /* --- 시작 메뉴 (자동 저장이 있을 때만 뜬다) --- */
+  /* Show the startup menu only when autosave exists. */
   onContinue() {
     ui.hideStart();
     SFX.tap();
-    /* 자동 저장이 깨져 있으면 이미 준비된 새 게임을 그대로 진행한다 */
+    /* If autosave is corrupt, continue with the already-prepared new run. */
     if (!loadGame(store.autosave, { replaceSession: true })) playStory('prologue');
   },
   onStartNew() {
     ui.hideStart();
     SFX.tap();
-    playStory('prologue');   // 새 게임은 boot에서 이미 만들어져 있다
+    playStory('prologue');   // Boot already created the new game.
   },
   onCastle(key) {
     const r = E.castleUpgrade(state, key);
@@ -1437,7 +1398,7 @@ const handlers = {
       return;
     }
     SFX.upgrade();
-    /* 강화한 순간을 눈으로 보여 준다 — 숫자만 오르면 뭐가 달라졌는지 모른다 */
+    /* Show an upgrade visually so its effect is more than a changed number. */
     if (key !== 'repair') renderer.castleUpgradeFx(key);
     const lv = key === 'repair' ? 0 : state.castle[key];
     const NOTE = {
@@ -1453,13 +1414,13 @@ const handlers = {
     ui.showMeta();
     SFX.tap();
   },
-  /* --- 도감 · 기록 --- */
+  /* Codex and records. */
   onBookOpen() {
     ui.renderBook({ state, codex, earned });
     ui.showBook();
     SFX.tap();
   },
-  /* --- 서른 번째 아침 --- */
+  /* Thirtieth-dawn victory. */
   onTrial() { SFX.tap(); startTrial(); },
   onVictoryContinue() {
     ui.hideVictory();
@@ -1500,12 +1461,10 @@ const handlers = {
 };
 ui.bind(handlers);
 
-/* ---------- 키보드 조작 (전 기능) ---------- */
-let kbPad = null;                     // 키보드 배치 커서
+/* Keyboard controls. */
+let kbPad = null;                     // Keyboard placement cursor.
 
-/* ←→로 훑을 발판 목록 — 자기 자리만 빼고 전부다.
- * 빈 발판에서 Enter는 배치/이동, 찬 발판에서 Enter는 자리 교환이 된다.
- * 빈 곳만 훑게 하면 "저 자리랑 바꾸고 싶다"는 조작을 키보드로는 못 하게 된다. */
+/* Arrow navigation includes all pads except the selected hero's own. Enter moves/places on empty pads or swaps on occupied pads, keeping keyboard functionality equivalent to pointer input. */
 function padCandidates() {
   const self = selBench == null && selHero != null
     ? state.field.find(h => h.id === selHero)
@@ -1524,7 +1483,7 @@ function cyclePad(dir) {
 
 function cycleBench(dir) {
   if (!state.bench.length) { ui.toast('벤치가 비어 있어요. S키로 소환해 보세요!', 'bad'); return; }
-  setSellMode(false);                  // Tab으로 배치를 시작하면 판매 모드는 끝
+  setSellMode(false);                  // Starting placement with Tab exits sell mode.
   let idx = state.bench.findIndex(h => h.id === selBench);
   idx = (idx + dir + state.bench.length) % state.bench.length;
   const hero = state.bench[idx];
@@ -1539,11 +1498,7 @@ function cycleBench(dir) {
   SFX.tap();
 }
 
-/* ---------- 배치 중 표시 ----------
- * 선택을 바꾸는 자리가 열 군데가 넘는다(카드 · 발판 · 키보드 · 판매 모드 · 조합 …).
- * 그 전부에 호출을 심으면 반드시 하나를 빠뜨린다 — 안내 바가 남아 있는 버그가
- * 제일 흔하다. 그래서 매 프레임 "지금 상태"에서 다시 계산하고, 바뀔 때만 DOM 을
- * 건드린다. 문자열 비교 한 번이라 비용은 없는 셈. */
+/* Derive placement guidance from current state every frame and update DOM only when text changes. Central derivation avoids stale guidance across many selection paths. */
 let placeLabelCache = null;
 function syncPlaceBar() {
   let label = null;
@@ -1573,7 +1528,7 @@ function deselectAll() {
   ui.restoreTab();
 }
 
-/* 필드 용사 순환 선택 (F키) — 회수 없이 이동/강화 대상 고르기 */
+/* Cycle deployed heroes with F to choose a movement or upgrade target. */
 function cycleField(dir) {
   if (!state.field.length) { ui.toast('배치된 용사가 없어요.', 'bad'); return; }
   const sorted = [...state.field].sort((a, b) => a.padIndex - b.padIndex);
@@ -1584,7 +1539,7 @@ function cycleField(dir) {
 }
 
 function tryStartWave() {
-  if (ui.isStoryOpen() || ui.isRevealOpen()) return;   // 연출 중에 웨이브가 몰래 시작되지 않게
+  if (ui.isStoryOpen() || ui.isRevealOpen()) return;   // Do not start a wave behind an open presentation.
   const incoming = E.journeyEncounter(state);
   const quip = store.storyOff || incoming.boss ? null : Story.waveQuip(state.wave, Math.random, getLocale());
   if (quip) setTimeout(() => ui.toast(`📣 ${quip}`), 260);
@@ -1600,7 +1555,7 @@ function tryStartWave() {
   ui.setWaveUI(state);
 }
 
-/* 버튼 클릭 후 Space가 그 버튼을 다시 누르지 않도록 포커스 해제 */
+/* Blur clicked buttons so Space does not activate them again. */
 document.addEventListener('click', (ev) => {
   if (ev.target instanceof HTMLButtonElement) ev.target.blur();
 });
@@ -1608,8 +1563,7 @@ document.addEventListener('click', (ev) => {
 document.addEventListener('keydown', (ev) => {
   const key = ev.key;
 
-  /* 문자 입력값이 아닌 물리 키 코드로 저장하므로 한글 IME와 영문 배열에서
-   * 같은 위치의 단축키가 동작한다. Esc/Enter/Space/Tab/방향키는 UI 탐색용 고정 키다. */
+  /* Store physical key codes so shortcuts work consistently with Korean IME and English layouts. Reserve Escape, Enter, Space, Tab and arrows for UI navigation. */
   if (ui.isSettingsOpen()) {
     ev.preventDefault();
     if (keyCaptureAction) {
@@ -1645,51 +1599,51 @@ document.addEventListener('keydown', (ev) => {
 
   const shortcutAction = actionForCode(keyBindings, ev.code);
 
-  /* --- 시작 메뉴 (이어하기 / 처음부터) --- */
+  /* Startup menu: resume or start over. */
   if (ui.isStartOpen()) {
     if (key === 'Escape') { ev.preventDefault(); ui.el.newGameBtn.click(); }
-    return;               // Enter/Space는 포커스된 버튼이 알아서 처리한다
+    return;               // Focused buttons handle Enter and Space themselves.
   }
 
-  /* --- 전설·신화 연출: 아무 키나 눌러 넘긴다 (수학 모달보다 위) --- */
+  /* Any key may dismiss a legendary/mythic reveal. */
   if (ui.isRevealOpen()) {
     ev.preventDefault();
     closeReveal();
     return;
   }
 
-  /* --- 막간 이야기 --- */
+  /* Interlude story. */
   if (ui.isStoryOpen()) {
     if (key === 'Escape' || key === 'Enter' || key === ' ') { ev.preventDefault(); closeStory(); }
-    return;                       // 나머지 키는 삼킨다 — 뒤에서 웨이브가 몰래 시작되면 안 된다
+    return;                       // Consume other keys so a wave cannot start behind the story.
   }
 
-  /* --- 서른 번째 아침 (승리) — Enter/Esc = 계속 지키기. 시련은 마우스로만(실수 방지) --- */
+  /* Victory: Enter/Escape continues defense; require pointer input for a new trial to prevent accidental resets. */
   if (ui.isVictoryOpen()) {
     if (key === 'Escape' || key === 'Enter' || key === ' ') { ev.preventDefault(); handlers.onVictoryContinue(); }
     return;
   }
 
-  /* --- 도감 · 기록 --- */
+  /* Codex and records. */
   if (ui.isBookOpen()) {
     if (key === 'Escape' || key === 'Enter' || shortcutAction === 'codex') { ev.preventDefault(); ui.hideBook(); }
     return;
   }
 
-  /* --- 옷장 모달 (이름 입력창의 키는 여기까지 안 온다 — Esc만 온다) --- */
+  /* Wardrobe modal: text-input keys stay in the field; Escape reaches this handler. */
   if (ui.isClosetOpen()) {
     if (key === 'Escape') { ev.preventDefault(); closeCloset(); }
     else if (key === 'Enter') { ev.preventDefault(); saveCloset(); }
     return;
   }
 
-  /* --- 별자리(스킬트리) 모달 --- */
+  /* Constellation skill-tree modal. */
   if (ui.isSkillOpen()) {
     if (key === 'Escape' || key === 'Enter' || shortcutAction === 'skills') { ev.preventDefault(); ui.hideSkills(); }
     return;
   }
 
-  /* --- 별의 축복 모달 --- */
+  /* Star Blessings modal. */
   if (ui.isMetaOpen()) {
     if (key === 'Escape' || key === 'Enter') { ev.preventDefault(); ui.hideMeta(); return; }
     const n = Number(key);
@@ -1700,13 +1654,13 @@ document.addEventListener('keydown', (ev) => {
     return;
   }
 
-  /* --- 게임 오버 --- */
+  /* Defeat screen. */
   if (state.phase === 'over') {
     if (key === 'Enter' || key === ' ') { ev.preventDefault(); SFX.tap(); newGame(store.diff); }
     return;
   }
 
-  /* --- 게임 화면 --- */
+  /* Gameplay controls. */
   switch (key) {
     case ' ':
     case 'Enter': {
@@ -1718,7 +1672,7 @@ document.addEventListener('keydown', (ev) => {
         renderer.setHover(null);
         doPlace(pad);
       } else if (onField && kbPad != null) {
-        doMove(kbPad);                      // 배치된 용사를 골라둔 발판으로 이동
+        doMove(kbPad);                      // Move the selected deployed hero to the keyboard pad.
       } else if (state.phase === 'prep') {
         tryStartWave();
       }
@@ -1782,10 +1736,9 @@ document.addEventListener('keydown', (ev) => {
   }
 });
 
-/* ---------- 게임 루프 ---------- */
+/* Game loop. */
 function isPaused() {
-  /* 이야기는 준비 단계에만 뜨므로 멈출 게 없지만, 전설 연출은 전투 중에도 뜬다.
-   * 별자리(스킬)·옷장·도감·승리 화면도 멈춘다 — 열어 놓고 고민할 시간을 준다 */
+  /* Pause for reveals and decision-heavy skill, wardrobe, codex and victory modals so players can read safely. */
   return ui.isMetaOpen() || ui.isSkillOpen() || ui.isClosetOpen() || ui.isSettingsOpen()
     || ui.isRevealOpen() || ui.isBookOpen() || ui.isVictoryOpen() || ui.isDefenseVictoryOpen() || state.phase === 'over';
 }
@@ -1854,8 +1807,7 @@ function observePlaySession(now, forceInactive = false) {
 }
 
 function updateAutoPhaseFlow(dt) {
-  /* 관전 봇은 자체 준비 정책을 쓰며, 사람이 읽거나 선택하는 모달 뒤에서는
-   * 카운트다운을 멈춘다. 자동 시작도 수동 버튼과 같은 경로만 호출한다. */
+  /* The spectator bot has its own preparation policy. Pause countdowns behind reading/choice modals; automatic starts use the same command as the manual button. */
   if (demo.active) {
     autoPhaseClock = createAutoPhaseClock();
     return null;
@@ -1871,13 +1823,13 @@ function updateAutoPhaseFlow(dt) {
   return remaining;
 }
 
-const STEP = 1 / 60;          // 고정 시뮬레이션 타임스텝
-const MAX_STEPS = 8;          // 프레임당 최대 캐치업 (낮은 fps 대비)
+const STEP = 1 / 60;          // Fixed simulation timestep.
+const MAX_STEPS = 8;          // Bound per-frame catch-up work at low FPS.
 let lastT = performance.now();
 let simAcc = 0;
 let bootT = performance.now();
 let frameCount = 0;
-/* 폰은 lite 로 이미 결정된 것으로 친다 — 실측해서 high 로 올릴 이유가 없다 */
+/* Mobile starts in lite; do not promote it to high based on the opening measurement. */
 let gfxDecided = store.gfx != null || urlGfx != null || isMobile;
 
 function frame(now) {
@@ -1888,7 +1840,7 @@ function frame(now) {
   syncPlaceBar();
   observePlaySession(now);
 
-  /* 그래픽 자동 품질: 시작 4초 후부터 3초간 실측 fps */
+  /* Measure automatic graphics quality for three seconds after the first four seconds. */
   if (!gfxDecided) {
     const elapsed = (now - bootT) / 1000;
     if (elapsed > 4) {
@@ -1901,8 +1853,7 @@ function frame(now) {
         const q = avg < 45 ? 'lite' : 'high';
         store.gfx = q;
         if (q === 'lite') { renderer.setQuality('lite'); ui.toast('⚙️ 부드러운 화면을 위해 그래픽을 조절했어요.'); }
-        /* lite 로 낮춰도 안 되는 기기: 배경 장식까지 접는다.
-         * 지형과 카메라가 같이 바뀌는 일이라 실행 중엔 못 바꾸고 다음 실행부터다. */
+        /* If lite remains too slow, disable scenery on the next launch because changing terrain and camera requires reconstruction. */
         if (avg < 26 && renderer.decor) {
           store.decorOff = true;
           ui.toast('⚙️ 다음에 켤 때는 배경을 더 가볍게 할게요.');
@@ -1911,11 +1862,11 @@ function frame(now) {
     }
   }
 
-  /* 데모는 모달이 열려도 흐름을 관리해야 한다. */
+  /* The demo still manages its flow while modals are open. */
   if (demo.active) demo.step(realDt);
 
   if (!isPaused() && !perfMode) {
-    /* 고정 타임스텝: fps가 낮아도 게임 속도는 유지 */
+    /* Fixed-step simulation maintains game speed independently of rendering FPS. */
     simAcc = Math.min(simAcc + realDt * speed, STEP * MAX_STEPS);
     while (simAcc >= STEP) {
       simAcc -= STEP;
@@ -1926,7 +1877,7 @@ function frame(now) {
       }
       if (isPaused()) { simAcc = 0; break; }
     }
-    /* 저체력 심장박동 & Audio Lowpass Flow. 시각 오버레이는 사용하지 않는다. */
+    /* Low-health heartbeat and audio lowpass use no visual overlay. */
     const ratio = state.castleMax ? state.castleHp / state.castleMax : 1;
     updateAudioFlow(ratio);
     if (ratio < 0.3 && state.phase === 'wave') {
@@ -1935,7 +1886,7 @@ function frame(now) {
     }
   }
 
-  /* 보스 상태 → 음악/체력바. 전장 전체의 색·조명은 바꾸지 않는다. */
+  /* Boss state affects music and health bars, never global battlefield color or lighting. */
   const greatBoss = state.enemies.find(e => e.boss && !e.dead);
   const midBoss = greatBoss ? null : state.enemies.find(e => e.midBoss && !e.dead);
 
@@ -1947,7 +1898,7 @@ function frame(now) {
 
   const autoPhaseRemaining = updateAutoPhaseFlow(realDt);
 
-  /* UI 갱신 */
+  /* UI updates. */
   ui.updateHud(state, store.shards, store.best(state.difficulty));
   ui.updateChampChip(state);
   ui.setWaveUI(state, autoPhaseRemaining);
@@ -1961,7 +1912,7 @@ function frame(now) {
     enraged: !!barBoss.enraged,
   } : null);
   panelT += realDt;
-  if (panelT > 0.35) {           // 골드 변동에 따른 버튼 활성화 갱신
+  if (panelT > 0.35) {           // Refresh button availability when gold changes.
     panelT = 0;
     ui.renderCastlePanel(state);
     if (selHero != null) ui.renderHeroPanel(state, selHero);
@@ -1978,9 +1929,7 @@ function frame(now) {
   }
 }
 
-/* ---------- 시작 ----------
- * 자동 저장이 있으면 "이어하기 / 처음부터"를 먼저 묻는다.
- * 데모 링크(?demo=)는 구경이 목적이니 메뉴 없이 바로 시작한다. */
+/* Offer resume when autosave exists. Demo URLs skip the startup menu for immediate viewing. */
 const bootSave = (() => {
   if (urlParams.has('demo') || judgeMode || previewChapter) return null;
   const s = store.autosave;
@@ -1988,8 +1937,7 @@ const bootSave = (() => {
 })();
 newGame(store.diff, { holdStory: !!bootSave || !!previewChapter });
 
-/* 전술판은 웨이브 동안만 손을 받는다. 이벤트는 기존 렌더러와 사운드 경로로
- * 흘려 보내므로, 새 퍼즐도 원래 전장의 별똥별·피격·회복 연출을 똑같이 쓴다. */
+/* The tactics board accepts input only during waves and sends results through existing render/sound event paths. */
 tactics = createTacticFlow({
   getPhase: () => state.phase,
   random: () => state.rng(),
@@ -2032,8 +1980,7 @@ if (judgeMode) {
   refreshAll();
   /* The direct review route skips menus, not the first-defense countdown.
    * Reviewers can still use the same manual-start override as normal play. */
-  /* 성능 비교는 로딩 시간 차이 때문에 서로 다른 전투 시점을 재지 않도록
-   * 같은 시드의 초반 전투를 고정 틱만큼 진행한 뒤 엔진 상태를 멈춘다. */
+  /* Performance comparisons advance an identical seeded opening by fixed ticks, then freeze the engine so loading differences do not change the measured scene. */
   if (perfMode) {
     for (let tick = 0; tick < 120; tick++) E.tick(state, STEP);
     refreshAll();
@@ -2042,7 +1989,7 @@ if (judgeMode) {
   document.body.classList.add('judge-mode', 'judge-opening');
 }
 if (bootSave) ui.showStart(bootSave);
-/* 별지기 꾸미기 적용 — 옷장에서 고른 모습·이름으로 시작한다 (초상 실패 시 이모지) */
+/* Apply saved champion appearance and name; use emoji if portrait rendering fails. */
 {
   const cfg = store.champCfg;
   renderer.setChampLook(cfg.look);
@@ -2055,17 +2002,14 @@ syncShortcutLabels();
 ui.coachChip();
 requestAnimationFrame(frame);
 
-/* 첫 사용자 입력에서 오디오 잠금 해제 */
+/* Unlock audio on the first user gesture. */
 window.addEventListener('pointerdown', async () => {
   music.sync();
   await prepareSfxSamples();
   if (audioProbe) audioProbe.textContent = JSON.stringify(sfxSampleSnapshot());
 }, { once: true });
 
-/* 폰트를 미리 받아 둔다.
- * 브라우저는 "화면에 실제로 그려질 때"만 폰트를 내려받는다. 그냥 두면 ① 첫 문제창이 열리는
- * 순간 기본 폰트로 그려졌다가 바뀌고(아이가 문제를 읽는 바로 그 타이밍에 깜빡인다)
- * ② 3D 캔버스에 그리는 글자는 아예 폴백 폰트로 구워져 텍스처에 박힌다. */
+/* Preload fonts before visible UI or canvas text needs them to avoid late font swaps and permanently baked fallback glyphs. */
 if (document.fonts && document.fonts.load) {
   Promise.all([
     document.fonts.load('16px Jua', 'Constellation Defense'),
@@ -2073,9 +2017,7 @@ if (document.fonts && document.fonts.load) {
   ]).catch(() => {});
 }
 
-/* ---------- 데모 배선 ----------
- * 데모에게 게임 내부를 열어 주지 않는다. 사람이 누르는 것과 같은 함수만 넘긴다 —
- * 그래야 "데모에서만 되는" 또는 "데모에서만 안 되는" 버그가 안 생긴다. */
+/* Inject only normal player command functions into the demo, preserving the same execution paths as manual play. */
 demo.attach({
   getState: () => state,
   isStoryOpen: () => ui.isStoryOpen(),
@@ -2120,12 +2062,12 @@ demo.attach({
   },
 });
 
-/* ?demo=고수 로 열면 바로 시작. 콘솔에서는 __game.demo.start('보통') */
-if (urlParams.has('demo')) {
+/* ?demo=expert starts spectating unless the interactive payment inspector owns the flow. Console callers may use __game.demo.start('expert'). */
+if (urlParams.has('demo') && urlParams.get('tour') !== 'neon') {
   setTimeout(() => demo.start(urlParams.get('demo') || '고수'), 900);
 }
 
-/* 디버그 훅 (자동 검증/테스트용) */
+/* Debug hooks for automated validation and testing. */
 window.__game = {
   get state() { return state; },
   E, D, renderer, ui, SFX, demo, assets: assetLoader,
@@ -2142,7 +2084,7 @@ window.__game = {
   gold(n) { state.gold += n; refreshAll(); },
   jump(w) { state.wave = w; refreshAll(); },
   hurt(n) { state.castleHp = Math.max(0, state.castleHp - n); if (state.castleHp <= 0) { state.phase = 'over'; state.shardsEarned = D.shardReward(state.wave, state.bossKills); onGameOver(); } },
-  /* 규칙·상태는 바꾸지 않는 시각 연출 훅. 6은 영웅 문양 미리보기다. */
+  /* Presentation-only tactic preview; size 6 previews a Hero Sigil without changing rules or state. */
   previewTactic(kind = 'flare', lane = 1, size = 3) { return tactics.preview(kind, lane, size); },
 };
 
@@ -2150,11 +2092,28 @@ window.__game = {
 if (urlParams.get('tour') === 'neon') {
   initNeonTour({
     locale,
-    openStore: () => { closeStory(); neonStore?.open(); },
+    openStore: () => { closeStory(); ui.hideOver(); neonStore?.open(); },
     closeStore: () => neonStore?.close(),
     refreshStore: () => neonStore?.refresh(),
-    stage: {
-      wave: () => state.wave,
+    riskyDefense: () => {
+      demo.stop(); closeStory();
+      startExposedLaneDemo({
+        newGame: () => newGame('normal', { holdStory: true }),
+        travel: id => handlers.onJourneyTravel(id),
+        heroes: () => state.field,
+        move: (id, pad) => { selectField(state.field.find(hero => hero.id === id)); doMove(pad); },
+        doubleSpeed: () => { if (speed !== 2) handlers.onSpeed(); },
+        startWave: tryStartWave,
+      });
     },
+    play: () => {
+      demo.stop();
+      if (state.phase === 'over') newGame(store.diff, { holdStory: true });
+      closeStory(); ui.hideOver();
+      const next = E.journeyChoices(state).find(node => node.kind === 'battle' || node.kind === 'boss');
+      if (next) handlers.onJourneyTravel(next.id);
+      tryStartWave();
+    },
+    stage: { snapshot: () => ({ wave: state.wave, hp: state.castleHp, maxHp: state.castleMax, phase: state.phase }) },
   });
 }

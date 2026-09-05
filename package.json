@@ -8,7 +8,7 @@
   "type": "module",
   "private": false,
   "scripts": {
-    "build": "esbuild src/main.js --bundle --outfile=dist/game.js --format=iife --minify-whitespace && esbuild src/rafshim.js --bundle --outfile=dist/rafshim.js --format=iife --minify-whitespace",
+    "build": "node scripts/payment-excerpts.mjs && esbuild src/main.js --bundle --outfile=dist/game.js --format=iife --minify-whitespace && esbuild src/rafshim.js --bundle --outfile=dist/rafshim.js --format=iife --minify-whitespace",
     "watch": "esbuild src/main.js --bundle --outfile=dist/game.js --format=iife --watch",
     "balance": "node scripts/balance-bot.mjs",
     "balance:report": "node scripts/balance-report.mjs",

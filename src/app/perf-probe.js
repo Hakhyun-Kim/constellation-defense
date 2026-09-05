@@ -1,4 +1,4 @@
-/* 성능 측정의 수학만 분리한다. 브라우저 probe와 Node 검사가 같은 계산을 쓴다. */
+/* Share pure performance calculations between the browser probe and Node checks. */
 export function summarizeFrameDurations(durations) {
   const clean = durations.filter((value) => Number.isFinite(value) && value > 0);
   if (!clean.length) return Object.freeze({ frames: 0, avgFps: 0, avgFrameMs: 0, p95FrameMs: 0 });

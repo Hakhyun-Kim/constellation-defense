@@ -1,6 +1,4 @@
-/* =====================================================
- * UI (DOM 패널/모달) — 상태를 그리고, 입력을 핸들러로 전달
- * ===================================================== */
+/* DOM UI renders state and forwards input to handlers. */
 import * as D from './data.js';
 import * as E from './engine.js';
 import { heroCardClass, heroCardMarkup } from './app/hero-card.js';
@@ -10,7 +8,7 @@ import { getLocale } from './app/i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
-/* 사거리 등급 라벨 — 숫자만으론 감이 안 오니 말로도 알려준다 */
+/* Give range a descriptive label as well as a number. */
 function rangeLabel(range) {
   if (range >= 240) return { text: '초장거리', cls: 'r4' };
   if (range >= 180) return { text: '장거리', cls: 'r3' };
@@ -18,7 +16,7 @@ function rangeLabel(range) {
   return { text: '근접', cls: 'r1' };
 }
 
-/* 조합 결과 미리보기용 가상 용사 (상태를 바꾸지 않는다) */
+/* Virtual hero for combination previews; never changes game state. */
 function previewHero(cls, tier, state) {
   const s = D.heroStats(cls, tier);
   return {
@@ -27,7 +25,7 @@ function previewHero(cls, tier, state) {
   };
 }
 
-/* 용사 상세 정보(툴팁/패널 공용) */
+/* Hero details shared by tooltips and panels. */
 export function describeHero(hero, state, preview) {
   const C = D.CLASSES[hero.cls];
   const T = hero.level ? { color: '#7658c7', name: `Lv ${hero.level}` } : D.TIERS[hero.tier];
@@ -595,8 +593,7 @@ export class UI {
     this.el.journeyModal.classList.toggle('hidden', state.phase !== 'journey');
   }
 
-  /* ---------- 오른쪽 패널 탭 ----------
-   * 세 패널을 세로로 쌓으면 화면 두 배 길이가 된다 — 한 번에 하나만 보여 준다. */
+  /* Show one right-panel tab at a time instead of stacking three panels into a long page. */
   showTab(name) {
     this._tab = name;
     this.el.tabs.querySelectorAll('button').forEach(b =>
@@ -606,25 +603,19 @@ export class UI {
     if (name === 'hero') this.el.heroDot.classList.add('hidden');
     if (name === 'squad') this.el.combineDot.classList.add('hidden');
   }
-  /* ---------- 배치 중 안내 ----------
-   * 전장 위 UI(웨이브 버튼 · 별지기 칩)가 하필 아래쪽 발판을 덮고 있어서,
-   * 배치하는 동안에는 .placing 으로 비켜 준다. 안내 바는 전장 아래에 둔다 —
-   * 위에 얹으면 또 발판을 가리니 안내가 방해가 된다.
-   * hero 가 null 이면 배치 중이 아니다. */
+  /* During placement, move battlefield overlays away from pads and show guidance below the field. A null hero means no active placement. */
   setPlacing(hero, label) {
     const on = !!hero;
     const stage = this.el.scene3d.parentElement;
     if (stage) stage.classList.toggle('placing', on);
-    /* 바는 나타났다 사라지지 않는다 — 늘 같은 자리를 차지하고 문구만 바뀐다.
-     * 배치할 때만 띄웠더니, 카드를 누르는 순간 벤치가 70px 아래로 밀려
-     * 방금 누른 카드가 손가락 밑에서 도망갔다. 고치려던 문제를 새로 만든 셈. */
+    /* Keep the guidance bar's space reserved and change only its text so selecting a card cannot move that card away from the pointer. */
     this.el.placeBar.classList.toggle('on', on);
     this.el.placeBarText.textContent = on
       ? label
       : '✦ 영웅 카드를 눌러 방어로 옆 발판에 배치하세요';
   }
 
-  /* 용사를 고르면 잠깐 용사 탭으로 넘어갔다가, 선택을 풀면 원래 보던 탭으로 돌아온다 */
+  /* Temporarily open hero details on selection, then restore the previous tab when deselected. */
   showHeroTab() {
     if (this._tab === 'hero') return;
     this._tabBefore = this._tab;
@@ -661,7 +652,7 @@ export class UI {
     el.metaBtn.addEventListener('click', h.onMetaOpen);
     el.overMetaBtn.addEventListener('click', h.onMetaOpen);
     el.metaClose.addEventListener('click', () => this.hideMeta());
-    /* 도감·기록 */
+    /* Codex and records. */
     el.bookBtn.addEventListener('click', () => h.onBookOpen());
     el.bookClose.addEventListener('click', () => this.hideBook());
     el.bookTabs.querySelectorAll('button').forEach(b => {
@@ -671,7 +662,7 @@ export class UI {
         this._renderBookBody();
       });
     });
-    /* 서른 번째 아침 (승리) */
+    /* Thirtieth-dawn victory. */
     el.victoryTrialBtn.addEventListener('click', () => h.onTrial());
     el.victoryContinueBtn.addEventListener('click', () => h.onVictoryContinue());
     el.victoryShareBtn.addEventListener('click', h.onShare);
@@ -687,35 +678,35 @@ export class UI {
     });
     el.combatBlueprintBtn.addEventListener('click', () => h.onMonsterBlueprint());
     el.combatConstellationBtn.addEventListener('click', () => h.onConstellationAid());
-    /* 저장/불러오기 — "간단한 파일" 하나로 오간다 */
+    /* Save and load through a single JSON file. */
     el.saveBtn.addEventListener('click', () => h.onSave());
     el.loadBtn.addEventListener('click', () => el.loadFile.click());
     el.playtestBtn.addEventListener('click', () => h.onPlaytestExport());
     el.loadFile.addEventListener('change', () => {
       const f = el.loadFile.files && el.loadFile.files[0];
-      el.loadFile.value = '';               // 같은 파일을 다시 골라도 change가 오게
+      el.loadFile.value = '';               // Reset the input so choosing the same file triggers change again.
       if (!f) return;
       f.text()
-        .then(t => { let d = null; try { d = JSON.parse(t); } catch { /* 형식 오류 */ } h.onLoad(d); })
+        .then(t => { let d = null; try { d = JSON.parse(t); } catch { /* Invalid file format. */ } h.onLoad(d); })
         .catch(() => h.onLoad(null));
     });
-    /* 여러 명 판매 */
+    /* Bulk selling. */
     el.sellModeBtn.addEventListener('click', () => h.onSellMode());
     el.sellAllBtn.addEventListener('click', () => h.onSellAll());
     el.sellGoBtn.addEventListener('click', () => h.onSellGo());
-    /* 시작 메뉴 (이어하기 / 처음부터) */
+    /* Startup menu: resume or start over. */
     el.continueBtn.addEventListener('click', () => h.onContinue());
     el.newGameBtn.addEventListener('click', () => h.onStartNew());
-    /* 별지기 */
+    /* Champion controls. */
     el.spellBtn.addEventListener('click', () => h.onSpell());
     el.ultBtn.addEventListener('click', () => h.onUlt());
     el.skillBtn.addEventListener('click', () => h.onSkillOpen());
     el.skillClose.addEventListener('click', () => this.hideSkills());
-    /* 옷장 — 초상을 누르면 열린다 */
+    /* Click the portrait to open the wardrobe. */
     el.champFace.addEventListener('click', () => h.onClosetOpen());
     el.closetSave.addEventListener('click', () => h.onClosetSave());
     el.closetClose.addEventListener('click', () => h.onClosetClose());
-    /* 이름 입력창의 키는 게임 단축키로 새면 안 된다 (Esc만 통과시킨다) */
+    /* Keep name-field typing out of gameplay shortcuts; allow only Escape through. */
     el.closetName.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Escape') ev.stopPropagation();
       if (ev.key === 'Enter') h.onClosetSave();
@@ -732,32 +723,30 @@ export class UI {
     el.tabs.querySelectorAll('button').forEach(b => {
       b.addEventListener('click', () => { this._tabBefore = null; this.showTab(b.dataset.tab); });
     });
-    /* 조작법은 접어 둔다 — 필요할 때만 펼치고, 평소엔 전장이 그만큼 커진다 */
+    /* Collapse controls help until needed to preserve battlefield space. */
     el.helpBtn.addEventListener('click', () => {
       const open = el.helpBox.classList.toggle('hidden');
       el.helpBtn.classList.toggle('on', !open);
     });
 
-    /* 3D 씬 입력 */
+    /* 3D scene input. */
     const scene = el.scene3d;
     scene.addEventListener('click', (ev) => {
-      /* 드래그를 끝낸 직후에도 click이 한 번 더 온다 — 그건 무시한다 */
+      /* Ignore the extra click emitted immediately after dragging. */
       if (this._afterDrag) return;
       h.onSceneClick(ev.clientX, ev.clientY);
     });
     scene.addEventListener('contextmenu', (ev) => {
-      ev.preventDefault();                 // 우클릭 = 즉시 회수
+      ev.preventDefault();                 // Right-click recalls immediately.
       h.onSceneRightClick(ev.clientX, ev.clientY);
     });
     scene.addEventListener('mousemove', (ev) => {
-      if (this._drag) return;              // 드래그 중에는 onDragMove가 담당
+      if (this._drag) return;              // onDragMove owns movement during a drag.
       h.onSceneMove(ev.clientX, ev.clientY);
     });
     scene.addEventListener('mouseleave', () => { if (!this._drag) h.onSceneMove(null, null); });
 
-    /* --- 끌어서 옮기기 / 자리 바꾸기 ---
-     * 배치된 용사를 집어서 다른 발판에 놓으면 이동하고, 이미 용사가 있으면 서로 자리를 바꾼다.
-     * pointer 이벤트라 마우스·터치·펜이 모두 같은 코드로 동작한다. */
+    /* Drag deployed heroes to move or swap pads. Pointer events share the implementation across mouse, touch and pen. */
     scene.addEventListener('pointerdown', (ev) => {
       if (ev.button !== 0) return;
       this._down = { x: ev.clientX, y: ev.clientY, ok: false, moved: false };
@@ -767,7 +756,7 @@ export class UI {
       if (!d) return;
       if (!d.moved && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 6) {
         d.moved = true;
-        d.ok = h.onDragStart(d.x, d.y);    // 집은 지점 기준으로 판정
+        d.ok = h.onDragStart(d.x, d.y);    // Measure drag distance from the initial grab position.
         if (d.ok) { this._drag = true; scene.classList.add('dragging'); this.hideTooltip(); }
       }
       if (d.ok) h.onDragMove(ev.clientX, ev.clientY);
@@ -779,11 +768,11 @@ export class UI {
       this._drag = false;
       scene.classList.remove('dragging');
       h.onDragEnd(ev.clientX, ev.clientY);
-      /* 이어서 날아오는 click 한 번만 삼킨다 */
+      /* Consume only the immediately following click. */
       this._afterDrag = true;
       setTimeout(() => { this._afterDrag = false; }, 0);
     });
-    /* 창 밖으로 나가거나 터치가 취소돼도 "잡은 채로" 남지 않게 */
+    /* Cancel held state when the pointer leaves or touch is cancelled. */
     window.addEventListener('pointercancel', () => {
       if (!this._down) return;
       this._down = null;
@@ -801,7 +790,7 @@ export class UI {
     const journeyProgress = E.journeyBattleProgress(state);
     el.waveNo.textContent = journeyProgress ? `${journeyProgress.step}/${journeyProgress.total}` : state.wave;
     el.waveLabel.textContent = journeyProgress ? '방어' : '웨이브';
-    /* 별의 시련 회차 — 1회차(첫 여정)에는 조용히 숨긴다 */
+    /* Hide the Star Trial indicator during the first journey. */
     const loop = state.loop || 0;
     if (this._loopN !== loop) {
       this._loopN = loop;
@@ -818,7 +807,7 @@ export class UI {
     this.updateLanePressure(state);
     this.updateMonsterBlueprint(state);
     this.updateConstellationAid(state);
-    /* 소환 버튼도 "왜 안 눌리는지"를 버튼 얼굴에 적는다 — 회색이 된 이유가 돈인지 자리인지 보이게 */
+    /* Show why summoning is disabled directly on the button: insufficient gold or no bench space. */
     const canPay = state.gold >= D.SUMMON_COST;
     const benchFull = state.bench.length >= D.BENCH_MAX;
     el.summonBtn.disabled = !canPay || benchFull || state.phase === 'over';
@@ -942,7 +931,7 @@ export class UI {
       el.waveInfo.classList.add('hidden');
       el.phaseCountdown.classList.add('hidden');
     }
-    /* 난이도는 게임 시작 전(1웨이브 준비)에만 변경 가능 */
+    /* Difficulty changes are available only before the first wave. */
     const canDiff = state.phase === 'prep' && state.wave === 1;
     this.el.diffRow.querySelectorAll('button').forEach(b => {
       b.disabled = !canDiff;
@@ -968,8 +957,7 @@ export class UI {
 
   isDefenseVictoryOpen() { return !this.el.defenseVictory.classList.contains('hidden'); }
 
-  /* 콤보 칩 — 매 프레임 호출되므로 "값이 바뀔 때만" 다시 그린다.
-   * (전에는 프레임마다 pop 애니메이션을 재시작해 글자가 계속 떨려 보였다) */
+  /* Update the combo chip only when its value changes; restarting animation every frame previously made text tremble. */
   comboChip(count, mul) {
     const el = this.el.comboChip;
     if (count >= 2) {
@@ -979,7 +967,7 @@ export class UI {
         el.textContent = mul > 1 ? `🔥 콤보 ${count} · 골드 ${mul}배!` : `🔥 콤보 ${count}`;
         el.classList.remove('hidden');
         el.classList.toggle('boost', mul > 1);
-        /* 배율이 올라가는 순간에만 튀어오르게 */
+        /* Animate only when the multiplier increases. */
         if (this._comboMul !== this._popMul) {
           this._popMul = this._comboMul;
           el.classList.remove('pop');
@@ -996,8 +984,7 @@ export class UI {
     }
   }
 
-  /* ---------- 벤치 ----------
-   * sell(Set)이 오면 판매 모드: 카드가 체크박스가 된다 — 가격을 크게, 고르면 ✓ */
+  /* In sell mode, bench cards become checkboxes with prominent prices and selected checkmarks. */
   renderSquad(state, selId) {
     const el = this.el.bench;
     el.classList.add('hero-card-grid');
@@ -1073,7 +1060,7 @@ export class UI {
         + (sell ? ' sellable' : '') + (selling ? ' sellsel' : '');
       const m = E.heroMods(hero);
       const rl = rangeLabel(m.range);
-      /* 사거리를 카드에 직접 표시 — 배치 판단의 핵심 정보 */
+      /* Display range directly on cards to support placement decisions. */
       const badges = [
         m.crit ? '<span class="bdg">💥</span>' : '',
         m.block ? '<span class="bdg">🛡️</span>' : '',
@@ -1097,7 +1084,7 @@ export class UI {
     this.el.benchHint.classList.toggle('hidden', sell != null || selId == null);
   }
 
-  /* 판매 모드 바 — 고른 인원과 받을 골드를 항상 보여 준다 */
+  /* Always show selected count and expected gold in the sell-mode bar. */
   renderSellBar(state, on, sel) {
     const el = this.el;
     el.sellModeBtn.textContent = on ? '✕ 판매 끝내기 (Esc)' : '💰 여러 명 판매';
@@ -1117,8 +1104,7 @@ export class UI {
     el.sellGoBtn.disabled = !picked.length;
   }
 
-  /* 부족한 재료가 "조합으로만 나오는 직업"일 때, 그 레시피 줄로 데려다 준다.
-   * 말로 "마검사부터 만드세요"라고 쓰는 것보다 눈으로 짚어 주는 편이 확실하다. */
+  /* For a missing recipe-only class, navigate to its prerequisite recipe rather than relying on prose directions. */
   gotoRecipe(cls) {
     const row = [...this.el.combineRows.querySelectorAll('.combine-row.recipe')]
       .find(el => { const p = el.querySelector('.peek'); return p && p.dataset.cls === cls; });
@@ -1129,17 +1115,16 @@ export class UI {
     row.classList.add('flash');
   }
 
-  /* ---------- 조합 (3세대 도감: 등급업 / 특수 / 신화) ---------- */
+  /* Combination codex: rank-up, special and mythic generations. */
   renderCombine(state) {
     const combos = E.listCombos(state);
-    /* 다른 탭을 보고 있어도 "지금 조합할 수 있다"를 놓치지 않게 점을 찍는다 */
+    /* Mark available combinations even when another tab is open. */
     this.el.combineDot.classList.toggle('hidden',
       this._tab === 'combine' || !combos.some(c => c.affordable));
     const byResult = new Map(combos.filter(c => c.kind === 'recipe').map(c => [c.result, c]));
     let html = '';
 
-    /* 성좌 공명은 조합 자체를 막지 않는다. 작은 합을 맞추면 길 하나가 이번 웨이브에
-     * 강해지는 보너스라, 숫자를 싫어하는 플레이어도 평소처럼 조합할 수 있다. */
+    /* Resonance is an optional lane bonus and never blocks ordinary combining. */
     const resonance = state.resonance || { targets: [], active: [] };
     const resBadge = (combo) => {
       const value = E.comboStarValue(combo);
@@ -1157,8 +1142,7 @@ export class UI {
       <p>조합의 <b>✦합</b>이 길 숫자와 같으면, 그 길에 가하는 용사 피해가 이번 웨이브 <b>+${bonusPct}%</b>. 맞지 않아도 조합은 그대로 완성돼요.</p>
     </div>`;
 
-    /* 지금 당장 되는 것을 맨 위에 모은다 — 아이는 스크롤하지 않는다.
-     * "확실히 알고, 되면 착착"의 핵심이라 규칙 안내보다도 위에 둔다. */
+    /* Put immediately available combinations first so users need not scroll to discover their next action. */
     const ready = combos.filter(c => c.affordable);
     if (ready.length) {
       html += `<div class="combine-now"><div class="now-title">⚡ 지금 바로 조합!</div>`;
@@ -1180,7 +1164,7 @@ export class UI {
       html += `</div>`;
     }
 
-    /* 규칙을 화면에 못 박아 둔다 — 헷갈리면 조합을 안 하게 된다 */
+    /* Keep the combination rule visible to reduce uncertainty. */
     html += `<div class="combine-rule">
       <b>규칙</b> 조합은 <b>같은 등급 2명</b>끼리만! ① 같은 직업 = 등급 UP ② 다른 직업 = 새 직업(등급 UP)<br>
       <b>모든 직업이 신화까지</b> 올라요 — 전설 2명이면 신화! 그중에서도 ⚡😇🌌 신화 용사가 최강<br>
@@ -1188,19 +1172,17 @@ export class UI {
       조합은 준비 단계에서 <b>골드만</b> 내면 바로 완성돼요 — 전투 중엔 별자리로 진형을 지키세요
     </div>`;
 
-    /* 돈이 모자란 줄이 "지금 된다"처럼 보이면 안 된다.
-     * 얼마가 모자란지 동전으로 적어 주고(버튼 옆), 버튼은 아예 잠근다 —
-     * 눌러 봤자 토스트만 뜨는 버튼은 "되는 줄 알았는데"라는 실망만 남긴다. */
+    /* When gold is insufficient, show the shortfall and disable the action instead of letting the player discover failure through a toast. */
     const shortBadge = (cost) => state.gold >= cost ? ''
       : `<span class="gshort" title="골드가 💰${cost - state.gold} 모자라요 (필요 💰${cost} · 지금 💰${state.gold})">💰${cost - state.gold} 부족</span>`;
 
-    /* ① 등급업 — 같은 용사 2명 */
+    /* Rank-up: two heroes of the same class. */
     const rankups = combos.filter(c => c.kind === 'rankup');
     html += `<div class="combine-sub">⬆ 등급업 <span class="cnt">같은 용사·같은 등급 2명 (배치된 용사도 재료 OK)</span></div>`;
     if (!rankups.length) {
       html += `<div class="combine-empty">같은 직업·같은 등급 용사 2명을 모아 보세요</div>`;
     }
-    /* 전설에서 막힌 용사가 있으면 왜 막혔는지 알려준다 */
+    /* Explain why a tier-capped hero cannot advance. */
     const capped = [...new Set([...state.bench, ...state.field]
       .filter(h => h.tier >= D.maxTierOf(h.cls) && !D.CLASSES[h.cls].mythic)
       .map(h => h.cls))];
@@ -1220,9 +1202,7 @@ export class UI {
       </div>`;
     }
 
-    /* ②③ 레시피 도감 — 특수(2세대) / 신화(3세대)
-     * "재료 하나 더"라고만 쓰면 무엇이 모자란지 알 수가 없다.
-     * 부족한 재료를 크게 그리고, 그 자리에서 바로 할 행동(소환/선행 조합)을 준다. */
+    /* Special/mythic recipes show missing materials prominently and offer a direct summon or prerequisite-combination action. */
     const RECIPE_STATE_LABEL = {
       ready: '', gold: '골드 부족', material: '재료 필요', cap: '등급 천장', gap: '등급 안 맞음',
     };
@@ -1238,24 +1218,23 @@ export class UI {
 
         let right;
         if (st.state === 'ready' || st.state === 'gold') {
-          /* 골드가 모자라면 얼마가 모자란지 적고 버튼을 잠근다 — 재료는 다 모았다는 표시(초록 재료)는 그대로다 */
+          /* Keep completed materials visibly green while disabling the action and showing missing gold. */
           const broke = st.state === 'gold';
           right = `${shortBadge(st.cost)}<button data-kind="recipe" data-result="${r.result}"
             class="${broke ? 'lack' : ''}" ${broke ? 'disabled' : ''}>⚗ ${D.TIERS[rtier].name} 💰${st.cost}</button>`;
         } else if (st.state === 'cap') {
           right = `<span class="cnt need">더 안 올라요 — 🌌 신화 조합으로</span>`;
         } else if (st.state === 'gap') {
-          /* 두 직업 다 있는데 같은 등급 짝이 없다 — 무엇의 등급을 맞추면 되는지 알려준다 */
+          /* When both classes exist without a same-tier pair, explain which tier needs matching. */
           const L = D.CLASSES[st.low];
           right = `<span class="cnt need" title="조합은 같은 등급 2명끼리만 돼요 — 등급을 맞춰 주세요">
             ⚖️ 같은 등급끼리만! ${L.emoji} ${L.name} 등급을 맞춰요</span>`;
         } else {
-          /* 부족한 재료를 어떻게 구하는가로 버튼이 갈린다:
-           *   기본 4직업 → 소환하면 나온다 · 조합으로만 나오는 직업 → 그 레시피로 보낸다 */
+          /* Missing basic classes link to summoning; missing recipe-only classes link to their recipes. */
           const need = st.missing[0];
           const N = D.CLASSES[need];
           const byCombine = D.RECIPES.some(x => x.result === need);
-          /* 소환도 돈이 든다 — 뽑을 돈이 없으면 "뽑으러 가기"도 잠근다 */
+          /* Disable the summon shortcut when the player cannot afford summoning. */
           const canSummon = state.gold >= D.SUMMON_COST;
           right = byCombine
             ? `<button data-goto="${need}" class="need">${N.emoji} ${N.name}부터 만들기</button>`
@@ -1263,7 +1242,7 @@ export class UI {
                 class="need${canSummon ? '' : ' lack'}" ${canSummon ? '' : 'disabled'}>🎲 ${N.emoji} ${N.name} 뽑으러 가기</button>`;
         }
 
-        /* 재료 등급을 배지로 — 조합이 되는 줄은 "실제로 쓸 재료", 아니면 "보유 최고" */
+        /* Tier badges show actual selected materials for available recipes and highest owned tiers otherwise. */
         const usedNow = st.state === 'ready' || st.state === 'gold';
         const tierBadge = (t) => t == null || t < 0 ? ''
           : `<span class="ingt" style="background:${D.TIERS[t].color}">${D.TIERS[t].name[0]}</span>`;
@@ -1291,8 +1270,7 @@ export class UI {
     html += renderRecipes(3);
 
     this.el.combineRows.innerHTML = html;
-    /* 버튼은 세 종류다 — 조합(data-kind) / 소환하러(data-need) / 선행 조합으로(data-goto).
-     * 셀렉터를 좁히지 않으면 새 버튼이 onCombine으로 잘못 흘러가 아무 일도 안 일어난다. */
+    /* Scope button handlers precisely: data-kind combines, data-need summons, and data-goto navigates to a prerequisite recipe. */
     this.el.combineRows.querySelectorAll('button[data-kind]').forEach(b => {
       b.addEventListener('click', () => this.h.onCombine({ ...b.dataset }));
     });
@@ -1302,7 +1280,7 @@ export class UI {
     this.el.combineRows.querySelectorAll('button[data-goto]').forEach(b => {
       b.addEventListener('click', () => this.gotoRecipe(b.dataset.goto));
     });
-    /* 결과 캐릭터에 커서를 올리면 "무엇이 나올지" 미리 보여준다 */
+    /* Hover the result character for a preview. */
     this.el.combineRows.querySelectorAll('.peek').forEach(sp => {
       const cls = sp.dataset.cls;
       const tier = Number(sp.dataset.rtier);
@@ -1313,7 +1291,7 @@ export class UI {
     });
   }
 
-  /* ---------- 성 업그레이드 ---------- */
+  /* Castle upgrades. */
   renderCastlePanel(state) {
     let html = '';
     const hotkeys = { repair: '7', fortify: '8', tower: '9' };
@@ -1322,8 +1300,7 @@ export class UI {
       const maxed = U.max && n >= U.max;
       const cost = U.cost(n);
       const full = key === 'repair' && state.castleHp >= state.castleMax;
-      /* 못 누르는 이유가 셋이다 — MAX / 이미 가득 / 돈 부족.
-       * 회색 버튼만 두면 셋이 구분이 안 되니 돈 부족은 동전으로 따로 적어 준다. */
+      /* Distinguish MAX, already full and insufficient gold; show the gold shortfall explicitly. */
       const broke = !maxed && !full && state.gold < cost;
       const disabled = maxed || full || broke || state.phase === 'over';
       const lvLabel = U.max && key !== 'repair' ? ` <span class="cnt">${n}/${U.max}</span>` : '';
@@ -1334,7 +1311,7 @@ export class UI {
         <button data-key="${key}" class="${broke ? 'lack' : ''}" ${disabled ? 'disabled' : ''}>${maxed ? 'MAX' : full ? '가득' : `💰${cost}`}</button>
       </div>`;
     }
-    /* 잔치 — 돈을 태워 랜덤 승급. 준비 단계에 한 번뿐이라 "이번엔 끝"을 분명히 보여 준다 */
+    /* Feast is a once-per-preparation random promotion; clearly show when it has already been used. */
     const fCost = D.feastCost(state.wave);
     const fDone = state.feastWave === state.wave;
     const fCands = [...state.bench, ...state.field].some(h => h.tier < D.maxTierOf(h.cls));
@@ -1355,11 +1332,11 @@ export class UI {
     });
   }
 
-  /* ---------- 용사 패널 (벤치/필드 공용) ---------- */
+  /* Hero panel shared by bench and field. */
   renderHeroPanel(state, heroId) {
     const el = this.el;
     const hero = state.field.find(v => v.id === heroId) || state.bench.find(v => v.id === heroId);
-    /* 탭 안에 있으므로 패널 자체는 숨기지 않는다 — 고른 용사가 없으면 안내만 띄운다 */
+    /* Keep the tab panel present; show guidance when no hero is selected. */
     if (!hero) {
       el.heroDot.classList.add('hidden');
       el.hpTitle.textContent = '🧍 선택한 용사';
@@ -1450,7 +1427,7 @@ export class UI {
     }).join('');
   }
 
-  /* ---------- 상세 정보 툴팁 ---------- */
+  /* Detailed tooltips. */
   showTooltip(hero, state, cx, cy, preview) {
     const tt = this.el.tooltip;
     tt.innerHTML = describeHero(hero, state, preview);
@@ -1470,7 +1447,7 @@ export class UI {
   }
   hideTooltip() { this.el.tooltip.classList.add('hidden'); }
 
-  /* ---------- 다음 웨이브 미리보기 ---------- */
+  /* Next-wave preview. */
   renderWavePreview(state, counts) {
     const el = this.el.wavePreview;
     if (state.phase !== 'prep') { el.classList.add('hidden'); return; }
@@ -1481,8 +1458,7 @@ export class UI {
         return `<span class="wchip${cls}">${T.emoji}×${n}</span>`;
       })
       .join('');
-    /* 신화 용사를 데리고 있으면 몬스터가 그만큼 단단해진다 — 시작 전에 알려 준다.
-     * 말없이 체력만 올리면 "왜 갑자기 안 죽지?"가 되고, 그건 버그처럼 느껴진다. */
+    /* Explain mythic enemy pressure before the wave so higher health does not feel like an unexplained bug. */
     const press = E.mythicCount(state);
     const warn = press > 0
       ? `<span class="wchip myth" title="신화 용사 ${press}명 — 몬스터 체력 +${Math.round((D.mythicHpMul(press) - 1) * 100)}% · 골드 +${Math.round((D.mythicGoldMul(press) - 1) * 100)}%">🌌 체력 +${Math.round((D.mythicHpMul(press) - 1) * 100)}% · 💰 +${Math.round((D.mythicGoldMul(press) - 1) * 100)}%</span>`
@@ -1495,7 +1471,7 @@ export class UI {
     el.classList.remove('hidden');
   }
 
-  /* ---------- 보스 체력바 (이름 + 등급별 색) ---------- */
+  /* Boss health bars show names and tier colors. */
   setBossBar(info) {
     const el = this.el.bossBar;
     if (!info) { el.classList.add('hidden'); this._bossBarKey = null; return; }
@@ -1511,7 +1487,7 @@ export class UI {
     this.el.bossBarFill.style.width = `${Math.max(0, info.ratio * 100)}%`;
   }
 
-  /* 등장 경고 배너 */
+  /* Spawn warning banner. */
   bossWarn(tier, name, emoji) {
     const el = this.el.bossWarnBanner;
     const great = tier === 'great';
@@ -1522,7 +1498,7 @@ export class UI {
     this._warnT = setTimeout(() => el.classList.add('hidden'), 2600);
   }
 
-  /* 보스 등장/분노 배너 */
+  /* Boss arrival and enrage banner. */
   showBossBanner(tier, name, emoji) {
     const el = this.el.bossBanner;
     const stage = this.el.scene3d.closest('.stage');
@@ -1550,7 +1526,7 @@ export class UI {
     clearTimeout(this._bossT);
     this._bossT = setTimeout(() => el.classList.add('hidden'), 2200);
   }
-  /* ---------- 별의 축복 (메타) ---------- */
+  /* Persistent Star Blessings. */
   renderMeta(shards, levels) {
     this.el.metaShards.textContent = shards;
     let html = '';
@@ -1574,9 +1550,7 @@ export class UI {
   showMeta() { this.el.metaModal.classList.remove('hidden'); }
   hideMeta() { this.el.metaModal.classList.add('hidden'); }
 
-  /* ---------- 도감 · 기록 ----------
-   * 데이터는 열 때 main이 통째로 넘긴다(renderBook). 탭 전환은 넘겨받은 데이터로
-   * 다시 그리기만 한다 — 게임이 멈춰 있는 동안 값이 변하지 않으므로 안전하다. */
+  /* main passes complete codex data on opening. Tabs rerender that snapshot safely while gameplay is paused. */
   renderBook(data) {
     this._bookData = data;
     if (!this._bookTab) this._bookTab = 'heroes';
@@ -1696,10 +1670,10 @@ export class UI {
   showBook() { this.el.bookModal.classList.remove('hidden'); this.el.bookDot.classList.add('hidden'); }
   hideBook() { this.el.bookModal.classList.add('hidden'); }
   isBookOpen() { return !this.el.bookModal.classList.contains('hidden'); }
-  /* 새 업적을 딴 순간 도감 버튼에 점을 찍는다 — 열면 사라진다 */
+  /* Mark the codex button when an achievement unlocks; opening it clears the dot. */
   pingBook() { if (!this.isBookOpen()) this.el.bookDot.classList.remove('hidden'); }
 
-  /* ---------- 서른 번째 아침 (승리) ---------- */
+  /* Thirtieth-dawn victory. */
   showVictory({ loop, shards, state }) {
     const el = this.el;
     const run = (loop || 0) + 1;
@@ -1717,10 +1691,9 @@ export class UI {
   hideVictory() { this.el.victoryModal.classList.add('hidden'); }
   isVictoryOpen() { return !this.el.victoryModal.classList.contains('hidden'); }
 
-  /* ---------- 별지기 칩 ----------
-   * 매 프레임 불리므로 "값이 바뀔 때만" DOM을 만진다 (comboChip과 같은 규칙). */
+  /* Champion chip updates DOM only when values change, like the combo chip. */
   setChampFace(url) {
-    if (!url) return;                      // 초상 생성 실패 → 이모지 그대로
+    if (!url) return;                      // Keep the emoji fallback if portrait generation fails.
     this.el.champFace.innerHTML = `<img src="${url}" alt="별지기 루나">`;
   }
   updateChampChip(state) {
@@ -1754,7 +1727,7 @@ export class UI {
       this._chXp = xpPct;
       el.champXpFill.style.width = `${xpPct}%`;
     }
-    /* 별똥별 — 쿨다운이 차오르는 게이지 (가득 = 준비 완료) */
+    /* Starfall cooldown gauge is full when ready. */
     const cdPct = Math.round(c.spellCd > 0 ? (1 - c.spellCd / S.starCd) * 100 : 100);
     const spellSig = `${cdPct}|${wave}|${c.ko}`;
     if (this._chSpell !== spellSig) {
@@ -1782,7 +1755,7 @@ export class UI {
     }
   }
 
-  /* ---------- 별자리 (스킬트리) ---------- */
+  /* Constellation skill tree. */
   renderSkills(state) {
     const c = state.champ;
     this.el.skillPts.textContent = c.sp;
@@ -1818,13 +1791,12 @@ export class UI {
   hideSkills() { this.el.skillModal.classList.add('hidden'); }
   isSkillOpen() { return !this.el.skillModal.classList.contains('hidden'); }
 
-  /* ---------- 별지기의 옷장 ---------- */
+  /* Champion wardrobe. */
   setChampName(name) {
     this.el.champName.textContent = name;
     this.el.skillTitle.textContent = `✨ ${name}의 별자리`;
   }
-  /* isLocked(axis, key) → 잠근 업적 정의 또는 falsy. 잠긴 옷은 업적 이름을 알려 주며 잠긴 채 보여 준다 —
-   * 숨기면 "열 게 있다"는 것 자체를 모른다. */
+  /* isLocked returns the required achievement or falsy. Show locked options with their achievement name so players can discover future unlocks. */
   renderCloset(look, name, isLocked = null) {
     this.el.closetName.value = name;
     let html = '';
@@ -1855,9 +1827,7 @@ export class UI {
   showCloset() { this.el.closetModal.classList.remove('hidden'); }
   hideCloset() { this.el.closetModal.classList.add('hidden'); }
   isClosetOpen() { return !this.el.closetModal.classList.contains('hidden'); }
-  /* ---------- 데모 ----------
-   * 데모 중임을 항상 화면에 밝힌다. 사용자가 자기 조작이 안 먹는다고
-   * 오해하지 않게 하고, 나가는 길도 늘 보이게 둔다. */
+  /* Always label spectator mode and provide an exit so users understand why the bot controls play. */
   setDemoMode(on, profile) {
     this.el.demoBar.classList.toggle('hidden', !on);
     this.el.demoBtn.classList.toggle('on', !!on);
@@ -1886,13 +1856,13 @@ export class UI {
     el.classList.add('pop');
   }
 
-  /* ---------- 막간 이야기 ---------- */
+  /* Interlude story. */
   showStory(beat) {
     const el = this.el;
     el.storyIcon.textContent = beat.icon || '📜';
     el.storyTitle.textContent = beat.title || '';
     el.storyLines.textContent = '';
-    /* 줄을 하나씩 요소로 — 빈 줄이 문단 간격이 된다 (타이핑 연출은 넣지 않는다: 아이는 안 기다린다) */
+    /* Render each line as an element, using empty lines for paragraph gaps; avoid a mandatory typewriter wait. */
     for (const line of beat.lines) {
       const d = document.createElement('div');
       d.className = line ? 'story-line' : 'story-gap';
@@ -1905,7 +1875,7 @@ export class UI {
   hideStory() { this.el.storyModal.classList.add('hidden'); }
   isStoryOpen() { return !this.el.storyModal.classList.contains('hidden'); }
 
-  /* ---------- 전설·신화 탄생 연출 ---------- */
+  /* Legendary/mythic birth presentation. */
   showReveal({ tierName, tierColor, name, emoji, desc, art, short }) {
     const el = this.el;
     el.revealTier.textContent = tierName;
@@ -1920,7 +1890,7 @@ export class UI {
       img.alt = name;
       el.revealArt.appendChild(img);
     } else {
-      el.revealArt.textContent = emoji;      // 초상 생성 실패 시 이모지로
+      el.revealArt.textContent = emoji;      // Use emoji if portrait generation fails.
     }
     el.revealCard.classList.toggle('short', !!short);
     el.revealModal.classList.remove('hidden');
@@ -1933,7 +1903,7 @@ export class UI {
 
   isMetaOpen() { return !this.el.metaModal.classList.contains('hidden'); }
 
-  /* ---------- 시작 메뉴 (자동 저장이 있을 때: 이어하기 / 처음부터) ---------- */
+  /* Startup resume/new-game menu when autosave exists. */
   showStart(save) {
     const el = this.el;
     const heroes = (Array.isArray(save.bench) ? save.bench.length : 0)
@@ -1947,7 +1917,7 @@ export class UI {
   }
   hideStart() { this.el.startModal.classList.add('hidden'); }
   isStartOpen() { return !this.el.startModal.classList.contains('hidden'); }
-  /* ---------- 게임 오버 ---------- */
+  /* Defeat screen. */
   showOver(state) {
     const memory = E.summarizeRun(state);
     const lanes = ['왼쪽 길', '가운데 길', '오른쪽 길'];
@@ -1975,7 +1945,7 @@ export class UI {
   }
   hideOver() { this.el.overModal.classList.add('hidden'); }
 
-  /* ---------- 소환/조합 연출 ---------- */
+  /* Summon and combination presentation. */
   summonReveal(hero, tier) {
     const C = D.CLASSES[hero.cls], T = D.TIERS[tier];
     const el = this.el.summonReveal;
@@ -1992,7 +1962,7 @@ export class UI {
       tier >= 3 ? 1800 : tier >= 2 ? 1500 : 900);
   }
 
-  /* ---------- 연출 ---------- */
+  /* Presentation helpers. */
   toast(msg, kind = '') {
     const d = document.createElement('div');
     d.className = `toast ${kind}`;
@@ -2051,7 +2021,7 @@ export class UI {
       element.textContent = label(element.dataset.shortcut);
     });
   }
-  /* 음소거 버튼 상태 — 꺼진 건 한눈에 보이게 (아이콘 + 회색 처리) */
+  /* Show mute state clearly using both icons and muted styling. */
   setSoundLabels(sfxOff, bgmOff) {
     this.el.sfxBtn.textContent = sfxOff ? '🔇 효과음' : '🔊 효과음';
     this.el.sfxBtn.classList.toggle('off', sfxOff);
@@ -2066,7 +2036,7 @@ export class UI {
       : reduced ? '착탄 지점의 국소 파티클을 줄이는 중' : '국소 파티클을 더 표시하는 중 · 전장 전체 점멸과 흔들림은 항상 꺼짐';
   }
 
-  /* ---------- 기록 카드 (공유용 PNG) ---------- */
+  /* Shareable PNG record card. */
   makeShareCard(state, best) {
     const memory = E.summarizeRun(state);
     const lanes = ['왼쪽 길', '가운데 길', '오른쪽 길'];

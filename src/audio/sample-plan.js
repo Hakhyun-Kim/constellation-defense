@@ -1,5 +1,4 @@
-/* 외부 샘플은 전투의 물성만 맡는다. UI 확인음과 마법의 음정 정보는 합성음을
- * 유지해, 파일이 없거나 디코딩이 늦어도 플레이 피드백이 사라지지 않는다. */
+/* External samples add combat texture; synthesized UI and pitched magic cues remain available if files are absent or decoding is delayed. */
 export const SFX_SAMPLE_CUES = Object.freeze({
   shoot: Object.freeze({ id: 'kenney-knife-slice', rate: 1.04 }),
   hit: Object.freeze({ id: 'kenney-hit-light', rate: 1.0 }),

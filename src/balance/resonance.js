@@ -1,9 +1,6 @@
-/* =====================================================
- * 성좌 공명 — 조합 재료의 작은 수를 길의 한 웨이브 보너스로 바꾼다.
- * 숫자는 시험 답안이 아니라, 조합 순서를 생각하게 하는 공개 정보다.
- * ===================================================== */
+/* Resonance converts combination material values into a one-wave lane bonus. These are public tactical inputs, not a progression question gate. */
 
-/* 기본 직업은 1~4, 특수·신화는 실제 레시피 재료의 합을 그대로 이어받는다. */
+/* Basic classes use values 1–4; special/mythic values are sums of their recipe materials. */
 export const HERO_STAR_VALUE = {
   knight: 1, guard: 2, archer: 3, mage: 4,
   spellblade: 5, windblade: 4, paladin: 3,
@@ -11,13 +8,11 @@ export const HERO_STAR_VALUE = {
   swordsaint: 9, archmage: 13, seraph: 8,
 };
 
-/* 매 웨이브에 세 길은 서로 다른 목표 합을 가진다. 초반에는 기본·특수 조합으로
- * 풀 수 있는 2~8을 쓰고, 후반에는 신화 조합의 9·13도 한 번씩 보여 준다. */
+/* Each lane has a distinct target sum per wave: 2–8 early, with 9 and 13 introduced for later mythic combinations. */
 export const RESONANCE_TARGETS = [
   [2, 5, 7], [3, 4, 6], [4, 5, 8], [2, 6, 7],
   [3, 5, 8], [4, 6, 7], [5, 8, 9], [6, 7, 13],
 ];
 
-/* 공명한 길의 몬스터는 이번 웨이브 동안 용사 공격을 더 크게 받는다.
- * 별지기·성·전술은 건드리지 않아 기존 전술 선택과 보상 축을 보존한다. */
+/* Resonant lanes take increased hero damage for the wave. Champion, castle and tactic effects remain unchanged. */
 export const RESONANCE_DAMAGE_MUL = 1.3;

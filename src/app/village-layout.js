@@ -39,8 +39,7 @@ export function villageWalkPoint(current, proposed) {
     x: clamp(proposed.x, VILLAGE_BOUNDS.minX, VILLAGE_BOUNDS.maxX),
     z: clamp(proposed.z, VILLAGE_BOUNDS.minZ, VILLAGE_BOUNDS.maxZ),
   };
-  /* dungeon100과 같은 축별 충돌이다. 대각선으로 벽에 닿아도 멈춰
-   * 서지 않고, 막히지 않은 축을 따라 자연스럽게 미끄러진다. */
+  /* Resolve collision per axis, allowing diagonal movement to slide along unblocked walls as in dungeon100. */
   const next = { x: current.x, z: current.z };
   const xStep = { x: target.x, z: next.z };
   if (!isBlocked(xStep)) next.x = xStep.x;
@@ -56,7 +55,7 @@ export function advanceVillage(current, input, dt, speed = VILLAGE_WALK_SPEED) {
   }
   const dirX = input.x / length;
   const dirZ = input.z / length;
-  /* 긴 탭 복귀 프레임이 건물을 뛰어넘지 않도록 한 번의 보폭을 제한한다. */
+  /* Clamp stride length so a long frame after tab restoration cannot skip across buildings. */
   const distance = speed * Math.min(dt, .05);
   const next = villageWalkPoint(current, {
     x: current.x + dirX * distance,

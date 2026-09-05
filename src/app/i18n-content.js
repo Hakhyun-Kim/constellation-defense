@@ -1,13 +1,6 @@
-/* 콘텐츠 번역 — 밸런스 데이터에서 오는 이름과 설명.
- *
- * i18n.js 의 표와 나눠 둔 이유: 그쪽은 UI 골격(버튼·라벨·상태)이라 바뀌면
- * 화면이 깨지고, 이쪽은 게임 내용이라 밸런스를 손볼 때마다 함께 움직인다.
- * 수명이 다른 것을 한 파일에 두면 둘 다 읽기 어려워진다.
- *
- * 원문이 balance/ 에 있으므로, 여기 키는 그 파일들의 문자열과 정확히 같아야
- * 한다. i18n-check 가 대조한다. */
+/* Content translations cover names and descriptions from balance data. Keep them separate from UI structure translations because they change with game content. Keys must exactly match their source strings; i18n-check verifies the contract. */
 export const CONTENT_EN = Object.freeze({
-  // --- 영웅 액티브 ---
+  // Hero active abilities.
   '성광 일섬': 'Radiant Slash',
   '가장 위험한 적 하나를 강하게 베고 잠깐 멈춥니다.': 'Cuts down the single most dangerous enemy and briefly stops it.',
   '성운 폭발': 'Nebula Burst',
@@ -19,11 +12,11 @@ export const CONTENT_EN = Object.freeze({
   '서리 성운': 'Frost Nebula',
   '가장 밀린 길 전체에 피해를 주고 오래 감속합니다.': 'Damages the whole of the most pressured lane and slows it for a long while.',
 
-  // --- 전술 이름 (전투 토스트·상태에 그대로 실린다) ---
+  // Tactic names used by combat toasts and status messages.
   '유성 폭격': 'Meteor Strike',
   '수호 회복': 'Guardian Mend',
 
-  // --- 마을 시설 ---
+  // Town facilities.
   '별무기 대장간': 'Starforge',
   '전방 영웅의 전투 기술을 벼립니다.': 'Hones the combat craft of frontline heroes.',
   '별빛 신전': 'Starlight Temple',
@@ -31,7 +24,7 @@ export const CONTENT_EN = Object.freeze({
   '탐험가 길드': 'Explorers Guild',
   '궁수의 사격 전술을 전수합니다.': 'Passes on the shooting tactics of archers.',
 
-  // --- 전문화 ---
+  // Specializations.
   '별날': 'Starblade',
   '치명타 +12% · Flare +8%': 'Crit +12% · Flare +8%',
   '강한 단일 대상 공격과 유성 전술': 'Heavy single-target damage, paired with meteor tactics',
@@ -68,7 +61,7 @@ export const CONTENT_EN = Object.freeze({
   '폭발 감속 · Tide +18%': 'Blast slows · Tide +18%',
   '폭발과 서리 전술로 시간을 번다': 'Buys time with blasts and frost tactics',
 
-  // --- 영웅 역할 ---
+  // Hero roles.
   '검사': 'Swordsman',
   '짧은 사거리 대신 압도적 한 방! 치명타로 크게 벱니다': 'Short reach, overwhelming single blow — crits cut deep.',
   '수호병': 'Guardian',
@@ -96,7 +89,7 @@ export const CONTENT_EN = Object.freeze({
   '수호천사': 'Seraph',
   '초장거리 저격 + 방패 장벽 + 처치마다 성 회복 2 — 완전체': 'Extreme-range sniping, a shield wall, and 2 citadel healing per kill.',
 
-  // --- 궁극기 ---
+  // Ultimate abilities.
   '회전베기': 'Whirlwind Cut',
   '사거리 안 모든 적을 한 번에 벤다! 치명타 40%·3배': 'Cuts every enemy in range at once — 40% crit at ×3.',
   '서리 결계': 'Frost Ward',
@@ -144,14 +137,14 @@ export const CONTENT_EN = Object.freeze({
   '천상의 심판': 'Celestial Judgement',
   '적 3명 관통 + 장벽 + 처치마다 성 회복 4!': 'Pierces three enemies, raises a wall, and heals the citadel by 4 per kill.',
 
-  // --- 등급 ---
+  // Tiers.
   '일반': 'Common',
   '희귀': 'Rare',
   '영웅': 'Epic',
   '전설': 'Legendary',
   '신화': 'Mythic',
 
-  // --- 성 강화 ---
+  // Castle upgrades.
   '성 체력을 25 회복해요': 'Restores 25 citadel HP.',
   '성 최대 체력 +30': 'Citadel max HP +30',
   '성이 스스로 마법 공격!': 'The citadel casts on its own.',

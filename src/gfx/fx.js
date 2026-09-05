@@ -1,14 +1,10 @@
-/* =====================================================
- * 시각 효과 — Renderer3D에 프로토타입 믹스인으로 붙는다.
- * 파티클 · 데미지 숫자 · 말풍선 · 별똥별 · 충격파 링 · 빛기둥 · 연출 묶음.
- * 전부 풀(pool)을 돌려 쓴다 — 런타임 지오메트리 생성 금지 규칙.
- * ===================================================== */
+/* Renderer3D effect mixin: pooled particles, damage text, speech bubbles, falling stars, impact rings and light columns. Reuse geometry during runtime effects. */
 import * as THREE from 'three';
 import * as D from '../data.js';
 import { wx, wz, glowTexture } from './common.js';
 
 export const fxMethods = {
-  /* ---------- 파티클 ---------- */
+  /* Particles. */
   _buildParticles() {
     const MAX = 320;
     this.pMax = MAX;
@@ -80,7 +76,7 @@ export const fxMethods = {
     this.pMesh.instanceMatrix.needsUpdate = true;
   },
 
-  /* ---------- 데미지 숫자 ---------- */
+  /* Damage numbers. */
   _buildDamageNumbers() {
     this.dmgPool = [];
     for (let i = 0; i < 22; i++) {
@@ -125,7 +121,7 @@ export const fxMethods = {
     }
   },
 
-  /* ---------- 말풍선 (별지기의 수다) ---------- */
+  /* Champion speech bubbles. */
   _buildBubbles() {
     this.bubbles = [];
     for (let i = 0; i < 4; i++) {
@@ -135,7 +131,7 @@ export const fxMethods = {
       tex.colorSpace = THREE.SRGBColorSpace;
       const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
       spr.scale.set(4.0, 1.0, 1);
-      spr.center.set(0.5, 0);            // 아래가 기준 — 머리 위에 뜬다
+      spr.center.set(0.5, 0);            // Anchor at the bottom so the bubble sits above the head.
       spr.visible = false;
       spr.renderOrder = 60;
       this.scene.add(spr);
@@ -143,9 +139,7 @@ export const fxMethods = {
     }
   },
 
-  /* lx/ly = 논리 좌표. 같은 위치에 겹치지 않게 슬롯을 돌려 쓴다.
-   * 밝은 대낮 화면 위에 흰 상자를 띄우면 묻힌다 — 토스트처럼 어두운 바탕 + 흰 글씨로,
-   * 어느 시간대·어느 배경에서도 읽히게 한다. */
+  /* Use logical coordinates and rotate slots to avoid overlap. White text on a dark bubble remains readable across daylight and background changes. */
   showBubble(lx, ly, text, ttl = 2.4) {
     if (!this.bubbles) this._buildBubbles();
     const slot = this.bubbles.find(b => b.ttl <= 0) || this.bubbles[0];
@@ -154,7 +148,7 @@ export const fxMethods = {
     g.font = '700 42px Jua, "Segoe UI", "Segoe UI Emoji", sans-serif';
     const w = Math.min(494, g.measureText(text).width + 52);
     const x0 = (512 - w) / 2;
-    /* 둥근 상자 + 꼬리 */
+    /* Rounded speech box with a tail. */
     const r = 22, y0 = 6, h = 84;
     g.beginPath();
     g.moveTo(x0 + r, y0);
@@ -196,12 +190,12 @@ export const fxMethods = {
     }
   },
 
-  /* ---------- 별똥별 (하늘에서 떨어지는 별) ---------- */
+  /* Falling stars. */
   _starfall(x3, z3, delay = 0, impact = null) {
     if (!this.stars) this.stars = [];
     let s = this.stars.find(v => !v.live);
     if (!s) {
-      if (this.stars.length >= 48) s = this.stars[0];   // 풀 상한 — 은하수 연타 대비
+      if (this.stars.length >= 48) s = this.stars[0];   // Bound the pool for repeated Galaxy casts.
       else {
         const mesh = new THREE.Group();
         const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), new THREE.MeshBasicMaterial({ color: 0xfff3b0 }));
@@ -216,8 +210,7 @@ export const fxMethods = {
     }
     s.live = true;
     s.t = -delay;
-    /* 전술 유성은 보드 판정 뒤의 타격 보상이다. 오래 떠 있으면 조작 리듬이 끊겨
-     * 낙하·착탄을 약 30% 빠르게 맞춘다. */
+    /* Tactic meteors reward a resolved board move; shorten flight and impact by about 30% to preserve input rhythm. */
     s.dur = 0.23 + Math.random() * 0.07;
     s.from.set(x3 + 2.6, 10.5, z3 + 1.8);
     s.to.set(x3, 0.25, z3);
@@ -225,8 +218,7 @@ export const fxMethods = {
     s.mesh.visible = false;
   },
 
-  /* Flare만은 피해 숫자를 판정 순간이 아니라 유성이 닿는 프레임에 낸다.
-   * "보드에서 맞췄다 → 하늘에서 날아온다 → 적이 맞고 숫자가 뜬다"가 한 문장으로 읽힌다. */
+  /* Display Flare damage numbers on visual impact rather than board resolution so match, flight and hit read as one sequence. */
   _tacticFlareImpact(x3, z3, impact) {
     const bonus = impact.stars >= 6 ? 3 : impact.stars === 5 ? 2 : impact.stars === 4 ? 1 : 0;
     this._shockRing(x3, z3, 1.55 + bonus * 0.32, 0xffa253, 0.42 + bonus * 0.05);
@@ -244,7 +236,7 @@ export const fxMethods = {
       s.t += dt;
       if (s.t < 0) continue;
       const k = Math.min(1, s.t / s.dur);
-      const ke = k * k;                        // 가속 낙하
+      const ke = k * k;                        // Accelerating descent.
       s.mesh.visible = true;
       s.mesh.position.lerpVectors(s.from, s.to, ke);
       s.mesh.rotation.y += dt * 14;
@@ -265,7 +257,7 @@ export const fxMethods = {
     }
   },
 
-  /* 퍼지는 충격파 링 (방패 장벽·범위 폭발 공용, 풀에서 재사용) */
+  /* Pooled expanding impact ring shared by shields and area blasts. */
   _shockRing(x3, z3, radius, color = 0x9fd0ff, life = 0.5, y = 0.18) {
     if (!this.waves) {
       this.waves = [];
@@ -301,7 +293,7 @@ export const fxMethods = {
     }
   },
 
-  /* 소환 연출 — 성 앞 광장에서 등급에 비례해 화려하게 */
+  /* Summon presentation in the castle plaza scales with tier. */
   summonBurst(tier) {
     const x = 0, z = 2.6;
     const col = new THREE.Color(D.TIERS[tier].color).getHex();
@@ -310,7 +302,7 @@ export const fxMethods = {
     this.burst(x, 0.8, z, col, n, spd, { grav: 4 });
     this._shockRing(x, z, 1.2 + tier * 0.5, col, 0.55);
     if (tier >= 2) {
-      /* 빛의 기둥 */
+      /* Light column. */
       this._lightPillar(x, z, tier);
       this.burst(x, 1.6, z, 0xffffff, 16, 3, { grav: 1.5, ttl: 0.6 });
       this.addShake(tier === 3 ? 0.32 : 0.16);
@@ -324,7 +316,7 @@ export const fxMethods = {
     }
   },
 
-  /* 조합 성공 연출 (영웅 이상) — 결과 발판(없으면 광장)에서 */
+  /* Heroic-or-higher combination presentation uses the result pad, or the plaza if benched. */
   combineFlourish(padIndex, tier) {
     const x = padIndex >= 0 ? wx(D.PADS[padIndex].x) : 0;
     const z = padIndex >= 0 ? wz(D.PADS[padIndex].y) : 2.6;
@@ -337,8 +329,7 @@ export const fxMethods = {
     this.addShake(tier === 3 ? 0.4 : 0.22);
   },
 
-  /* 별자리 전술은 엔진 이벤트의 공통 피격 연출 위에 "어떤 주문을 썼는지"를 한 번 더
-   * 읽히게 한다. 전투 규칙은 건드리지 않고, 결과 이벤트의 좌표만 시각적으로 묶는다. */
+  /* Group tactic result coordinates visually to clarify the spell without changing combat rules. */
   tacticCast(state, result, kind, route, size = 3) {
     const events = result?.events || [];
     const mark = events.find(ev => ev.type === 'starfall' || ev.type === 'enemyHit'
@@ -371,7 +362,7 @@ export const fxMethods = {
     }
   },
 
-  /* 위로 솟는 빛기둥 (즉석 생성 후 자동 제거) */
+  /* Rising light column with automatic cleanup. */
   _lightPillar(x, z, tier) {
     const col = new THREE.Color(D.TIERS[tier].color);
     const mesh = new THREE.Mesh(
@@ -396,17 +387,16 @@ export const fxMethods = {
     }
   },
 
-  /* 축하 폭죽 (특수 직업 탄생 등) — 벤치라 위치가 없으니 화면 중앙에 */
+  /* Celebration fireworks use the center when a benched result has no world position. */
   celebrate(color = 0xffd93d, big = false) {
     this.burst(0, 2.2, 2, color, big ? 40 : 20, big ? 5 : 3.4, { grav: 3 });
   },
 
   addShake(_v) {
-    /* 화면 전체 움직임은 시각 안전 규칙상 금지한다. 호출부는 사건의 강도를
-     * 설명하는 흔적으로 남기되, 표현은 착탄 지점의 파티클·링에만 맡긴다. */
+    /* Battlefield-wide movement is prohibited. Keep callers for event intensity but render only local impact particles and rings. */
   },
 
-  /* 성을 강화한 순간 — 성벽을 따라 빛이 번지고 흔들린다 */
+  /* Local castle-upgrade feedback along the walls. */
   castleUpgradeFx(kind) {
     const color = kind === 'tower' ? 0x7ff3ff : 0xffd76e;
     this._shockRing(0, -4.35, 7.5, color, 0.7, 0.22);

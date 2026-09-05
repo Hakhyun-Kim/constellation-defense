@@ -1,15 +1,11 @@
-/* =====================================================
- * 기기 저장소(localStorage) — 판이 아니라 기기에 속하는 것들.
- * 별조각 · 별의 축복 · 최고 기록 · 그래픽/이야기 설정 · 자동 저장 · 별지기 꾸미기.
- * ===================================================== */
+/* Device-level localStorage: shards, blessings, records, presentation settings, autosave and champion appearance; these outlive a single run. */
 import * as D from '../data.js';
 
 const PREFIX = 'constellation-defense.';
 const LEGACY_PREFIX = 'mathdef_';
 const key = (name) => PREFIX + name;
 
-/* 한 번만 기존 전투 기록을 새 이름으로 옮긴다. 수학 풀이 기록은 현재 게임에서
- * 의미가 없으므로 의도적으로 승계하지 않는다. */
+/* Migrate old combat records once. The retired math prototype's records do not belong to this game and are intentionally excluded. */
 function migrate(name, legacyName = name) {
   const next = key(name);
   if (localStorage.getItem(next) != null) return;
@@ -43,9 +39,7 @@ export const store = {
   setBest(diff, w) { localStorage.setItem(key(`best.${diff}`), String(w)); },
   get gfx() { return text('gfx'); },
   set gfx(v) { localStorage.setItem(key('gfx'), v); },
-  /* 배경 장식 끄기 — 너무 느린 기기에서 한 번 켜지면 계속 유지된다.
-   * 장식을 켜고 끄는 건 지형·카메라까지 바뀌는 일이라 실행 중엔 못 바꾼다.
-   * 그래서 "다음에 켤 때부터"로 미룬다. */
+  /* Persist a fallback that disables expensive scenery on slow devices. Apply it next launch because terrain and camera construction depend on it. */
   get decorOff() { return text('decor_off') === '1'; },
   set decorOff(v) { localStorage.setItem(key('decor_off'), v ? '1' : '0'); },
   get storyOff() { return text('story_off') === '1'; },
@@ -59,38 +53,34 @@ export const store = {
   set keyBindings(v) { localStorage.setItem(key('key_bindings'), JSON.stringify(v)); },
   get language() { return text('language', 'ko'); },
   set language(v) { localStorage.setItem(key('language'), v === 'en' ? 'en' : 'ko'); },
-  /* 자동 저장 슬롯 (웨이브가 끝날 때마다 갱신, 함락되면 삭제) */
+  /* Autosave updates after waves and clears on defeat. */
   get autosave() { return json('autosave', null); },
   set autosave(v) {
     if (v == null) localStorage.removeItem(key('autosave'));
     else localStorage.setItem(key('autosave'), JSON.stringify(v));
   },
-  /* 별지기 꾸미기(이름·옷장) — 판이 아니라 기기에 속한다. 판이 끝나도 "내 캐릭터"는 남는다 */
+  /* Champion name and wardrobe belong to the device and survive a run ending. */
   get champCfg() { return json('champ', {}); },
   set champCfg(v) { localStorage.setItem(key('champ'), JSON.stringify(v)); },
-  /* 서른 번째 아침(승리) 횟수 — [n]번째 원소 = n회차에서의 클리어 수가 아니라 총합만 센다 */
+  /* Count total thirtieth-dawn victories, not a per-loop array. */
   get victories() { return number('victories'); },
   set victories(v) { localStorage.setItem(key('victories'), String(v)); },
   get trialClears() { return number('trial_clears'); },
   set trialClears(v) { localStorage.setItem(key('trial_clears'), String(v)); },
 };
 
-/* 별지기의 지금 이름 — 토스트·이야기가 전부 이걸 부른다 */
+/* Current champion name used by toasts and story text. */
 export const heroName = () => D.champNameOf(store.champCfg.name);
 
-/* =====================================================
- * 누적 기록 — 도감 · 업적 (전부 기기 저장)
- * 처치마다 localStorage에 쓰면 아깝다: 메모리에 들고 있다가
- * flushRecords()로 미룬다 (autoSave와 같은 타이밍 + pagehide).
- * ===================================================== */
+/* Device-level codex and achievements. Batch writes in memory and flush alongside autosave or on pagehide instead of writing on every kill. */
 const load = (name, dflt) => {
   try { return Object.assign(dflt, JSON.parse(text(name, 'null')) || {}); }
   catch { return dflt; }
 };
 
-/* 도감: 만들어 본 용사(직업:등급 → 횟수) · 물리친 몬스터(종류 → 마릿수) */
+/* Codex tracks created hero class/tier counts and defeated enemy kinds. */
 export const codex = load('codex', { heroes: {}, kills: {} });
-/* 업적: 달성한 key → 1. 한 번 달성하면 영원히 남는다 */
+/* Achievement keys remain unlocked once earned. */
 export const earned = load('achievements', {});
 
 let dirty = false;

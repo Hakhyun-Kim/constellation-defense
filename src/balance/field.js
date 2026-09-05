@@ -1,39 +1,34 @@
-/* =====================================================
- * 전장 지오메트리 — 길·발판·좌표 유틸
- * 게임 본체 / 렌더러 / 밸런스 봇이 모두 공유하는 순수 기하.
- * 수치를 바꾸면 맵이 바뀐다(밸런스가 아니라 레벨 디자인).
- * ===================================================== */
+/* Shared pure battlefield geometry: paths, pads and coordinate helpers. Changes here are level design and affect engine, rendering and bots. */
 
-/* ---------- 전장 (논리 좌표 700×408, y=0이 위) ---------- */
+/* Logical battlefield is 700 by 408; y=0 is the top. */
 export const FIELD_W = 700;
 export const FIELD_H = 408;
 
-/* 세 갈래 길: 아래 포탈에서 올라와 갈림길에서 좌/중/우로 갈라진 뒤
- * 성문 앞에서 다시 만난다. 가운데는 짧은 "지름길"(위험!). */
+/* Three paths split after the bottom portal and converge at the gate. The center shortcut is shorter and more dangerous. */
 export const ROUTES = [
-  /* 왼쪽 길 */
+  /* Left path. */
   [[350, 430], [350, 338], [128, 338], [128, 210], [238, 210], [238, 120], [350, 120], [350, 58]],
-  /* 가운데 지름길 (그래도 짧다 — 몬스터가 덜 오지만 보스가 온다!) */
+  /* Center shortcut: fewer ordinary enemies, but bosses use it. */
   [[350, 430], [350, 338], [280, 280], [420, 220], [300, 160], [350, 120], [350, 58]],
-  /* 오른쪽 길 */
+  /* Right path. */
   [[350, 430], [350, 338], [572, 338], [572, 210], [462, 210], [462, 120], [350, 120], [350, 58]],
 ];
 export const ROUTE_WEIGHTS = [0.4, 0.2, 0.4];
-export const BOSS_ROUTE = 1;              // 보스는 지름길로 돌진!
+export const BOSS_ROUTE = 1;              // Bosses charge along the shortcut.
 export const ROAD_HALF = 22;
 
-/* 용사 배치 발판 (갈래 사이 포켓) */
+/* Hero placement pads occupy pockets between paths. */
 export const PADS = [
-  { x: 280, y: 395 }, { x: 420, y: 395 },           // 입구 양옆 (공유 구간)
-  { x: 230, y: 282 }, { x: 470, y: 282 },           // 갈림길 양옆
-  { x: 185, y: 270 }, { x: 515, y: 270 },           // 좌/우 루프 안쪽
-  { x: 180, y: 120 }, { x: 520, y: 120 },           // 상단 좌/우
-  { x: 262, y: 75 },  { x: 438, y: 75 },            // 성문 앞 (합류 지점)
-  { x: 135, y: 395 }, { x: 565, y: 395 },           // 외곽 코너
+  { x: 280, y: 395 }, { x: 420, y: 395 },           // Both sides of the shared entrance.
+  { x: 230, y: 282 }, { x: 470, y: 282 },           // Both sides of the fork.
+  { x: 185, y: 270 }, { x: 515, y: 270 },           // Inside the left and right loops.
+  { x: 180, y: 120 }, { x: 520, y: 120 },           // Upper left and right.
+  { x: 262, y: 75 },  { x: 438, y: 75 },            // Before the gate at the convergence.
+  { x: 135, y: 395 }, { x: 565, y: 395 },           // Outer corners.
 ];
 export const PAD_RADIUS = 26;
 
-/* ---------- 길 유틸 (엔진/렌더러/봇 공용) ---------- */
+/* Shared path helpers for engine, rendering and bots. */
 function buildSegs(points) {
   const segs = [];
   let acc = 0;
@@ -48,7 +43,7 @@ function buildSegs(points) {
 export const ROUTE_SEGS = ROUTES.map(buildSegs);
 export const ROUTE_LENS = ROUTE_SEGS.map(segs => segs.reduce((a, s) => a + s.len, 0));
 
-/* 진행도 s → 좌표 + 방향 */
+/* Map path progress to position and direction. */
 export function routePoint(route, s) {
   const segs = ROUTE_SEGS[route];
   if (s <= 0) {
@@ -70,7 +65,7 @@ export function routePoint(route, s) {
   return { x: last.x2, y: last.y2, dx: (last.x2 - last.x1) / last.len, dy: (last.y2 - last.y1) / last.len };
 }
 
-/* 한 점에서 모든 길까지의 최단 거리 */
+/* Minimum distance from a point to any path. */
 export function distToPath(x, y) {
   let best = Infinity;
   for (const segs of ROUTE_SEGS) {
@@ -85,7 +80,7 @@ export function distToPath(x, y) {
   return best;
 }
 
-/* 패드가 사거리로 덮는 길의 총량 (루트 가중치 반영, 봇 배치 정책용) */
+/* Weighted path length within a pad's attack range, used by bot placement. */
 export function padCoverage(pad, range) {
   let cover = 0;
   const step = 8;

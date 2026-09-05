@@ -206,8 +206,7 @@ export class VillageRenderer {
       const ring = new THREE.Mesh(new THREE.RingGeometry(radius - .045, radius + .045, 40), new THREE.MeshBasicMaterial({ color: 0xe8c98e }));
       ring.rotation.x = -Math.PI / 2; ring.position.y = .025; this.scene.add(ring);
     }
-    /* 광장 위의 짧은 돌길은 목적지를 읽게 해 주고, dungeon100 마을의
-     * 작은 디오라마 같은 밀도를 외부 텍스처 없이 만든다. */
+    /* Short plaza stone paths clarify destinations and add compact diorama detail without external textures. */
     const paving = mat(0xd7b47d);
     for (const [axis, offset] of [['x', -3.2], ['x', 3.2], ['z', 0]]) {
       for (let i = -5; i <= 5; i++) {

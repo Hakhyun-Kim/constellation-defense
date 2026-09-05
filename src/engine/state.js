@@ -1,6 +1,4 @@
-/* =====================================================
- * 게임 상태 — 생성 · 저장 · 불러오기
- * ===================================================== */
+/* Game state creation, serialization and restoration. */
 import * as D from '../data.js';
 import { champStats } from './champion.js';
 import { makeHero, padOccupant, placeHero } from './roster.js';
@@ -24,7 +22,7 @@ export function createGame(opts = {}) {
     rng, ri: riFor(rng), pick: pickFor(rng),
     difficulty: opts.difficulty || 'normal', diff,
     meta,
-    /* 별의 시련 회차 — 0 = 첫 여정. 몬스터 체력·골드가 회차만큼 강해진다 (enemies.js) */
+    /* Star Trial loop zero is the first journey; enemies.js scales health and gold by loop. */
     loop: Math.max(0, Math.min(99, Math.round(opts.loop || 0))),
     dmgMul: D.META_UPGRADES.heroDmg.apply(meta.heroDmg),
 
@@ -54,12 +52,12 @@ export function createGame(opts = {}) {
     runMemory: createRunMemory(),
     resonanceCasts: 0,
     resonance: createResonance(1),
-    mythicPress: 0,             // 이번 웨이브가 반응하는 신화 용사 수 (enemies.js)
+    mythicPress: 0,             // Mythic hero count used for this wave's enemy pressure.
     combo: { count: 0, timer: 0 },
-    discovered: new Set(),      // 이번 판에 만들어 본 조합 결과 (도감 ✓)
+    discovered: new Set(),      // Combination results discovered during this run.
     time: 0,
   };
-  /* 별지기 — 길을 순찰하는 메인 캐릭터. 은하수 충전 배율은 메타에서만 오므로 한 번만 계산 */
+  /* The legacy champion patrols lanes. Compute the persistent Galaxy-charge modifier once. */
   state.champUltMul = D.champUltMul(meta.champUlt);
   state.champ = null;
   if (!state.squad) {
@@ -91,11 +89,7 @@ export function createGame(opts = {}) {
   return state;
 }
 
-/* ---------- 별의 시련 — 승리 후 다음 회차 ----------
- * 30웨이브를 클리어한 판에서 부른다. 별지기의 성장(레벨·경험치·스킬)은 이어지고
- * 용사·골드·성·웨이브는 처음으로 돌아간다. 적은 회차만큼 세진다(enemies.loopHpMul).
- * 은하수 충전은 0부터 — 이월되면 새 회차 첫 웨이브가 공짜로 지워진다.
- * 본 이야기·연출 기록도 들고 간다: 회차마다 같은 막간 이야기를 또 보면 스킵 게임이 된다. */
+/* After wave 30, preserve champion growth and viewed story records while resetting army, gold, castle and wave. Scale enemies by loop and reset Galaxy charge so the new opening is not a free clear. */
 export function nextLoop(state) {
   const next = createGame({
     difficulty: state.difficulty,
@@ -129,11 +123,7 @@ export function nextLoop(state) {
   return next;
 }
 
-/* ---------- 저장 / 불러오기 ----------
- * 저장은 "준비 단계 스냅샷"이다. 전투 중의 몬스터·투사체는 서로를 참조하는
- * 객체 그래프라 직렬화가 잘 깨지고, 전투 도중 복원을 허용하면 반쯤 이긴
- * 웨이브를 저장해 두고 골드만 불리는 꼼수가 생긴다. 그래서 웨이브 진행은
- * 담지 않고, 불러오면 그 웨이브의 준비 단계에서 다시 시작한다. */
+/* Save preparation snapshots, not in-flight enemy/projectile object graphs. Restoring mid-wave would also allow reward farming; resume at that wave's preparation instead. */
 export const SAVE_VERSION = 8;
 const SAVE_STATS = [
   'kills', 'bossKills', 'midBossKills', 'summons', 'combos', 'goldEarned',
@@ -152,10 +142,10 @@ export function serialize(state) {
     game: 'constellation-defense', v: SAVE_VERSION,
     difficulty: state.difficulty,
     meta: { ...state.meta },
-    loop: state.loop || 0,               // 별의 시련 회차 — 이어하기가 회차를 잊으면 안 된다
+    loop: state.loop || 0,               // Preserve the Star Trial loop on resume.
     wave: state.wave,
     gold: state.gold,
-    feastWave: state.feastWave,          // 이번 준비에 잔치를 했는가 — 불러와도 다시 못 연다
+    feastWave: state.feastWave,          // Preserve whether this preparation's feast has already occurred.
     resonance: { active: [...(state.resonance?.active || [])] },
     constellationAid: { charge: state.constellationAid?.charge || 0 },
     castleHp: state.castleHp,
@@ -165,7 +155,7 @@ export function serialize(state) {
     journey: serializeJourney(state.journey),
     bench: state.squad ? [] : state.bench.map(hero),
     field: state.field.map(hero),
-    /* 별지기 — 위치·체력은 준비 단계마다 리셋되니 성장만 담는다 */
+    /* Store champion growth only; position and health reset during preparation. */
     champ: state.champ ? {
       level: state.champ.level, xp: Math.round(state.champ.xp), sp: state.champ.sp,
       skills: { ...state.champ.skills },
@@ -179,9 +169,7 @@ export function serialize(state) {
   };
 }
 
-/* 저장 파일 → 새 게임 상태. 파일은 사용자가 고칠 수 있는 입력이라 값 하나하나를
- * 의심한다 — 이상한 수는 안전한 범위로 줄이고, 모르는 직업은 버리고, 겹친 발판의
- * 용사는 벤치로 대피시킨다(사라지는 것보단 낫다). 복원할 수 없는 구조면 null. */
+/* Treat edited saves as untrusted input: clamp numbers, discard unknown classes and move overlapping deployed heroes to the bench. Return null for an unrecoverable structure. */
 export function deserialize(data, opts = {}) {
   if (!data || typeof data !== 'object') return null;
   if (!Array.isArray(data.field)) return null;
@@ -258,7 +246,7 @@ export function deserialize(data, opts = {}) {
     for (const record of (data.bench || []).slice(0, D.BENCH_MAX)) revive(record, null);
   }
 
-  /* 별지기 — 값 하나하나 의심한다. 모르는 스킬은 버리고, 랭크는 상한으로 자른다 */
+  /* Validate every champion field; discard unknown skills and clamp ranks. */
   const cd = data.champ;
   if (cd && typeof cd === 'object' && state.champ) {
     const c = state.champ;

@@ -1,9 +1,7 @@
-/* =====================================================
- * 경제 — 성 업그레이드
- * ===================================================== */
+/* Castle upgrade economy. */
 import * as D from '../data.js';
 
-/* ---------- 성 업그레이드 ---------- */
+/* Castle upgrades. */
 export function castleUpgrade(state, key) {
   const U = D.CASTLE_UPGRADES[key];
   if (!U) return { ok: false };

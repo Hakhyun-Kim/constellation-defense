@@ -1,10 +1,4 @@
-/* =====================================================
- * 외부 런타임 에셋 로더 경계
- *
- * 규칙/엔진은 이 로더를 모른다. 기본 게임은 로더가 꺼져 있어 manifest 요청도
- * 만들지 않는다. art-v2 파일럿에서만 파일을 요청하며, 실패하면 null을 반환해
- * 호출부가 현재 절차형 모델을 그대로 유지할 수 있게 한다.
- * ===================================================== */
+/* Optional external-asset boundary, unknown to the engine. Procedural mode makes no manifest request; art-v2 loads assets and returns null on failure so callers retain procedural fallbacks. */
 import { assetSupportsProfile, normalizeAssetManifest, preloadAssets } from '../assets/catalog.js';
 
 const silentLogger = Object.freeze({ warn() {} });

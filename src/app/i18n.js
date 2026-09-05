@@ -359,9 +359,7 @@ export function translateKnownText(value, locale = activeLocale) {
     if (match) translated = `Defense ${match[1]}/${match[2]}`;
     match = core.match(/^(.+) · (\d+)$/);
     if (match && EN.has(match[1])) translated = `${EN.get(match[1])} · ${match[2]}`;
-    /* 전문화 카드는 데이터의 효과 문구 뒤에 필요 레벨을 덧붙인다 — 앞부분은
-     * 표에서 찾고 꼬리만 옮긴다. 이렇게 해야 밸런스 수치가 바뀌어도 번역이
-     * 따라간다: 조합된 문장 전체를 표에 넣으면 숫자 하나에 깨진다. */
+    /* Translate specialization effect text separately from its required-level suffix so balance number changes do not invalidate a whole-sentence key. */
     match = core.match(/^(.+) · Lv (\d+) 필요$/);
     if (match) translated = `${EN.get(match[1]) || match[1]} · Lv ${match[2]} required`;
     match = core.match(/^범위 (\d+) · (.+)$/);
@@ -372,11 +370,10 @@ export function translateKnownText(value, locale = activeLocale) {
     if (match) translated = `${match[1]} XP to next point`;
     match = core.match(/^경험치 (\d+)\/(\d+) · 전문화 포인트$/);
     if (match) translated = `XP ${match[1]}/${match[2]} · specialization points`;
-    /* 시설 안내는 아이콘 + 시설 이름 + 고정 문장이다. 시설 이름은 콘텐츠 표에 있다. */
+    /* Facility hints combine an icon, a translated facility name and a fixed sentence. */
     match = core.match(/^(\S+)\s(.+)에서만 전문화를 선택할 수 있습니다\.$/);
     if (match) translated = `${match[1]} Specializations are chosen only at the ${EN.get(match[2]) || match[2]}.`;
-    /* 전투 토스트는 아이콘·별 종류·개수·길이 조합된다. 조합된 문장을 통째로
-     * 표에 넣으면 숫자 하나마다 새 항목이 필요해지므로 조각을 각각 옮긴다. */
+    /* Translate combat toast components separately; whole-sentence keys would require entries for every count and lane. */
     match = core.match(/^(\S+) (서리|유성|수호) 성좌 (\d+)개 — (왼쪽|가운데|오른쪽) 길 전술 발동!$/);
     if (match) {
       translated = `${match[1]} ${EN.get(match[2])} constellation ×${match[3]} — cast on the ${EN.get(match[4])} lane!`;
@@ -391,15 +388,14 @@ export function translateKnownText(value, locale = activeLocale) {
     if (match) translated = `Citadel +${match[1]} · ${match[2]} pushed back`;
     match = core.match(/^([\d.]+)초$/);
     if (match) translated = `${match[1]}s`;
-    /* 게임오버 통계는 숫자·난이도·보상이 문장에 박혀 나온다. */
+    /* Game-over statistics interpolate numbers, difficulty and rewards. */
     match = core.match(/^\((쉬움|보통|어려움)\)$/);
     if (match) translated = `(${EN.get(match[1])})`;
     match = core.match(/^(\d+)마리$/);
     if (match) translated = `${match[1]}`;
     match = core.match(/^✨ 별조각 \+(\d+) 획득!$/);
     if (match) translated = `✨ +${match[1]} star shards earned!`;
-    /* 전술 적중 표시와 콤보는 전투 내내 갱신된다 — 숫자와 이름이 매번 바뀌므로
-     * 통째로 표에 넣을 수 없다. */
+    /* Tactic hits and combos continuously change names and counts, so translate their components. */
     match = core.match(/^(\d+)매치 · (.+)$/);
     if (match) translated = `${match[1]}-match · ${EN.get(match[2]) || match[2]}`;
     match = core.match(/^(왼쪽|가운데|오른쪽) 길 길을 조준해요$/);
@@ -412,7 +408,7 @@ export function translateKnownText(value, locale = activeLocale) {
     if (match) translated = `Wave ${match[1]} · ${translateKnownText(match[2], 'en')} difficulty · ${match[3]} heroes`;
     match = core.match(/^🔥 콤보 (\d+)$/);
     if (match) translated = `🔥 Combo ${match[1]}`;
-    /* 방어 완료 보너스와 레벨업 안내 — 판이 계속 돌면 반복해서 뜬다. */
+    /* Defense-clear bonuses and level-up messages recur throughout a run. */
     match = core.match(/^(.+) · 방어 (\d+)\/(\d+) 완료! 보너스 (\d+)$/);
     if (match) translated = `${EN.get(match[1]) || match[1]} · Defense ${match[2]}/${match[3]} complete! Bonus ${match[4]}`;
     match = core.match(/^(.+) Lv (\d+)! 영웅 성장 탭에서 전문화를 고르세요$/);

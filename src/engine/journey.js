@@ -82,7 +82,7 @@ export function journeyChoices(state) {
   return current.next.map((id) => journeyNode(id, journey)).filter(Boolean);
 }
 
-/* UI·봇 모두 "이 노드의 몇 번째 방어인가"를 같은 순수 상태에서 읽는다. */
+/* UI and bots derive the defense number within a node from the same pure state. */
 export function journeyBattleProgress(state) {
   const node = journeyNode(state?.journey?.activeBattle, state);
   if (!node || (node.kind !== 'battle' && node.kind !== 'boss')) return null;
@@ -132,8 +132,7 @@ function arriveRefugeeStation(state, node) {
   collectAnnotation(state.journey, node);
 }
 
-/* 한 지역은 순찰 → 지휘관전 → 지역 결전의 리듬을 갖는다.
- * 전역 웨이브 번호와 분리해야 5의 배수마다 뜬금없이 대보스가 나오는 일이 없다. */
+/* Regional pacing is patrol, commander, then finale, independently of global wave multiples. */
 export function journeyEncounter(state) {
   const progress = journeyBattleProgress(state);
   if (!progress) return { kind: 'patrol', boss: false, midBoss: false, region: null, chapterFinal: false };

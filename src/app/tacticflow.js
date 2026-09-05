@@ -1,10 +1,4 @@
-/* =====================================================
- * 전술 보드 화면 어댑터
- *
- * 여기에는 DOM, 선택, 애니메이션 취소만 둔다. 3매치 규칙은 tactics/board.js,
- * 방어 효과는 주입받은 resolveTactic()이 담당하므로 어느 한쪽도 다른 쪽을
- * import하거나 상태 구조를 알 필요가 없다.
- * ===================================================== */
+/* Tactics view adapter owns DOM, selection and animation cancellation. Board rules live in tactics/board.js; injected resolveTactic handles defense effects without cross-importing either state model. */
 import {
   BOARD_SIZE,
   STAR_TYPES,
@@ -109,8 +103,7 @@ export function createTacticFlow({ getPhase, random, resolveTactic, onCast, onMa
     card.querySelector('.tactic-beam')?.remove();
   }
 
-  /* 표현 콜백(SFX·렌더러·토스트)은 전술 규칙 바깥에 있다. 어느 하나가 실패해도
-   * 보드가 resolving 상태에 남아 입력이 멎으면 안 된다. */
+  /* Presentation callbacks must not leave the board stuck resolving if sound, rendering or toast code fails. */
   function recoverResolution(token) {
     if (token !== generation) return;
     resolving = false;
@@ -171,8 +164,7 @@ export function createTacticFlow({ getPhase, random, resolveTactic, onCast, onMa
     if (!matches.length) return false;
     selected = null;
     cells = swapped;
-    /* 교환된 보드를 먼저 보여 준다. 이전 셀을 그대로 두면 매치 강조가 실제 바뀐 별과
-     * 어긋나 보여 전술의 원인을 읽기 어려워진다. */
+    /* Show the swapped board before match highlights so the visual cause matches the new star positions. */
     draw();
     card.classList.remove('guided-opening');
     onSwap?.(first, index, matches);

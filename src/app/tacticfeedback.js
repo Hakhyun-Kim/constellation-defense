@@ -1,9 +1,4 @@
-/* =====================================================
- * 전술 전장 피드백
- *
- * 3매치의 원인(매치)과 3D 전장의 결과(피해·감속·후퇴)를 짧은 HUD 문장으로
- * 연결한다. 규칙을 만들지 않고 castTactic()이 이미 돌려준 이벤트만 읽는다.
- * ===================================================== */
+/* Connect match-3 causes with 3D damage, slow and retreat through short HUD feedback. Read castTactic() events without defining new rules. */
 const SPELL = {
   flare: { icon: '☄️', name: '유성 폭격' },
   tide: { icon: '❄️', name: '서리 결계' },
@@ -34,7 +29,7 @@ export function createTacticFeedback() {
     title.textContent = headline;
     detail.textContent = subline;
     root.classList.remove('show', 'preview');
-    void root.offsetWidth; // 같은 주문 연쇄도 매번 처음부터 튀게 한다.
+    void root.offsetWidth; // Restart feedback even for consecutive casts of the same spell.
     root.classList.add('show');
     if (preview) root.classList.add('preview');
     timer = setTimeout(() => {

@@ -1,6 +1,4 @@
-/* =====================================================
- * 용사 관리 — 소환 / 조합 / 배치 / 판매 / 잔치
- * ===================================================== */
+/* Hero management: summoning, combining, placement, selling and feasts. */
 import * as D from '../data.js';
 import { gainChampXp } from './champion.js';
 import { activateResonance, heroStarValue, matchingResonanceLanes } from './resonance.js';
@@ -13,7 +11,7 @@ export function makeHero(state, cls, tier) {
   return hero;
 }
 
-/* 등급 오버라이드를 합친 실효 수정자 (전설 → 신화 순으로 덮어씌움) */
+/* Effective modifiers apply legendary overrides, then mythic overrides. */
 export function heroMods(h) {
   const C = D.CLASSES[h.cls];
   const growth = heroGrowthMods(h);
@@ -43,14 +41,14 @@ export function heroMods(h) {
   };
 }
 
-/* 초당 기대 피해 — 툴팁/정보 표시용 (치명타·다단타 반영) */
+/* Expected DPS for tooltips, including criticals and multiple hits. */
 export function heroDps(h) {
   const m = heroMods(h);
   const critMul = m.crit ? 1 + m.crit.chance * (m.crit.mul - 1) : 1;
   return Math.round(h.dmg * m.hits * m.spd * critMul * 10) / 10;
 }
 
-/* ---------- 소환 ---------- */
+/* Summoning. */
 export function rollTier(state) {
   const p = D.SUMMON_PROBS;
   let r = state.rng() * 100;
@@ -65,19 +63,16 @@ export function summon(state) {
   if (state.bench.length >= D.BENCH_MAX) return { ok: false, reason: 'bench' };
   state.gold -= D.SUMMON_COST;
   const tier = rollTier(state);
-  const cls = state.pick(D.GACHA_KEYS);          // 특수 직업은 소환으로 안 나온다 — 조합 전용!
+  const cls = state.pick(D.GACHA_KEYS);          // Special classes are recipe-only, never summoned.
   const hero = makeHero(state, cls, tier);
   state.bench.push(hero);
   state.summons++;
   return { ok: true, hero };
 }
 
-/* ---------- 조합 ----------
- * ① 등급업: 같은 직업 + 같은 등급 2명 → 같은 직업 등급+1 (예측 가능)
- * ② 레시피: 서로 다른 두 직업(같은 등급) → 특수 직업 등급+1  */
+/* Rank-up combines two same-class/same-tier heroes into tier + 1. Recipes combine two different classes of the same tier into a special class at tier + 1. */
 
-/* 조합 재료 후보: 벤치 + 배치된 용사 모두 (회수하지 않아도 조합 가능)
- * 벤치를 먼저 소비해 필드 방어를 최대한 유지한다. */
+/* Materials include bench and field. Prefer bench materials to preserve deployed defenses. */
 export function unitsOf(state, cls, tier) {
   return [
     ...state.bench.filter(h => h.cls === cls && h.tier === tier),
@@ -85,7 +80,7 @@ export function unitsOf(state, cls, tier) {
   ];
 }
 
-/* 결과를 놓을 발판 고르기: 배치돼 있던 재료 우선, 둘 다면 더 강한(등급↑, 커버리지↑) 쪽 */
+/* Prefer a deployed material's pad for the result; if both are deployed, favor higher tier and coverage. */
 function resultPad(mats, resultCls) {
   const placed = mats.filter(m => Number.isInteger(m.padIndex) && m.padIndex >= 0);
   if (!placed.length) return -1;
@@ -98,13 +93,13 @@ function resultPad(mats, resultCls) {
   return best.padIndex;
 }
 
-/* 재료를 벤치/필드에서 제거 */
+/* Remove materials from bench and field. */
 function consume(state, mats) {
   state.bench = state.bench.filter(h => !mats.includes(h));
   state.field = state.field.filter(h => !mats.includes(h));
 }
 
-/* 그 직업의 최고 보유 등급 (없으면 -1) */
+/* Highest owned tier of a class, or -1 if absent. */
 export function bestTierOf(state, cls) {
   let best = -1;
   for (const h of [...state.bench, ...state.field]) {
@@ -113,7 +108,7 @@ export function bestTierOf(state, cls) {
   return best;
 }
 
-/* 보유한 그 직업의 등급 목록 (벤치+필드, 중복 없이) */
+/* Distinct owned tiers of a class across bench and field. */
 function tiersOf(state, cls) {
   const t = new Set();
   for (const h of state.bench) if (h.cls === cls) t.add(h.tier);
@@ -121,32 +116,21 @@ function tiersOf(state, cls) {
   return [...t];
 }
 
-/* 레시피에 쓸 최선의 짝 — **같은 등급 2명끼리만** 조합되고, 결과는 그 등급 +1.
- * 등급업과 규칙이 하나라 외울 게 없다: "같은 등급 2명 = 등급 UP".
- * 등급이 다른 용사는 재료로 아예 쓰이지 않으므로, 높은 용사가 낮은 결과에
- * 갈려 사라지는 사고(전설+일반=희귀)도 원천적으로 없다.
- * 같은 등급 짝이 여럿이면 가장 높은 결과를 만드는 짝을 고른다. */
+/* Recipes require same-tier pairs and produce tier + 1, avoiding consumption of a high-tier hero for a weaker result. Prefer the highest-result pair when several qualify. */
 export function bestRecipePair(state, r) {
   const cap = D.maxTierOf(r.result);
   const tb = new Set(tiersOf(state, r.b));
   let best = null;
   for (const t of tiersOf(state, r.a)) {
-    if (!tb.has(t)) continue;                        // 같은 등급끼리만
+    if (!tb.has(t)) continue;                        // Same-tier pairs only.
     const resultTier = Math.min(t + 1, cap);
-    if (resultTier <= t) continue;                   // 등급 천장 — 올라가지 않는 조합
+    if (resultTier <= t) continue;                   // Tier ceiling prevents a non-upgrading combination.
     if (!best || resultTier > best.resultTier) best = { ta: t, tb: t, base: t, resultTier };
   }
   return best;
 }
 
-/* 레시피 한 줄의 "지금 상태" — 조합이 안 될 때 **왜 안 되는지**를 화면에 그리기 위한 것.
- * listCombos는 조합 가능한 것만 담아야 하므로(봇과 자동 조합이 소비한다) 따로 둔다.
- *   ready    : 지금 바로 된다 (ta/tb = 실제로 재료가 될 등급)
- *   gold     : 재료는 있는데 골드가 모자라다
- *   material : 재료가 모자라다 (missing에 부족한 직업)
- *   cap      : 재료는 충분한데 등급 천장이라 더 안 오른다
- *   gap      : 두 직업 다 있는데 **같은 등급 짝이 없다** (low = 등급이 낮은 직업)
- */
+/* Recipe UI status is separate from executable listCombos: ready, insufficient gold, missing materials, tier cap, or no same-tier pair. ta/tb are chosen tiers; missing and low explain unavailable materials. */
 export function recipeStatus(state, r, cost) {
   const ta = bestTierOf(state, r.a);
   const tb = bestTierOf(state, r.b);
@@ -170,7 +154,7 @@ export function recipeStatus(state, r, cost) {
   };
 }
 
-/* listCombos 항목 → 실행 액션 (UI 버튼 dataset과 같은 모양) */
+/* Convert a listCombos entry to the same action shape used by UI button datasets. */
 export function comboToAction(c) {
   return c.kind === 'rankup'
     ? { kind: 'rankup', cls: c.cls, tier: String(c.tier) }
@@ -180,7 +164,7 @@ export function comboToAction(c) {
 export function listCombos(state) {
   if (state.squad) return [];
   const out = [];
-  /* 등급업 — 벤치/필드 통합 집계 (천장 = 신화, 모든 직업 공통) */
+  /* Count rank-up materials across bench and field; all classes share the mythic ceiling. */
   const seen = new Set();
   for (const h of [...state.bench, ...state.field]) {
     const key = `${h.cls}:${h.tier}`;
@@ -195,7 +179,7 @@ export function listCombos(state) {
       out.push(c);
     }
   }
-  /* 레시피 — 새 직업이 태어나는 길 (같은 등급 2명, 결과는 그 등급 +1) */
+  /* Recipes create a new class from two same-tier materials at tier + 1. */
   for (const r of D.RECIPES) {
     const pair = bestRecipePair(state, r);
     if (!pair) continue;
@@ -210,9 +194,7 @@ export function listCombos(state) {
   return out;
 }
 
-/* 지금 가능한 조합 중 최선 — 높은 등급 우선, 동급이면 특수 레시피 우선.
- * 게임(main)과 봇(bot)이 같은 함수를 봐야 판단이 갈라지지 않는다.
- */
+/* Prefer higher result tiers, then special recipes. Game and bot share this selection function. */
 export function bestCombo(state) {
   const combos = listCombos(state).filter(c => c.affordable);
   if (!combos.length) return null;
@@ -232,21 +214,21 @@ export function combineRankUp(state, cls, tier) {
   const cost = D.combineCost(tier + 1, false);
   if (state.gold < cost) return { ok: false, reason: 'gold', cost };
   state.gold -= cost;
-  /* 럭키! 낮은 확률로 두 등급 점프 (영웅까지) */
+  /* A rare lucky rank-up jumps two tiers, up to heroic. */
   const lucky = tier + 2 <= D.LUCKY_MAX_TIER && state.rng() < D.LUCKY_JUMP;
   const newTier = lucky ? tier + 2 : tier + 1;
   const pad = resultPad(mats, cls);
   consume(state, mats);
   const hero = makeHero(state, cls, newTier);
   state.bench.push(hero);
-  /* 재료가 배치돼 있었다면 결과도 그 자리에 바로 배치 (회수 불필요) */
+  /* If a material was deployed, place the result directly on its pad. */
   if (pad >= 0) placeHero(state, hero.id, pad);
   state.combos++;
   const resonance = activateResonance(state, heroStarValue(cls) * 2);
   return { ok: true, hero, lucky, cost, pad, resonance };
 }
 
-/* 레시피 조합 — 같은 등급 2명끼리, 결과는 그 등급 +1 (신화까지) */
+/* Recipe results are one tier above their same-tier materials, capped at mythic. */
 export function combineRecipe(state, result) {
   if (state.squad) return { ok: false, reason: 'fixed-squad' };
   const R = D.CLASSES[result];
@@ -274,23 +256,22 @@ export function combineRecipe(state, result) {
   return { ok: true, hero, cost, pad, resonance };
 }
 
-/* ---------- 배치 / 이동 / 회수 / 판매 ---------- */
+/* Placement, movement, recall and selling. */
 export const padOccupant = (state, padIndex) => state.field.find(h => h.padIndex === padIndex);
 
-/* 배치된 두 용사의 자리를 맞바꾼다 — 회수·재배치 없이 진형만 고친다.
- * (근접 용사가 뒤에, 궁수가 앞에 서 있을 때 한 번에 바로잡는 조작) */
+/* Swap two deployed heroes directly to adjust formation without recalling either. */
 export function swapHeroes(state, idA, idB) {
   const a = state.field.find(v => v.id === idA);
   const b = state.field.find(v => v.id === idB);
   if (!a || !b || a === b) return { ok: false };
   const pa = a.padIndex, pb = b.padIndex;
-  /* 공격 쿨다운은 그대로 들고 간다 — 자리를 계속 바꿔 쿨다운을 초기화하는 꼼수 방지 */
+  /* Preserve attack cooldowns so repeated swapping cannot accelerate attacks. */
   a.padIndex = pb; a.x = D.PADS[pb].x; a.y = D.PADS[pb].y;
   b.padIndex = pa; b.x = D.PADS[pa].x; b.y = D.PADS[pa].y;
   return { ok: true, a, b };
 }
 
-/* 배치된 용사를 다른 빈 발판으로 이동 (회수 없이) */
+/* Move a deployed hero to an empty pad without recalling it. */
 export function moveHero(state, heroId, padIndex) {
   const h = state.field.find(v => v.id === heroId);
   if (!h) return { ok: false };
@@ -301,12 +282,11 @@ export function moveHero(state, heroId, padIndex) {
   h.padIndex = padIndex;
   h.x = D.PADS[padIndex].x;
   h.y = D.PADS[padIndex].y;
-  /* 쿨다운 유지 — 이동을 반복해 공격을 앞당기는 꼼수를 막는다 */
+  /* Preserve cooldowns during movement to prevent faster attacks. */
   return { ok: true, hero: h };
 }
 
-/* 벤치 용사를 이미 찬 발판에 놓으면 그 자리 용사와 위치를 맞바꾼다.
- * (벤치 ↔ 필드 교환이라 벤치 수가 그대로여서 벤치가 가득 차 있어도 언제나 된다) */
+/* Swap a benched hero with an occupied pad. Bench size remains unchanged, so this also works with a full bench. */
 export function swapBenchWithPad(state, benchHeroId, padIndex) {
   const idx = state.bench.findIndex(h => h.id === benchHeroId);
   const occ = padOccupant(state, padIndex);
@@ -314,13 +294,12 @@ export function swapBenchWithPad(state, benchHeroId, padIndex) {
   const inc = state.bench[idx];
   state.bench.splice(idx, 1);
   state.field = state.field.filter(v => v !== occ);
-  occ.padIndex = -1;          // 벤치 규약값. null을 넣으면 null>=0 이 true라 "배치됨"으로 샌다
+  occ.padIndex = -1;          // Bench sentinel is -1; null >= 0 would incorrectly count as deployed.
   state.bench.push(occ);
   inc.padIndex = padIndex;
   inc.x = D.PADS[padIndex].x;
   inc.y = D.PADS[padIndex].y;
-  /* 그 자리에 남아 있던 쿨다운을 이어받는다 — 전투 중에 용사를 갈아 끼워
-   * 공격을 앞당기는 꼼수를 막는다 (필드끼리 교환과 같은 규칙) */
+  /* Inherit the occupied pad's cooldown to prevent combat replacements from accelerating attacks. */
   inc.cd = occ.cd || 0;
   state.field.push(inc);
   return { ok: true, placed: inc, benched: occ };
@@ -363,9 +342,7 @@ export function sellHero(state, heroId) {
   return { ok: true, price };
 }
 
-/* ---------- 잔치 ----------
- * 준비 단계에 한 번, 골드로 잔치를 벌이면 승급 가능한 용사 중 하나가 랜덤으로 등급 UP.
- * 별지기도 얻어먹고 경험치를 챙긴다. 배치된 용사는 그 자리에서 그대로 승급한다. */
+/* Feast once per preparation promotes an eligible random hero in place and grants champion XP. */
 export function holdFeast(state) {
   if (state.squad) return { ok: false, reason: 'fixed-squad' };
   if (state.phase !== 'prep') return { ok: false, reason: 'phase' };
@@ -373,12 +350,12 @@ export function holdFeast(state) {
   const cost = D.feastCost(state.wave);
   if (state.gold < cost) return { ok: false, reason: 'gold', cost };
   const cands = [...state.bench, ...state.field].filter(h => h.tier < D.maxTierOf(h.cls));
-  if (!cands.length) return { ok: false, reason: 'none', cost };   // 전원 신화 — 승급할 사람이 없다
+  if (!cands.length) return { ok: false, reason: 'none', cost };   // Every hero is mythic; nobody can be promoted.
   state.gold -= cost;
   state.feastWave = state.wave;
   state.feasts++;
 
-  /* 낮은 등급일수록 잘 뽑힌다 — 게임 난수(state.rng)를 쓴다: 저장/불러오기로 리롤 못 한다 */
+  /* Weight lower tiers more heavily using state.rng; saved feast eligibility prevents reload rerolls. */
   let total = 0;
   for (const h of cands) total += D.feastTierWeight(h.tier);
   let r = state.rng() * total;
@@ -389,7 +366,7 @@ export function holdFeast(state) {
   }
   const from = hero.tier;
   hero.tier++;
-  /* 공격력은 현재 등급과 메타 배율에서 다시 계산한다. */
+  /* Recompute damage from current tier and persistent modifiers. */
   refreshHeroDamage(state, hero);
 
   const events = [];

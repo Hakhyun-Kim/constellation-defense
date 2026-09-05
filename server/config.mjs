@@ -1,12 +1,4 @@
-/* 설정을 한 번에 읽고, 한 번에 판정한다.
- *
- * 전에는 serve.mjs 가 환경변수를 읽으면서 그때그때 경고를 찍었다. 개발용으로는
- * 괜찮지만 서비스로는 곤란하다 — 키가 없어도 서버가 멀쩡히 뜨고, 플레이어가
- * 처음 결제를 누를 때가 되어서야 실패한다. 결제에서 그건 가장 비싼 순간이다.
- *
- * 그래서 문제를 두 등급으로 나눈다. fatal 은 "이 상태로는 일을 할 수 없다"이고
- * 서비스는 뜨기 전에 죽는다. warn 은 "돌아가지만 알고는 있어라"다. 개발 서버는
- * 둘 다 출력만 하고 계속 간다 — 자격 증명 없이 모의 모드로 여는 게 정상이므로. */
+/* Read and validate configuration once. Fatal issues prevent production startup; warnings describe usable but noteworthy settings. Development reports both and continues to allow credential-free mock operation, avoiding late surprises at checkout. */
 
 const trueish = (value) => value === '1' || value === 'true';
 
@@ -15,14 +7,12 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
   const environment = env.NEON_ENVIRONMENT === 'production' ? 'production' : 'sandbox';
   const backend = env.STORE_BACKEND === 'firestore' ? 'firestore' : 'json';
 
-  /* PORT=0 은 "빈 포트를 아무거나"라는 뜻이고 테스트가 그걸 쓴다. Number(x) || 기본값
-   * 으로 쓰면 0 이 falsy 라 기본 포트로 튀어, 이미 쓰는 포트에 부딪히고 만다. */
+  /* PORT=0 requests an available port; Number(value) || default would incorrectly discard zero. */
   const rawPort = env.PORT === undefined || env.PORT === '' ? null : Number(env.PORT);
   const config = {
     role,
     port: Number.isInteger(rawPort) && rawPort >= 0 && rawPort <= 65535 ? rawPort : 8642,
-    /* 컨테이너는 모든 인터페이스에 바인딩해야 트래픽이 들어온다. 로컬 기본값은
-     * 루프백으로 둬서 개발 중에 실수로 네트워크에 열리지 않게 한다. */
+    /* Containers bind all interfaces; local development defaults to loopback to avoid accidental network exposure. */
     host: env.HOST || (role === 'service' ? '0.0.0.0' : '127.0.0.1'),
     logFormat: env.LOG_FORMAT === 'json' ? 'json' : 'text',
     backend,
@@ -32,8 +22,7 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
     apiKey: env.NEON_API_KEY || '',
     apiUrl: env.NEON_API_URL || 'https://api.neonpay.com',
     webhookSecret: env.NEON_WEBHOOK_SECRET || '',
-    /* 비워 두면 요청이 들어온 오리진을 쓴다 — localhost 로 열었는데 127.0.0.1 로
-     * 돌려보내면 쿠키가 끊긴다. 배포에서는 공개 주소를 지정한다. */
+    /* When unset, use the request origin to preserve cookies across localhost versus 127.0.0.1. Production specifies a public URL. */
     publicUrl: env.PUBLIC_URL || '',
     allowedOrigins: (env.ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean),
   };
@@ -51,7 +40,7 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
   } else {
     if (!config.apiKey) fatal('NEON_API_KEY is missing — checkout creation cannot work');
     if (!config.webhookSecret) fatal('NEON_WEBHOOK_SECRET is missing — every webhook would be rejected with 403');
-    /* 서비스는 자기 공개 주소를 알아야 한다. 개발 서버는 요청 오리진으로 때울 수 있다. */
+    /* Production needs its public address; development can use the request origin. */
     if (!config.publicUrl) {
       if (role === 'service') fatal('PUBLIC_URL is missing — successUrl and the webhook target would point nowhere reachable');
       else warn('PUBLIC_URL is empty — falling back to the origin each request arrives on');

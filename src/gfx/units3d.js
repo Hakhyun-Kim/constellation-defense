@@ -1,7 +1,4 @@
-/* =====================================================
- * 사람 모양 용사 13종 + 별지기 (치비, +Z를 바라봄) · 초상 렌더
- * 몸통 조립은 makeHumanBase 하나로 — 용사와 별지기가 같은 뼈대를 쓴다.
- * ===================================================== */
+/* Thirteen chibi hero classes and the champion face +Z. makeHumanBase shares body construction; portrait rendering reuses the same models. */
 import * as THREE from 'three';
 import * as D from '../data.js';
 import { lam, glow } from './common.js';
@@ -18,13 +15,13 @@ const CLASS_LOOK = {
   frostmage:    { tunic: 0x5db4e8, sleeve: 0x4394c8, pants: 0x2f5a78 },
   sentinel:     { tunic: 0x5a6478, sleeve: 0x454e60, pants: 0x32384a },
   spiritarcher: { tunic: 0x9a7fd8, sleeve: 0x7f64bd, pants: 0x54487a },
-  /* 신화 3종 */
+  /* Three mythic classes. */
   swordsaint:   { tunic: 0xffe08a, sleeve: 0xe0b955, pants: 0x8a6a2a },
   archmage:     { tunic: 0x3a2a6e, sleeve: 0x2a1e52, pants: 0x1e1640 },
   seraph:       { tunic: 0xfaf6ea, sleeve: 0xe8e0c8, pants: 0xc8bfa0 },
 };
 
-/* 장비 파츠 헬퍼 */
+/* Equipment-part helpers. */
 function makeSword(bladeMat) {
   const sword = new THREE.Group();
   const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.46, 0.02), bladeMat);
@@ -51,7 +48,7 @@ function makeBow(woodMat, horizontal = false) {
   arc.rotation.z = Math.PI / 2;
   const string = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.5, 0.008), lam(0xe8e8e8));
   bow.add(arc, string);
-  if (horizontal) bow.rotation.z = Math.PI / 2;   // 석궁처럼 눕힘
+  if (horizontal) bow.rotation.z = Math.PI / 2;   // Rotate horizontally like a crossbow.
   return bow;
 }
 function makeStaff(headMesh) {
@@ -93,9 +90,7 @@ function makeFullHelm(headGroup) {
   headGroup.add(helm, top);
 }
 
-/* ---------- 공용 몸통 ----------
- * 다리·몸통·허리띠·양팔·머리(눈까지)를 조립한다.
- * legPivots: 걷는 캐릭터(별지기)는 다리에 피벗을 잡아 refs.legs로 돌려준다. */
+/* Build legs, torso, belt, arms and head with eyes. Walking characters expose leg pivots through refs.legs. */
 function makeHumanBase({ tunic, sleeve, pants, belt, legPivots = false }) {
   const g = new THREE.Group();
   const refs = {};
@@ -171,14 +166,14 @@ export function makeHumanHero(cls, tier) {
     mesh.position.set(-0.1, -0.16, z);
     armL.add(mesh);
   };
-  /* 왼손 보조 검 (쌍검 직업) — holdRight와 같은 자세로 왼팔에 */
+  /* The offhand sword uses the left-arm equivalent of holdRight for dual wielders. */
   const holdLeftSword = (mesh) => {
     mesh.position.set(0, -0.26, 0.06);
     mesh.rotation.x = Math.PI / 5;
     armL.add(mesh);
   };
 
-  /* --- 직업별 장비 --- */
+  /* Class-specific equipment. */
   switch (cls) {
     case 'knight':
       makeKnightHelm(head, 0xd83a3a);
@@ -209,14 +204,14 @@ export function makeHumanHero(cls, tier) {
         refs.staffOrb = orb;
       }
       break;
-    case 'spellblade': {  /* 마검사: 불타는 검 */
+    case 'spellblade': {  /* Spellblade: flaming sword. */
       makeKnightHelm(head, 0xb14fd8);
       const flameBlade = makeSword(glow(0xff8a3d));
       holdRight(flameBlade);
       refs.flame = flameBlade;
       break;
     }
-    case 'windblade': {   /* 질풍검객: 쌍검 + 머리띠 */
+    case 'windblade': {   /* Gale swordsman: twin swords and headband. */
       const band = new THREE.Mesh(new THREE.CylinderGeometry(0.215, 0.215, 0.05, 12, 1, true),
         new THREE.MeshLambertMaterial({ color: 0x2f8070, side: THREE.DoubleSide }));
       band.position.y = 0.06;
@@ -225,7 +220,7 @@ export function makeHumanHero(cls, tier) {
       holdLeftSword(makeSword(lam(0xd8f4ec)));
       break;
     }
-    case 'paladin': {     /* 성기사: 금방패 + 후광 */
+    case 'paladin': {     /* Paladin: gold shield and halo. */
       makeFullHelm(head);
       holdLeft(makeShield(0xf2d98a));
       holdRight(makeSword(lam(0xfff2c8)));
@@ -236,43 +231,43 @@ export function makeHumanHero(cls, tier) {
       refs.halo = halo;
       break;
     }
-    case 'frostmage': {   /* 빙결사: 얼음 결정 지팡이 */
+    case 'frostmage': {   /* Cryomancer: crystal staff. */
       makeWizardHat(0x3a7fc0, head);
       const ice = new THREE.Mesh(new THREE.OctahedronGeometry(0.09), glow(0xaef4ff));
       holdRight(makeStaff(ice));
       refs.staffOrb = ice;
       break;
     }
-    case 'sentinel': {    /* 파수꾼: 눕힌 석궁 */
+    case 'sentinel': {    /* Sentinel: horizontal crossbow. */
       makeHood(0x3a4152, head);
       const crossbow = makeBow(lam(0x4a3a28), true);
       crossbow.rotation.x = Math.PI / 2.2;
       holdRight(crossbow);
       break;
     }
-    case 'spiritarcher': { /* 정령궁수: 빛나는 활 */
+    case 'spiritarcher': { /* Spirit archer: glowing bow. */
       makeHood(0x6a52a8, head);
       const bow = makeBow(glow(0xd8b4ff));
       holdLeft(bow, 0.16);
       refs.bow = bow;
       break;
     }
-    /* --- 신화 --- */
-    case 'swordsaint': {        /* 검성: 빛나는 쌍검 + 금투구 */
+    /* Mythic equipment. */
+    case 'swordsaint': {        /* Sword saint: glowing twin blades and gold helmet. */
       makeKnightHelm(head, 0xff4d9d);
       const s1 = makeSword(glow(0xfff3b0)); holdRight(s1);
       holdLeftSword(makeSword(glow(0xfff3b0)));
       refs.flame = s1;
       break;
     }
-    case 'archmage': {          /* 대마도사: 별 지팡이 + 챙 넓은 모자 */
+    case 'archmage': {          /* Archmage: star staff and wide-brimmed hat. */
       makeWizardHat(0x2a1e52, head);
       const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 1), glow(0xff9ecb));
       holdRight(makeStaff(star));
       refs.staffOrb = star;
       break;
     }
-    case 'seraph': {            /* 수호천사: 후광 + 날개 + 빛나는 활 */
+    case 'seraph': {            /* Guardian angel: halo, wings and glowing bow. */
       const halo = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 8, 22), glow(0xfff3b0));
       halo.rotation.x = Math.PI / 2.3;
       halo.position.y = 0.32;
@@ -325,10 +320,7 @@ export function makeHumanHero(cls, tier) {
   return { group: g, refs };
 }
 
-/* =====================================================
- * 별지기 — 길을 걷는 메인 캐릭터 (걷기용 다리 피벗 포함)
- * look(옷장 선택)이 색과 파츠를 정한다 — 스킨은 데이터다.
- * ===================================================== */
+/* The walking champion includes leg pivots. Wardrobe data selects colors and model parts. */
 export function makeChampion(look) {
   const L = D.champLookOf(look);
   const outfit = D.CHAMP_WARDROBE.outfit.options[L.outfit];
@@ -339,13 +331,13 @@ export function makeChampion(look) {
     belt: 0xd9a93d, legPivots: true,
   });
 
-  /* 가슴의 별 문장 */
+  /* Star emblem on the chest. */
   const emblem = new THREE.Mesh(new THREE.OctahedronGeometry(0.055), glow(starColor));
   emblem.position.set(0, 0.47, 0.17);
   g.add(emblem);
   refs.emblem = emblem;
 
-  /* 머리카락 + 별 머리핀 (색은 옷장이 정한다) */
+  /* Hair and star hairpin use wardrobe colors. */
   const hair = new THREE.Mesh(
     new THREE.SphereGeometry(0.225, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), lam(hairColor));
   hair.position.y = 0.03;
@@ -354,7 +346,7 @@ export function makeChampion(look) {
   pin.position.set(0.14, 0.15, 0.1);
   head.add(pin);
 
-  /* 무기 — 별빛 검 / 쌍검 / 별 지팡이 */
+  /* Weapon choices: starlight sword, twin swords or star staff. */
   const bladeMat = glow(0xfff0b8);
   const hold = (mesh, arm, rot = Math.PI / 5) => {
     mesh.position.set(0, -0.26, 0.06);
@@ -370,7 +362,7 @@ export function makeChampion(look) {
     if (L.weapon === 'dual') hold(makeSword(bladeMat), armL);
   }
 
-  /* 망토 */
+  /* Cape. */
   const cape = new THREE.Mesh(
     new THREE.PlaneGeometry(0.44, 0.55),
     new THREE.MeshLambertMaterial({ color: outfit.cape, side: THREE.DoubleSide })
@@ -380,7 +372,7 @@ export function makeChampion(look) {
   g.add(cape);
   refs.cape = cape;
 
-  /* 곁을 도는 작은 별 — 별지기의 표식 */
+  /* Orbiting companion star identifies the champion. */
   const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.085), glow(starColor));
   star.position.set(0.4, 1.25, 0);
   g.add(star);
@@ -391,12 +383,7 @@ export function makeChampion(look) {
   return { group: g, refs };
 }
 
-/* =====================================================
- * 초상 — 이미지 파일 0개로 "그 캐릭터"의 그림을 얻는다.
- * 3D 조립 함수를 오프스크린에서 한 프레임만 렌더해 PNG dataURL로 굳힌다.
- * 등급별 망토·왕관까지 그대로 나오니 일러스트를 따로 그릴 이유가 없다.
- * 실패하면 null — 호출부는 이모지로 대체한다.
- * ===================================================== */
+/* Render one offscreen frame of the actual model into a PNG data URL for portraits, including tier capes and crowns. Return null on failure so callers can use emoji fallbacks. */
 let _pr = null;
 function snapshot(group, px) {
   if (!_pr) {
@@ -414,7 +401,7 @@ function snapshot(group, px) {
   const rim = new THREE.DirectionalLight(0x9fd4ff, 1.1);
   rim.position.set(-2.6, 1.6, -2.2);
   scene.add(rim);
-  group.rotation.y = Math.PI * 0.12;      // 살짝 비스듬히 — 정면보다 그림처럼 보인다
+  group.rotation.y = Math.PI * 0.12;      // Use a slight angle rather than a flat frontal portrait.
   scene.add(group);
   const cam = new THREE.PerspectiveCamera(28, 1, 0.1, 20);
   cam.position.set(0, 1.28, 3.5);
@@ -433,13 +420,13 @@ export function heroPortrait(cls, tier, px = 320) {
   try {
     url = snapshot(makeHumanHero(cls, tier).group, px);
   } catch (e) {
-    url = null;                              // WebGL 컨텍스트를 더 못 만드는 기기 등
+    url = null;                              // Fallback for devices unable to allocate another WebGL context.
   }
   _portraits.set(key, url);
   return url;
 }
 
-/* look마다 캐시한다: 옷장에서 옷을 갈아입힐 때마다 미리보기를 새로 굽는다 */
+/* Cache portraits by appearance; wardrobe changes render a new preview. */
 const _champPortraits = new Map();
 export function champPortrait(look, px = 320) {
   const key = JSON.stringify(D.champLookOf(look));
