@@ -1,3 +1,5 @@
+import { CONTENT_EN } from './i18n-content.js';
+
 export const SUPPORTED_LOCALES = Object.freeze(['ko', 'en']);
 
 export function normalizeLocale(value) {
@@ -5,12 +7,106 @@ export function normalizeLocale(value) {
 }
 
 const EN = new Map(Object.entries({
+  ...CONTENT_EN,
   '웨이브': 'Wave',
   '방어': 'Defense',
   '성 체력': 'Citadel HP',
   '도감': 'Codex',
   '도감·기록': 'Codex & Records',
   '별의 축복': 'Star Blessings',
+  '🎬 CONSTELLATION DEFENSE · 보드가 곧 전장입니다': '🎬 CONSTELLATION DEFENSE · The board is the battlefield',
+  '3D 방어는 멈추지 않습니다. 오른쪽 별자리판을 실시간으로 바꿔 세 길에 명령합니다.': 'The 3D defense never pauses. You command three lanes by rearranging the constellation board in real time.',
+  '① 위치가 길을, 색이 명령을 고릅니다': '① Position picks the lane, colour picks the order',
+  '왼쪽·가운데·오른쪽 열은 방어로를, Flare·Tide·Bloom은 피해·감속·회복을 정합니다.': 'Left, centre and right columns choose the lane; Flare, Tide and Bloom choose damage, slow or healing.',
+  '② 퍼즐은 영웅 기술의 충전 장치입니다': '② The puzzle is what charges hero abilities',
+  '매치 색과 연결된 아린·루나·도윤·세라·유나의 액티브가 더 빨리 돌아옵니다.': 'Matching a colour shortens the cooldown of the hero tied to it — Arin, Luna, Doyun, Sera or Yuna.',
+  '③ ㄱ·T·십자 5칸 = HERO SIGIL': '③ Five in an L, T or cross = HERO SIGIL',
+  '영웅 액티브 8초 충전 · 강화 전술 · 보스까지 아껴 쓸 성좌 수호자 3/3을 한 번에 완성합니다.': 'Eight seconds off a hero ability, a stronger tactic, and a full 3/3 Constellation Guardian to bank for the boss.',
+  '🧭 같은 영웅단이 별자리 원정을 계속합니다': '🧭 The same party carries on through the expedition',
+  '전투 사이에는 길과 마을을 고르고, 동료 영입과 전문화 선택을 다음 방어까지 이어 갑니다.': 'Between battles you choose roads and towns; recruits and specializations carry into the next defense.',
+  '🛡 전투 전 준비도 짧고 의미 있게': '🛡 Preparation is short, and it matters',
+  '고정 영웅단의 위치·전문화·성 강화를 정한 뒤 카운트다운이 다음 방어를 자동 시작합니다.': 'Set positions, specializations and citadel upgrades; a countdown then starts the next defense on its own.',
+  '⚔ 실시간 방어 시작 · 퍼즐 중에도 적은 전진합니다': '⚔ The defense is live — enemies advance while you solve',
+  '가장 위험한 길을 읽고, 그 순간 필요한 색과 문양을 선택해야 합니다.': 'Read the lane in the most danger, then pick the colour and shape that lane needs right now.',
+  '🌌 실제 인접 스왑이 전장 명령으로 이어졌습니다': '🌌 A real adjacent swap just became a battlefield order',
+  '열의 평균 위치가 대상 길을 정하고, 맞춘 별의 색과 개수가 효과를 정합니다.': 'The average column decides the target lane; the colour and count of matched stars decide the effect.',
+  '✦ HERO SIGIL · 영웅 성좌 문양 완성!': '✦ HERO SIGIL · constellation mark complete!',
+  '실제 합법 스왑으로 가로·세로 3칸이 교차했습니다. 액티브 -8초 · 성좌 수호자 즉시 3/3.': 'A legal swap crossed three horizontally with three vertically. Ability −8s, Guardian straight to 3/3.',
+  '⚡ 퍼즐과 연결된 영웅 액티브를 사용합니다': '⚡ Spending a hero ability the puzzle charged',
+  '매치는 남은 쿨다운을 되돌립니다. 준비된 고유 기술은 전투를 멈추지 않고 아래 퀵바에서 즉시 사용합니다.': 'Matches wind the cooldown back. A ready ability fires straight from the quick bar without pausing the fight.',
+  '✦ 저장해 둔 성좌 수호자를 지금 호출합니다': '✦ Calling in the Guardian that was banked',
+  '큰 매치의 보상은 즉시 소모되지 않습니다. 보스나 무너지는 길을 기다렸다 집중 지원합니다.': 'A big match is not spent on the spot. It waits for a boss, or for the lane that is about to break.',
+  'VICTORY · 다음 방어까지 긴장을 이어 갑니다': 'VICTORY · the pressure carries to the next defense',
+  '짧은 승리 확인과 눈에 보이는 카운트다운 뒤, 같은 지역의 다음 방어가 자동으로 시작됩니다.': 'A brief victory beat, a visible countdown, and the next defense in the same region begins on its own.',
+  '🐉 라이브 액터 보스 컷인': '🐉 Live-actor boss cut-in',
+  '컷인 속 모델이 그대로 전장에 진입합니다. 모아 둔 문양·영웅 액티브·성좌 지원을 겹쳐 쓸 순간입니다.': 'The model from the cut-in walks straight into the battlefield. This is the moment to stack marks, abilities and Guardian support.',
+  '✕ 관전 끝내기 (D)': '✕ End spectate (D)',
+  '밸런스 봇과 같은 실제 플레이 규칙': 'The same play rules the balance bot uses',
+  '실제 플레이 규칙으로 진행 중': 'Running under real play rules',
+  '난이도': 'Difficulty',
+  '❓ 조작법': '❓ Controls',
+  '⏹ 관전 끝': '⏹ End spectate',
+  '호위대와 함께 진군': 'Advancing with the escort',
+  '다음 방어가 시작됩니다': 'The next defense is starting',
+  '초 뒤 자동 시작 · Space로 즉시 시작': 's until auto-start · Space to begin now',
+  '😵 쓰러짐': '😵 Down',
+  '처음이시죠?': 'First time here?',
+  '적 대기': 'Enemies waiting',
+  '✕ 취소': '✕ Cancel',
+  '영웅단': 'Party',
+  '성장': 'Growth',
+  '별자리 전술': 'Constellation Tactics',
+  '별자리는 이어졌지만 그 길에 적이 없어요.': 'The constellation connected, but that lane has no enemies.',
+  '🟩 빈 발판 = 배치 · 🟦 찬 발판 = 자리 교환 · ←→ 고르고 Enter': '🟩 Empty pad = deploy · 🟦 Taken pad = swap · ←→ to choose, Enter to confirm',
+  '💰 여러 명 판매': '💰 Sell several',
+  '전체 선택': 'Select all',
+  '팔기': 'Sell',
+  '가득': 'Full',
+  '잔치 벌이기': 'Hold a Feast',
+  '🔄 처음부터 다시 도전! (Enter)': '🔄 Try again from the start! (Enter)',
+  '📖 도감 · 기록': '📖 Codex · Records',
+  '성은 무너지지 않았다. 별자리가 길을 지켰기 때문이다.': 'The citadel did not fall, because the constellation held the roads.',
+  '별지기의 성장은 그대로, 용사·골드·성은 처음부터 · 몬스터가 훨씬 세져요': 'Stargazer growth carries over; heroes, gold and citadel restart — and the monsters get much stronger',
+  '▶ 계속 지키기 (Enter)': '▶ Keep defending (Enter)',
+  '축복은 다음 게임부터 적용돼요!': 'Blessings apply from the next run onward.',
+  '이름과 모습은 이 기기에 저장돼요.': 'The name and look are saved on this device.',
+  '다음 판에도 그대로 이어져요!': 'They carry into the next run.',
+  '이걸로 입을래! (저장)': 'Wear this (save)',
+  '✨ 루나의 별자리': "✨ Luna's Constellation",
+  '같은 별자리의 별을 먼저 밝혀야 다음 별이 열려요!': 'Light the earlier star in a constellation before the next one opens.',
+  '🎵 배경음악': '🎵 Music',
+  '이 별길은 아직 조용합니다.': 'This star road is still quiet.',
+  '방어 성공!': 'Defense held!',
+  '전문화 1P 준비': '1 specialization point ready',
+  '발동 가능': 'Ready',
+  '🌊 도달한 웨이브:': '🌊 Wave reached:',
+  '👾 물리친 몬스터:': '👾 Monsters defeated:',
+  '✦ 영웅단 최고 레벨': '✦ Highest party level',
+  '· ✧ 선택한 전문화': '· ✧ Specializations chosen',
+  '🌌 별자리 전술판으로 세 갈래 길을 지켰어요': '🌌 You held three lanes with the constellation board',
+  '이번 수호의 기억': 'What this defense is remembered for',
+  '🌠 가장 큰 성좌': '🌠 Largest constellation',
+  '아직 기록되지 않음': 'Not recorded yet',
+  '🛡️ 집중 방어': '🛡️ Focused defense',
+  '세 길을 고르게 방어': 'Held all three lanes evenly',
+  '💚 결정적 회복': '💚 Decisive healing',
+  '회복 없이 끝까지 버팀': 'Held to the end without healing',
+  '🗺️ 원정 경로': '🗺️ Expedition route',
+  '별조각으로': 'Spend star shards on',
+  '을 받으면 다음 도전이 쉬워져요!': 'to make the next run easier.',
+  '서리': 'Frost',
+  '유성': 'Meteor',
+  '수호': 'Guardian',
+  '서리 성좌': 'Frost constellation',
+  '유성 성좌': 'Meteor constellation',
+  '수호 성좌': 'Guardian constellation',
+  '별을 누르거나 밀어 영웅 전술을 발동': 'Tap or drag stars to trigger hero tactics',
+  '웨이브가 시작되면 별들이 깨어나요.': 'The stars wake when the wave begins.',
+  '피해': 'Damage',
+  '사거리': 'Range',
+  '레벨업 포인트로 전문화를 고르세요': 'Spend level-up points on a specialization',
+  '전투에서 얻은 전문화 포인트는 원정 지도 속 마을 시설에서만 사용합니다.': 'Specialization points earned in battle are spent only at town facilities on the expedition map.',
+  '전투 처치와 웨이브 완료로 경험치를 얻습니다. 포인트가 생기면 한 영웅의 역할을 깊게 만드세요.': 'Kills and completed waves grant experience. When a point arrives, deepen one hero’s role with it.',
   '별빛 상점': 'Celestial Store',
   '별빛 개척자 깃발': 'Celestial Pioneer Banner',
   'AI 관전': 'AI Spectate',
@@ -259,6 +355,53 @@ export function translateKnownText(value, locale = activeLocale) {
     if (match) translated = `Defense ${match[1]}/${match[2]}`;
     match = core.match(/^(.+) · (\d+)$/);
     if (match && EN.has(match[1])) translated = `${EN.get(match[1])} · ${match[2]}`;
+    /* 전문화 카드는 데이터의 효과 문구 뒤에 필요 레벨을 덧붙인다 — 앞부분은
+     * 표에서 찾고 꼬리만 옮긴다. 이렇게 해야 밸런스 수치가 바뀌어도 번역이
+     * 따라간다: 조합된 문장 전체를 표에 넣으면 숫자 하나에 깨진다. */
+    match = core.match(/^(.+) · Lv (\d+) 필요$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} · Lv ${match[2]} required`;
+    match = core.match(/^범위 (\d+) · (.+)$/);
+    if (match) translated = `Range ${match[1]} · ${EN.get(match[2]) || match[2]}`;
+    match = core.match(/^치명 (\d+)% · ×([\d.]+)$/);
+    if (match) translated = `Crit ${match[1]}% · ×${match[2]}`;
+    match = core.match(/^다음 포인트까지 (\d+) XP$/);
+    if (match) translated = `${match[1]} XP to next point`;
+    match = core.match(/^경험치 (\d+)\/(\d+) · 전문화 포인트$/);
+    if (match) translated = `XP ${match[1]}/${match[2]} · specialization points`;
+    /* 시설 안내는 아이콘 + 시설 이름 + 고정 문장이다. 시설 이름은 콘텐츠 표에 있다. */
+    match = core.match(/^(\S+)\s(.+)에서만 전문화를 선택할 수 있습니다\.$/);
+    if (match) translated = `${match[1]} Specializations are chosen only at the ${EN.get(match[2]) || match[2]}.`;
+    /* 전투 토스트는 아이콘·별 종류·개수·길이 조합된다. 조합된 문장을 통째로
+     * 표에 넣으면 숫자 하나마다 새 항목이 필요해지므로 조각을 각각 옮긴다. */
+    match = core.match(/^(\S+) (서리|유성|수호) 성좌 (\d+)개 — (왼쪽|가운데|오른쪽) 길 전술 발동!$/);
+    if (match) {
+      translated = `${match[1]} ${EN.get(match[2])} constellation ×${match[3]} — cast on the ${EN.get(match[4])} lane!`;
+    }
+    match = core.match(/^(왼쪽|가운데|오른쪽) 길 · (.+) 영웅 성좌 문양!$/);
+    if (match) translated = `${EN.get(match[1])} lane · ${EN.get(match[2]) || match[2]} Hero Sigil!`;
+    match = core.match(/^👊 중간보스 호위 (.+) 격파! 💰(\d+)$/);
+    if (match) translated = `👊 Commander escort ${EN.get(match[1]) || match[1]} defeated! 💰${match[2]}`;
+    match = core.match(/^👊 (.+) 격파! 💰(\d+)$/);
+    if (!translated && match) translated = `👊 ${EN.get(match[1]) || match[1]} defeated! 💰${match[2]}`;
+    match = core.match(/^성 \+(\d+) · (\d+)명 후퇴$/);
+    if (match) translated = `Citadel +${match[1]} · ${match[2]} pushed back`;
+    match = core.match(/^([\d.]+)초$/);
+    if (match) translated = `${match[1]}s`;
+    /* 게임오버 통계는 숫자·난이도·보상이 문장에 박혀 나온다. */
+    match = core.match(/^\((쉬움|보통|어려움)\)$/);
+    if (match) translated = `(${EN.get(match[1])})`;
+    match = core.match(/^(\d+)마리$/);
+    if (match) translated = `${match[1]}`;
+    match = core.match(/^✨ 별조각 \+(\d+) 획득!$/);
+    if (match) translated = `✨ +${match[1]} star shards earned!`;
+    /* 전술 적중 표시와 콤보는 전투 내내 갱신된다 — 숫자와 이름이 매번 바뀌므로
+     * 통째로 표에 넣을 수 없다. */
+    match = core.match(/^(\d+)매치 · (.+)$/);
+    if (match) translated = `${match[1]}-match · ${EN.get(match[2]) || match[2]}`;
+    match = core.match(/^(왼쪽|가운데|오른쪽) 길 길을 조준해요$/);
+    if (match) translated = `Aiming at the ${EN.get(match[1])} lane`;
+    match = core.match(/^🔥 콤보 (\d+)$/);
+    if (match) translated = `🔥 Combo ${match[1]}`;
     match = core.match(/^💾 저장 위치 · (.+)$/);
     if (match) translated = `💾 Save location · ${EN.get(match[1]) || match[1]}`;
     match = core.match(/^⚠️ (중간보스|대보스) (.+) 접근(!+)$/);

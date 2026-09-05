@@ -299,6 +299,31 @@ async function runSuite(repository, label) {
     const tourHistory = await repository.purchases(tourBuyer.accountId);
     assert.ok(tourHistory[0].refundedAt, '모의 환불도 감사 기록을 남긴다');
 
+    /* 모의 지급의 두 가지 재시도를 구분한다. 같은 이벤트의 재전송은 멱등성이
+     * 잡고, 다른 이벤트가 환불된 결제를 가리키면 결제 의도의 상태가 잡는다.
+     * 안내 투어가 이 둘을 각각 보여주므로 응답이 뒤바뀌면 설명이 거짓이 된다. */
+    const mockBuyer = sessionCookie(await call('/api/store/catalog?locale=ko'));
+    const mockOpened = await openCheckout(mockBuyer);
+    const mockReference = referenceOf((await mockOpened.json()).redirectUrl);
+    const mockComplete = (body) => call('/api/store/mock-complete', {
+      method: 'POST', headers: { cookie: mockBuyer, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reference: mockReference, ...body }),
+    });
+
+    assert.equal((await mockComplete().then((r) => r.json())).duplicate, false, '첫 모의 지급');
+    assert.equal(await ownsBanner(mockBuyer), true);
+    assert.equal((await mockComplete().then((r) => r.json())).duplicate, true,
+      '같은 이벤트 재전송은 멱등성이 잡는다');
+
+    await call('/api/store/mock-refund', {
+      method: 'POST', headers: { cookie: mockBuyer, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reference: mockReference }),
+    });
+    assert.equal(await ownsBanner(mockBuyer), false, '모의 환불로 회수된다');
+    assert.equal((await mockComplete({ distinct: true }).then((r) => r.json())).ignored,
+      'checkout is already refunded', '환불된 결제를 가리키는 다른 이벤트는 상태가 잡는다');
+    assert.equal(await ownsBanner(mockBuyer), false, '뒤늦은 지급이 회수를 되돌리지 않는다');
+
     /* 남의 결제는 모의 환불로도 건드릴 수 없다. */
     const stranger = sessionCookie(await call('/api/store/catalog?locale=ko'));
     const notYours = await call('/api/store/mock-refund', {

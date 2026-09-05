@@ -44,16 +44,6 @@ const ui = new UI();
 const tacticFeedback = createTacticFeedback();
 installDocumentLocalization(locale);
 const neonStore = initNeonStore({ locale });
-/* ?tour=neon — 게임이 도는 동안 옆에서 결제 통합을 설명한다. 설명 단계 일부는
- * 실제로 서버에 요청을 보내므로, 화면의 값은 전부 방금 받은 응답이다. */
-if (urlParams.get('tour') === 'neon') {
-  initNeonTour({
-    locale,
-    openStore: () => neonStore?.open(),
-    closeStore: () => neonStore?.close(),
-    refreshStore: () => neonStore?.refresh(),
-  });
-}
 /* URL로 강제 지정 가능: ?gfx=high|lite|min (min은 테스트/초저사양용) */
 const urlGfx = urlParams.get('gfx');
 const judgeMode = urlParams.has('judge');
@@ -2155,3 +2145,30 @@ window.__game = {
   /* 규칙·상태는 바꾸지 않는 시각 연출 훅. 6은 영웅 문양 미리보기다. */
   previewTactic(kind = 'flare', lane = 1, size = 3) { return tactics.preview(kind, lane, size); },
 };
+
+/* ?tour=neon — 게임이 도는 동안 옆에서 결제 통합을 설명한다.
+ *
+ * 여기서 시작하는 이유: 투어가 판을 몰아붙였다가 무너뜨리는 연출을 쓰는데,
+ * 그 함수들이 이 지점에서야 존재한다. 디버그 훅(window.__game)을 빌려 쓰지 않고
+ * 필요한 것만 명시적으로 넘긴다 — 데모가 디버그 표면에 기대면 둘 다 망가진다. */
+if (urlParams.get('tour') === 'neon') {
+  initNeonTour({
+    locale,
+    openStore: () => neonStore?.open(),
+    closeStore: () => neonStore?.close(),
+    refreshStore: () => neonStore?.refresh(),
+    stage: {
+      /* 후반 웨이브로 건너뛰어 보스가 섞인 편성을 부른다. */
+      hurry(wave) { state.wave = Math.max(state.wave, wave); refreshAll(); },
+      /* 성을 무너뜨려 판을 끝낸다. 결제 이야기로 넘어가는 장면 전환일 뿐,
+       * 파는 물건은 전투에 아무 영향이 없는 치장품이다. */
+      fall() {
+        state.castleHp = 0;
+        state.phase = 'over';
+        state.shardsEarned = D.shardReward(state.wave, state.bossKills);
+        onGameOver();
+      },
+      wave: () => state.wave,
+    },
+  });
+}

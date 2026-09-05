@@ -1,16 +1,18 @@
 /* 안내 투어 — 게임 화면만 보고 결제 통합을 이해할 수 있게 한다.
  *
- * 문서를 읽지 않고, 영상을 따로 틀지 않고, 게임이 자동으로 도는 동안 옆 패널이
- * 무엇이 만들어졌는지 설명한다. 설명만 하면 슬라이드와 다를 게 없으므로, 각
- * 단계는 가능한 한 실제 요청을 보내고 그 응답을 그대로 보여준다 — 화면의 숫자는
- * 전부 방금 서버가 준 값이다.
+ * 구성이 "게임 설명 + 결제 설명"이 아니라 "판이 무너진 뒤의 결제 수명 전체"인
+ * 이유: 결제 회사가 보고 싶은 것은 잘 되는 한 번이 아니라 잘못될 수 있는
+ * 모든 경우다. 그래서 앞은 짧게 몰아붙여 끝내고, 뒤에서 위조 서명·재전송·
+ * 이중 구매·환불·환불 뒤 뒤늦은 지급을 하나씩 실제로 던져 본다.
  *
- * 두 가지가 이 파일의 형태를 정했다.
- *  · 볼 사람이 한국어 화자라는 보장이 없다. 그래서 게임과 같은 ko/en 두 벌.
- *  · 면접관은 새로고침한다. 그래서 투어는 시작할 때 자기 상태를 되돌린다 —
- *    안 그러면 두 번째 실행에서 이중청구 방지에 막혀 4단계부터 멈춘다. */
+ * 각 단계는 진짜 요청을 보내고 응답을 그대로 찍는다. 화면의 값은 전부 방금
+ * 서버가 준 것이고, 지급과 회수는 서명된 웹훅이 지나는 같은 함수를 지난다.
+ *
+ * 파는 물건이 치장품이라는 점은 일부러 짚는다. 판이 무너진 직후는 힘을 파는
+ * 자리이기 쉬운데, 여기서 파는 것은 전투에 영향이 없고 그래서 지급 여부를
+ * 눈으로 증명할 수 있다. */
 
-const STEP_MS = 8000;
+const DEFAULT_MS = 8000;
 const BANNER = 'cosmetic.celestial_banner';
 
 async function api(path, options) {
@@ -29,6 +31,7 @@ const post = (path, payload) => api(path, {
 });
 
 const pretty = (value) => JSON.stringify(value, null, 2);
+const line = (status, body) => `← ${status}  ${typeof body === 'string' ? body : pretty(body)}`;
 
 const TEXT = {
   ko: {
@@ -37,29 +40,30 @@ const TEXT = {
     noIntent: '결제 의도가 없습니다 — 앞 단계를 먼저 실행하세요.',
     sameCode: '같은 상품, 같은 코드. 자릿수는 통화가 정합니다.',
     steps: [
-      ['이 게임에 Neon 결제를 붙였습니다',
-        '이미 만들어 배포한 3D 게임입니다. 서버가 전혀 없던 정적 빌드에, 결제만을 위한 첫 서버 권한 영역을 더했습니다. 뒤에서 도는 전투는 봇이 사람과 같은 조작으로 실제 플레이하는 화면입니다.',
-        '판매 품목: 별빛 개척자 깃발 — 전투 능력에 영향 없는 영구 치장품'],
+      ['판이 어려워집니다',
+        '이미 만들어 배포한 3D 게임입니다. 봇이 사람과 같은 조작으로 실제 플레이하고 있고, 지금 후반 웨이브로 밀어 보스가 섞인 편성을 부릅니다.'],
+      ['성이 무너졌습니다',
+        '여기가 대부분의 게임이 힘을 파는 자리입니다. 이 게임이 파는 것은 전투에 아무 영향이 없는 치장품이고, 그래서 지급됐는지 아닌지를 눈으로 증명할 수 있습니다 — 화폐 묶음이었다면 "지급이 됐는가"와 "경제에 반영됐는가"가 뒤섞입니다.'],
       ['가격은 서버가 정합니다',
-        '상점을 열면 클라이언트는 카탈로그를 받아옵니다. 가격·통화·청구 국가가 전부 서버 응답에 들어 있습니다. 청구 국가는 게임 언어가 아니라 명시적 선택·지리 헤더·브라우저 지역 순으로 서버가 정합니다 — 이 투어는 한국 시장을 보여주려고 KR을 명시적으로 고릅니다.'],
+        '상점을 열면 카탈로그를 받아옵니다. 가격·통화·청구 국가가 전부 서버 응답에 있습니다. 청구 국가는 게임 언어가 아니라 명시적 선택·지리 헤더·브라우저 지역 순으로 서버가 정합니다.'],
       ['₩4,900이 490000으로 나갑니다',
-        'Neon은 가격을 통화 기본 단위의 100배 정수로 받습니다. 원화는 보조 단위가 없어서 이 숫자가 한국 개발자 눈에는 100배 오류처럼 보입니다. 배수는 상수 표 한 곳에만 두고, 표시 문자열은 Intl로 파생시킵니다 — 손으로 적지 않습니다.'],
+        'Neon은 가격을 기본 단위의 100배 정수로 받습니다. 원화는 보조 단위가 없어 이 숫자가 100배 오류처럼 보입니다. 배수는 상수 표 한 곳에만 두고 표시 문자열은 Intl로 파생시킵니다.'],
       ['클라이언트가 보내는 것은 SKU와 언어뿐입니다',
-        '구매를 누르면 이 본문이 서버로 갑니다. 가격도, 통화도, 국가도 없습니다. 서버가 허용 목록에서 값을 붙이고, 비밀 키로 Neon을 호출하고, 플레이어가 떠나기 전에 결제 의도를 원장에 기록합니다.'],
-      ['실제로는 여기서 Neon 결제 화면으로 갑니다',
-        '샌드박스에서 확인한 결제 수단은 카드 · Google Pay · Samsung Pay · Kakao Pay · Naver Pay 였습니다. 페이지는 languageLocale로 보낸 ko-KR을 따라 한국어로 뜨고, 총계는 ₩4,900에 부가세 ₩445가 포함됩니다. 이 투어는 서버를 떠나지 않는 모의 모드로 돕니다.',
-        '실거래 2건 완료 — orderNumber 9BKP-47RY-KJLL (네이버페이), 29QS-Y3S5-VW7H (카드)'],
-      ['돌아온 리다이렉트는 아무 권한이 없습니다',
-        'Neon 문서가 명시합니다 — 플레이어가 successUrl에 도착하는 것이 웹훅보다 빠를 수 있습니다. 그래서 리다이렉트는 모달을 열고 폴링을 시작할 뿐이고, 지급은 서명이 검증된 웹훅만 합니다. 주소창에 ?purchase=return을 직접 쳐도 아무 일도 일어나지 않습니다.',
-        '지급 경로는 하나뿐입니다: purchase.completed + x-neon-digest (HMAC-SHA256)'],
-      ['웹훅이 지급합니다',
-        '서명을 원문 그대로 검증하고, 기록해 둔 결제 의도와 계정·SKU·수량·금액을 대조한 뒤에야 권리를 씁니다. 지금 이 투어에서도 같은 함수(repository.fulfill)를 지나갑니다.'],
-      ['같은 이벤트가 두 번 와도 한 번만 줍니다',
-        'Neon은 2xx가 아닌 응답을 최대 36시간 재시도합니다. 그래서 재시도로 절대 풀리지 않는 경우 — 모르는 참조, 처리하지 않는 이벤트 종류, 환경 불일치, 금액·계정 불일치 — 는 사유를 로그에 남기고 200으로 받습니다. 서명 실패만 403으로 남깁니다. 그건 설정 오류라서 조용하면 안 됩니다.'],
-      ['환불하면 회수합니다',
-        '환불 이벤트는 externalReferenceId가 비어 올 수 있어서 purchaseId로 결제 의도를 되찾습니다. 권리는 지우고 구매 기록은 남깁니다 — 환불하면 사라지는 감사 기록은 감사 기록이 아닙니다.'],
+        '가격도, 통화도, 국가도 보내지 않습니다. 서버가 허용 목록에서 값을 붙이고, 비밀 키로 Neon을 호출하고, 플레이어가 떠나기 전에 결제 의도를 원장에 기록합니다.'],
+      ['① 위조된 웹훅 — 403',
+        '웹훅 주소는 인터넷에 열려 있습니다. 누구나 던질 수 있으니, 서명이 유일한 문지기입니다. 지금 브라우저에서 가짜 서명으로 직접 던져 보겠습니다.'],
+      ['② 진짜 지급',
+        '서명을 원문 그대로 검증하고, 기록해 둔 결제 의도와 계정·SKU·수량·금액을 대조한 뒤에야 권리를 씁니다.'],
+      ['③ 같은 이벤트가 또 오면',
+        'Neon은 2xx가 아닌 응답을 최대 36시간 재시도합니다. 재전송은 오류가 아니라 정상 트래픽이라, 같은 이벤트 id는 한 번만 지급됩니다.'],
+      ['④ 이미 가진 것을 또 사려 하면 — 409',
+        '상점 버튼은 비활성이지만 UI는 신뢰 경계 밖입니다. 영구 아이템을 두 번 파는 것은 플레이어를 두 번 청구하는 일이라 API가 직접 막습니다.'],
+      ['⑤ 환불 — 회수',
+        '환불 이벤트는 externalReferenceId가 비어 올 수 있어 purchaseId로 결제 의도를 되찾습니다. 권리는 지우고 구매 기록은 남깁니다.'],
+      ['⑥ 환불 뒤 뒤늦게 도착한 지급',
+        '웹훅 순서는 보장되지 않습니다. 환불된 결제에 지급 이벤트가 뒤늦게 닿으면 회수가 되살아나므로, 결제 의도가 pending이 아니면 거절합니다.'],
       ['서버는 클라이언트 종류를 가리지 않습니다',
-        '결제 API는 게임 파일과 분리된 독립 서비스입니다. 신원은 쿠키보다 Bearer 토큰을 먼저 봅니다 — Unity·Unreal에는 쿠키 항아리가 없고, 게임이 CDN에 있으면 SameSite 때문에 쿠키가 끊기기 때문입니다. 그래서 웹·게임 클라이언트·런처가 같은 이 주소를 봅니다.'],
+        '결제 API는 게임 파일과 분리된 독립 서비스입니다. 신원은 쿠키보다 Bearer 토큰을 먼저 봅니다 — Unity·Unreal에는 쿠키 항아리가 없고, 게임이 CDN에 있으면 SameSite 때문에 쿠키가 끊깁니다.'],
     ],
     codes: [
       ['서명 실패', '403', '설정 오류 — 시끄러워야 한다'],
@@ -80,29 +84,30 @@ const TEXT = {
     noIntent: 'No checkout intent yet — run the earlier step first.',
     sameCode: 'Same product, same code. The currency decides the decimals.',
     steps: [
-      ['A Neon checkout, added to a shipped game',
-        'This 3D game was already built and published as a static bundle with no server at all. The checkout adds its first server-authoritative surface. The battle running behind this panel is a bot playing for real, through the same inputs a person uses.',
-        'For sale: Celestial Pioneer Banner — a permanent cosmetic with no gameplay effect'],
+      ['The run gets hard',
+        'A 3D game that was already built and published. A bot is playing it for real, through the same inputs a person uses — and the tour has just pushed the run into late waves, where bosses join the formation.'],
+      ['The citadel falls',
+        'This is the moment most games sell power. What this one sells is a cosmetic with no effect on combat, which is exactly why fulfillment is provable by eye — a currency pack would blur "did the grant land" with "did the economy apply it".'],
       ['The server decides the price',
-        'Opening the store fetches a catalogue. Price, currency and billing country all come from the server. Billing country is never taken from the game language: it is an explicit choice, then a platform geo header, then the browser region. This tour picks KR explicitly to show the Korean market.'],
+        'Opening the store fetches a catalogue. Price, currency and billing country all come from the server. Billing country is never the game language: an explicit choice, then a platform geo header, then the browser region.'],
       ['₩4,900 travels as 490000',
-        'Neon takes prices as integers, 100× the base unit of the currency. The won has no subunit, so that number looks like a 100×-off bug to every Korean engineer who reads it. The multiplier lives in one frozen table and the display string is derived with Intl — never typed by hand.'],
+        'Neon takes prices as integers, 100× the base unit. The won has no subunit, so that number reads like a 100×-off bug. The multiplier lives in one frozen table and the display string is derived with Intl.'],
       ['The client sends a SKU and a language. Nothing else.',
-        'Pressing buy sends this body. No price, no currency, no country. The server looks the SKU up in an allowlist, calls Neon with the secret key, and records the intent in the ledger before the player leaves.'],
-      ['In production this is where Neon’s hosted page opens',
-        'The payment methods confirmed in the sandbox were card, Google Pay, Samsung Pay, Kakao Pay and Naver Pay. The page renders in Korean because we sent languageLocale ko-KR, and the total shows ₩4,900 with ₩445 of tax included. This tour runs in mock mode and never leaves the server.',
-        'Two real sandbox purchases — orderNumber 9BKP-47RY-KJLL (Naver Pay), 29QS-Y3S5-VW7H (card)'],
-      ['The redirect back grants nothing',
-        'Neon’s documentation is explicit: the player can reach successUrl before the webhook arrives. So the redirect only opens this modal and starts polling, and the entitlement is written by a verified webhook alone. Typing ?purchase=return by hand gets you a spinner.',
-        'One path can grant: purchase.completed with x-neon-digest (HMAC-SHA256)'],
-      ['The webhook is what grants',
-        'The signature is verified over the raw body, then the account, SKU, quantity and amount are matched against the recorded intent before anything is written. This tour goes through the same function — repository.fulfill.'],
-      ['Delivered twice, granted once',
-        'Neon retries any non-2xx response for up to 36 hours. So anything a retry could never fix — an unknown reference, an event type we do not handle, an environment mismatch, a wrong amount or account — is answered 200 with the reason logged. Only a bad signature gets a 403, because that is a misconfiguration and it should be noisy.'],
-      ['A refund takes the item back',
-        'Refund events can arrive with externalReferenceId null, so the checkout is found by purchaseId instead. The entitlement is removed and the purchase record is kept — an audit trail that disappears on refund is not an audit trail.'],
+        'No price, no currency, no country. The server looks the SKU up in an allowlist, calls Neon with the secret key, and records the intent in the ledger before the player leaves.'],
+      ['① A forged webhook — 403',
+        'The webhook endpoint is open to the internet; anyone can post to it, so the signature is the only gatekeeper. Watch the browser post one with a fake digest right now.'],
+      ['② The real grant',
+        'The signature is verified over the raw body, then account, SKU, quantity and amount are matched against the recorded intent before anything is written.'],
+      ['③ The same event, delivered again',
+        'Neon retries any non-2xx for up to 36 hours, so redelivery is ordinary traffic rather than an error. The same event id grants exactly once.'],
+      ['④ Buying what you already own — 409',
+        'The store button is disabled, but the button is on the far side of the trust boundary. Selling a permanent item twice means charging the player twice, so the API refuses it directly.'],
+      ['⑤ Refund — the item comes back',
+        'Refund events can arrive with externalReferenceId null, so the checkout is found by purchaseId. The entitlement is removed and the purchase record is kept.'],
+      ['⑥ A grant arriving after the refund',
+        'Webhook ordering is not guaranteed. A purchase event landing after a refund would resurrect what was revoked, so any checkout that is no longer pending is refused.'],
       ['The server does not care what kind of client is calling',
-        'The payment API is a service of its own, separate from the game files. Identity reads a bearer token before falling back to a cookie, because Unity and Unreal have no cookie jar and a game on a CDN loses cookies to SameSite. Web, game client and launcher all reach the same address.'],
+        'The payment API is a service of its own, separate from the game files. Identity reads a bearer token before falling back to a cookie, because Unity and Unreal have no cookie jar and a game on a CDN loses cookies to SameSite.'],
     ],
     codes: [
       ['Bad signature', '403', 'a misconfiguration — stay noisy'],
@@ -119,20 +124,30 @@ const TEXT = {
   },
 };
 
-/* 각 단계는 설명과, 화면에 띄울 "방금 실제로 일어난 일"을 함께 만든다.
- * run() 이 반환하는 문자열이 라이브 패널에 그대로 붙는다. */
 function buildSteps(ctx, text) {
-  const [s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] = text.steps;
-  const card = ([title, body, live]) => ({ title, body, live: live ? () => live : undefined });
+  const s = text.steps;
+  const card = ([title, body]) => ({ title, body });
 
   return [
-    card(s0),
     {
-      ...card(s1),
+      ...card(s[0]),
+      ms: 6000,
+      run: async () => {
+        ctx.stage.hurry(24);
+        return `wave → ${ctx.stage.wave()}`;
+      },
+    },
+    {
+      ...card(s[1]),
+      ms: 6000,
+      run: async () => { ctx.stage.fall(); return 'GAME OVER'; },
+    },
+    {
+      ...card(s[2]),
       run: async () => {
         ctx.openStore();
         await post('/api/store/market', { country: 'KR' });
-        const { data } = await api('/api/store/catalog?locale=' + ctx.locale);
+        const { data } = await api(`/api/store/catalog?locale=${ctx.locale}`);
         ctx.refreshStore();
         return pretty({
           playerId: data.playerId,
@@ -144,57 +159,93 @@ function buildSteps(ctx, text) {
       },
     },
     {
-      ...card(s2),
-      /* 같은 카탈로그를 두 시장으로 불러 온다. 통화별 자릿수까지 서버가
-       * 파생시킨다는 것을 나란히 놓고 보여주기 위해서다. */
+      ...card(s[3]),
       run: async () => {
         await post('/api/store/market', { country: 'US' });
-        const us = await api('/api/store/catalog?locale=' + ctx.locale);
+        const us = await api(`/api/store/catalog?locale=${ctx.locale}`);
         await post('/api/store/market', { country: 'KR' });
-        const kr = await api('/api/store/catalog?locale=' + ctx.locale);
+        const kr = await api(`/api/store/catalog?locale=${ctx.locale}`);
         ctx.refreshStore();
-        const line = (r) => `${r.data.country}  price ${String(r.data.items[0].price).padStart(6)}  →  ${r.data.items[0].displayPrice}`;
-        return `${line(kr)}\n${line(us)}\n\n${text.sameCode}`;
+        const row = (r) => `${r.data.country}  price ${String(r.data.items[0].price).padStart(6)}  →  ${r.data.items[0].displayPrice}`;
+        return `${row(kr)}\n${row(us)}\n\n${text.sameCode}`;
       },
     },
     {
-      ...card(s3),
+      ...card(s[4]),
       run: async () => {
         const { status, data } = await post('/api/store/checkout', { sku: 'CELESTIAL_BANNER', locale: ctx.locale });
         ctx.redirectUrl = data.redirectUrl || '';
         ctx.reference = new URLSearchParams(ctx.redirectUrl.split('?')[1] || '').get('reference');
-        const sent = pretty({ sku: 'CELESTIAL_BANNER', locale: ctx.locale });
-        return `→ ${sent}\n← ${status} ${ctx.reference ? 'redirectUrl issued' : pretty(data)}`;
+        return `→ ${pretty({ sku: 'CELESTIAL_BANNER', locale: ctx.locale })}\n${line(status, ctx.reference ? 'redirectUrl issued' : data)}`;
       },
     },
-    card(s4),
-    card(s5),
     {
-      ...card(s6),
+      ...card(s[5]),
+      /* 브라우저에는 웹훅 시크릿이 없다 — 그게 요점이다. 가짜 서명은 누구나
+       * 만들 수 있고, 서버는 그걸 알아본다. */
+      run: async () => {
+        const forged = await api('/api/webhooks/neon', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-neon-digest': 'deadbeef' },
+          body: JSON.stringify({ type: 'purchase.completed', version: 2, isSandbox: true }),
+        });
+        return `→ x-neon-digest: deadbeef\n${line(forged.status, forged.data)}`;
+      },
+    },
+    {
+      ...card(s[6]),
       run: async () => {
         if (!ctx.reference) return text.noIntent;
-        await post('/api/store/mock-complete', { reference: ctx.reference });
-        const { data } = await api('/api/store/entitlements');
+        const granted = await post('/api/store/mock-complete', { reference: ctx.reference });
+        const owned = await api('/api/store/entitlements');
         ctx.refreshStore();
-        return pretty(data.entitlements);
+        return `${line(granted.status, granted.data)}\n\n${pretty(owned.data.entitlements)}`;
       },
     },
-    { ...card(s7), diagram: 'codes' },
     {
-      ...card(s8),
+      ...card(s[7]),
       run: async () => {
         if (!ctx.reference) return text.noIntent;
-        const { data } = await post('/api/store/mock-refund', { reference: ctx.reference });
+        const again = await post('/api/store/mock-complete', { reference: ctx.reference });
+        const owned = await api('/api/store/entitlements');
+        return `${line(again.status, again.data)}\n\npurchases: ${Object.keys(owned.data.entitlements).length}`;
+      },
+      diagram: 'codes',
+    },
+    {
+      ...card(s[8]),
+      run: async () => {
+        const blocked = await post('/api/store/checkout', { sku: 'CELESTIAL_BANNER', locale: ctx.locale });
+        return line(blocked.status, blocked.data);
+      },
+    },
+    {
+      ...card(s[9]),
+      run: async () => {
+        if (!ctx.reference) return text.noIntent;
+        const refund = await post('/api/store/mock-refund', { reference: ctx.reference });
         const after = await api('/api/store/entitlements');
         ctx.refreshStore();
-        return `${pretty(data)}\n\n${pretty(after.data.entitlements)}`;
+        return `${line(refund.status, refund.data)}\n\n${pretty(after.data.entitlements)}`;
       },
     },
-    { ...card(s9), diagram: 'architecture' },
+    {
+      ...card(s[10]),
+      /* distinct: 같은 이벤트의 재전송이 아니라 "다른 지급 이벤트"로 보낸다.
+       * 재전송이면 멱등성 원장이 먼저 잡아 버려서, 정작 보여주려는 방어선
+       * (환불된 결제 의도는 지급하지 않는다)을 지나가지 못한다. */
+      run: async () => {
+        if (!ctx.reference) return text.noIntent;
+        const late = await post('/api/store/mock-complete', { reference: ctx.reference, distinct: true });
+        const owned = await api('/api/store/entitlements');
+        return `${line(late.status, late.data)}\n\n${pretty(owned.data.entitlements)}`;
+      },
+    },
+    { ...card(s[11]), diagram: 'architecture' },
   ];
 }
 
-export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStore } = {}) {
+export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStore, stage } = {}) {
   const panel = document.querySelector('#neonTour');
   if (!panel) return null;
 
@@ -209,11 +260,13 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
   const prevBtn = panel.querySelector('#tourPrev');
   const exitBtn = panel.querySelector('#tourExit');
 
+  const noop = () => {};
   const ctx = {
     locale,
-    openStore: openStore || (() => {}),
-    closeStore: closeStore || (() => {}),
-    refreshStore: refreshStore || (() => {}),
+    openStore: openStore || noop,
+    closeStore: closeStore || noop,
+    refreshStore: refreshStore || noop,
+    stage: { hurry: noop, fall: noop, wave: () => 0, ...(stage || {}) },
   };
   const script = buildSteps(ctx, text);
   let index = -1;
@@ -258,7 +311,7 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
     liveEl.classList.add('hidden');
     let live = '';
     try {
-      live = step.run ? await step.run() : (step.live ? step.live() : '');
+      live = step.run ? await step.run() : '';
     } catch (error) {
       /* 서버 없이 열린 경우(정적 배포)에는 라이브 단계가 실패한다. 투어를
        * 멈추지 않고, 왜 비어 있는지만 말한다. */
@@ -274,7 +327,7 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
   function schedule() {
     clearTimeout(timer);
     if (paused) return;
-    timer = setTimeout(() => { show(index + 1).then(schedule); }, STEP_MS);
+    timer = setTimeout(() => { show(index + 1).then(schedule); }, script[index]?.ms || DEFAULT_MS);
   }
 
   const go = (next) => { show(next).then(schedule); };
@@ -294,8 +347,8 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
   });
 
   /* 면접관은 새로고침한다. 이미 보유한 상태로 다시 시작하면 이중청구 방지가
-   * 4단계를 막으므로, 투어는 시작 전에 자기가 만든 상태를 되돌린다. 되돌리는
-   * 것도 실제 회수 경로를 지난다 — 데모용 지름길이 아니다. */
+   * 결제 단계를 막으므로, 투어는 시작 전에 자기가 만든 상태를 되돌린다.
+   * 되돌리는 것도 실제 회수 경로를 지난다 — 데모용 지름길이 아니다. */
   async function resetOwnState() {
     try {
       const { data } = await api('/api/store/entitlements');

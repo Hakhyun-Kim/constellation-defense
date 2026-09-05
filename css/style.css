@@ -2751,6 +2751,12 @@ body.tour-on #neonStoreModal .modal-card { margin-right: min(440px, 45vw); }
 /* 해설자는 하나여야 한다. 봇 관전 자막과 투어 패널이 동시에 말하면 둘 다
  * 읽히지 않고, 관전 자막은 한국어 전용이라 영어 투어와 섞이기까지 한다. */
 body.tour-on #demoBar { display: none; }
+/* 전투 토스트는 계속 떠야 한다 — 판이 살아 있다는 증거라서. 다만 투어 중에는
+ * 상점 카드 위로 겹치므로 왼쪽 위로 비켜 세운다. */
+body.tour-on #toasts {
+  top: 10px; left: 12px; width: auto; max-width: 40vw;
+  transform: none; align-items: flex-start;
+}
 @media (max-width: 900px) {
   #neonTour { top: auto; right: 8px; bottom: 8px; left: 8px; width: auto; max-height: 46vh; }
   body.tour-on #neonStoreModal .modal-card { margin-right: 0; }

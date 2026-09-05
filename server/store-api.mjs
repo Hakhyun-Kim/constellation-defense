@@ -331,7 +331,11 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           return json(res, 404, { error: 'checkout not found' });
         }
         const mockPurchase = {
-          eventId: `mock-event-${input.reference}`,
+          /* 기본은 같은 이벤트 id — 재전송을 흉내 내어 멱등성을 보여줄 수 있다.
+           * distinct 를 주면 새 id 로 보낸다: "다른 지급 이벤트가 뒤늦게 같은
+           * 결제를 가리키는" 경우라, 멱등성이 아니라 결제 의도의 상태가
+           * 막아야 하는 상황이다. 둘은 다른 방어선이고 섞이면 안 된다. */
+          eventId: input.distinct ? `mock-event-${input.reference}-${Date.now()}` : `mock-event-${input.reference}`,
           purchaseId: `mock-purchase-${input.reference}`,
           orderNumber: 'MOCK-DEMO',
           accountId: pending.accountId,

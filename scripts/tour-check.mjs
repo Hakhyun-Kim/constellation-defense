@@ -11,8 +11,13 @@ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../css/style.css', import.meta.url), 'utf8');
 
 /* 모듈은 DOM 을 만지므로 Node 에서 import 할 수 없다. 대신 TEXT 표만 떼어
- * 평가한다 — 검사하려는 것이 문구의 대칭성이지 렌더링이 아니기 때문. */
-const table = source.slice(source.indexOf('const TEXT = {'), source.indexOf('/* 각 단계는 설명과'));
+ * 평가한다 — 검사하려는 것이 문구의 대칭성이지 렌더링이 아니기 때문.
+ * 끝은 주석이 아니라 표 자체의 닫는 괄호로 찾는다: 주석은 옮겨지지만
+ * 최상위에서 열 없이 붙은 `};` 는 표의 끝일 수밖에 없다. */
+const start = source.indexOf('const TEXT = {');
+const end = source.indexOf('\n};\n', start);
+if (start < 0 || end < 0) { console.error('TEXT 표를 찾지 못했습니다'); process.exit(1); }
+const table = source.slice(start, end + 3);
 const TEXT = new Function(`${table}; return TEXT;`)();
 
 const locales = Object.keys(TEXT);
