@@ -402,6 +402,13 @@ export function translateKnownText(value, locale = activeLocale) {
     if (match) translated = `Aiming at the ${EN.get(match[1])} lane`;
     match = core.match(/^🔥 콤보 (\d+)$/);
     if (match) translated = `🔥 Combo ${match[1]}`;
+    /* 방어 완료 보너스와 레벨업 안내 — 판이 계속 돌면 반복해서 뜬다. */
+    match = core.match(/^(.+) · 방어 (\d+)\/(\d+) 완료! 보너스 (\d+)$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} · Defense ${match[2]}/${match[3]} complete! Bonus ${match[4]}`;
+    match = core.match(/^(.+) Lv (\d+)! 영웅 성장 탭에서 전문화를 고르세요$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} Lv ${match[2]}! Choose a specialization in the Hero Growth tab`;
+    match = core.match(/^([^\p{L}\p{N}]*)(.+) · 방어 (\d+)\/(\d+)[를을] 준비하세요\.?$/u);
+    if (match) translated = `${match[1]}${EN.get(match[2]) || match[2]} · Prepare defense ${match[3]}/${match[4]}.`;
     match = core.match(/^💾 저장 위치 · (.+)$/);
     if (match) translated = `💾 Save location · ${EN.get(match[1]) || match[1]}`;
     match = core.match(/^⚠️ (중간보스|대보스) (.+) 접근(!+)$/);
