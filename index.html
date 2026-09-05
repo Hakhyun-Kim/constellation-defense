@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- connect-src names the local dedicated game server explicitly; deploying it on another origin means widening this list on purpose. -->
+<!-- connect-src names the local dedicated game server explicitly; a remotely hosted payment API or game server means adding its origin here AND in the neon-api-base meta below (deploy/cloud-run.sh prints both edits). -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws://127.0.0.1:8643 ws://localhost:8643">
+<!-- Empty = payment API on the page's own origin. Set to a deployed service URL for separate hosting. -->
+<meta name="neon-api-base" content="">
 <title>🌌 Constellation Defense</title>
 <link rel="icon" type="image/png" href="assets/branding/icon.png">
 <link rel="stylesheet" href="css/style.css">
