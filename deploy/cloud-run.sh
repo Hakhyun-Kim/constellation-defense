@@ -27,6 +27,8 @@
 #                          NEON_WEBHOOK_SECRET are read from (never echoed);
 #                          missing values are prompted for with hidden input.
 #    --skip-secrets        reuse existing Secret Manager versions unchanged
+#    --smoke-only          run only the smoke checks against the deployed
+#                          service (e.g. after adding a real key version)
 #
 #  Runs in Git Bash (Windows), macOS, Linux, or Cloud Shell. Requires the
 #  gcloud CLI, an authenticated account, and a project with billing.
@@ -44,6 +46,7 @@ ENV_FILE=".env"
 DRY_RUN=0
 SKIP_SECRETS=0
 SMOKE_CHECKOUT=0
+SMOKE_ONLY=0
 DELETE=0
 
 while [ $# -gt 0 ]; do
@@ -55,6 +58,7 @@ while [ $# -gt 0 ]; do
     --allowed-origins) ALLOWED_ORIGINS="$2"; shift 2 ;;
     --env-file) ENV_FILE="$2"; shift 2 ;;
     --skip-secrets) SKIP_SECRETS=1; shift ;;
+    --smoke-only) SMOKE_ONLY=1; shift ;;
     --smoke-checkout) SMOKE_CHECKOUT=1; shift ;;
     --delete) DELETE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -93,6 +97,8 @@ fi
 echo "[i] Project: $PROJECT · Region: $REGION · Service: $SERVICE"
 echo "[i] PUBLIC_URL (player return origin): $PUBLIC_URL"
 echo "[i] ALLOWED_ORIGINS (CORS):            $ALLOWED_ORIGINS"
+
+if [ "$SMOKE_ONLY" = 0 ]; then
 
 # --- APIs (idempotent) ------------------------------------------------------
 run "${GC[@]}" services enable run.googleapis.com cloudbuild.googleapis.com \
@@ -157,7 +163,12 @@ else
   done
   "${GC[@]}" projects add-iam-policy-binding "$PROJECT" \
     --member="serviceAccount:$SA" --role=roles/datastore.user >/dev/null
-  echo "[i] Runtime service account $SA can read the secrets and Firestore."
+  # Projects created since 2024 no longer grant the compute default account
+  # the Cloud Build roles, so a --source deploy fails reading its own upload.
+  # builds.builder bundles the storage/artifact-registry/logging pieces.
+  "${GC[@]}" projects add-iam-policy-binding "$PROJECT" \
+    --member="serviceAccount:$SA" --role=roles/cloudbuild.builds.builder >/dev/null
+  echo "[i] Runtime service account $SA can read the secrets, Firestore, and run source builds."
 fi
 
 # --- Deploy -----------------------------------------------------------------
@@ -175,6 +186,8 @@ run "${GC[@]}" run deploy "$SERVICE" \
   --min-instances 0 --max-instances 1 --memory 512Mi \
   --set-env-vars "^##^NEON_MOCK_CHECKOUT=0##NEON_ENVIRONMENT=sandbox##STORE_BACKEND=firestore##LOG_FORMAT=json##GOOGLE_CLOUD_PROJECT=$PROJECT##PUBLIC_URL=$PUBLIC_URL##ALLOWED_ORIGINS=$ALLOWED_ORIGINS" \
   --set-secrets "NEON_API_KEY=neon-api-key:latest,NEON_WEBHOOK_SECRET=neon-webhook-secret:latest"
+
+fi # SMOKE_ONLY
 
 if [ "$DRY_RUN" = 1 ]; then
   URL="https://$SERVICE-DRYRUN-$REGION.run.app"
@@ -196,9 +209,12 @@ smoke() { # path expected-status label
 }
 SMOKE_FAILED=0
 if [ "$DRY_RUN" = 1 ]; then
-  echo "DRY-RUN> smoke: GET /healthz=200 · GET /readyz=200 (Firestore) · forged webhook=403"
+  echo "DRY-RUN> smoke: catalog=200 · GET /readyz=200 (Firestore) · forged webhook=403"
 else
-  smoke /healthz 200 "liveness"
+  # Google's frontend intercepts /healthz on run.app URLs before the request
+  # reaches the container (HTML 404, nothing in the service logs), so
+  # liveness is probed through the catalog; /readyz stays the deep check.
+  smoke "/api/store/catalog?locale=en" 200 "liveness (catalog served)"
   smoke /readyz 200 "readiness (Firestore reachable)"
   # A forged webhook must be loudly rejected — proves the secret is loaded.
   status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/webhooks/neon" \
