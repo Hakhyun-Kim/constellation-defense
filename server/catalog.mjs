@@ -59,9 +59,10 @@ export function publicCatalog(locale, country) {
 }
 
 /* Neon /checkout 의 items[] 한 항목. 문서에서 확인한 필드만 보낸다 —
- * bundleContents/taxCode는 요청 레퍼런스에서 확인되지 않아 일부러 뺐다. */
+ * bundleContents/taxCode are documented optional/defaulted fields; this single
+ * non-bundle cosmetic uses the smaller payload verified in the sandbox. */
 export function checkoutItem(sku, { locale, country }) {
-  const product = PRODUCTS[sku];
+  const product = Object.hasOwn(PRODUCTS, sku) ? PRODUCTS[sku] : null;
   if (!product) return null;
   const { currency } = marketFor(country);
   const price = product.prices[currency];

@@ -236,7 +236,9 @@ export function initNeonStore({ locale = 'ko' } = {}) {
       if (params.get('store') === '1') modal.classList.remove('hidden');
       if (outcome === 'mock' || outcome === 'return') {
         modal.classList.remove('hidden');
-        history.replaceState({}, '', location.pathname);
+        params.delete('purchase');
+        params.delete('reference');
+        history.replaceState({}, '', `${location.pathname}?${params}${location.hash}`);
         await pollEntitlements();
       }
     } catch {

@@ -205,7 +205,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
   async function applyOrIgnore(res, run, { eventId, describe, source }) {
     try {
       const result = await run();
-      log.info?.(`[store] ${source} ${describe(result)}${result.duplicate ? ' (duplicate, no-op)' : ''}`);
+      log.info?.(`[store] ${source} ${result.ignored || (result.deferred ? 'refund retained until purchase mapping arrives' : describe(result))}${result.duplicate ? ' (duplicate, no-op)' : ''}`);
       return json(res, 200, { received: true, ...result });
     } catch (error) {
       /* 영구 거절은 200으로 받는다. Neon은 비-2xx를 36시간 재시도하는데,
@@ -352,11 +352,11 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           playerCountry: country,
           currency: resolved.currency,
           storeUrl: origin,
-          successUrl: `${origin}/?purchase=return`,
-          cancelUrl: `${origin}/?purchase=cancelled`,
+          successUrl: `${origin}/?lang=${locale}&purchase=return`,
+          cancelUrl: `${origin}/?lang=${locale}&purchase=cancelled`,
         };
         const checkout = config.mock
-          ? { checkoutId: `mock-${externalReferenceId}`, redirectUrl: `${origin}/?purchase=mock&reference=${externalReferenceId}` }
+          ? { checkoutId: `mock-${externalReferenceId}`, redirectUrl: `${origin}/?lang=${locale}&purchase=mock&reference=${externalReferenceId}` }
           : await createNeonCheckout({ apiKey: config.apiKey, apiUrl: config.apiUrl, payload, fetchImpl });
         await repository.recordCheckout({
           externalReferenceId, accountId, sku: resolved.item.sku, entitlement: resolved.entitlement,

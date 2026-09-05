@@ -102,7 +102,7 @@ integration usually goes wrong:
   `Accept-Language` region — never from the ko/en toggle, because Neon binds
   currency to `playerCountry` and a Korean player reading English is still in KR.
 - **Only failures that a retry could fix return a non-2xx.** Neon retries non-2xx
-  responses for up to 36 hours, so unknown references, unhandled event types, and
+  responses for up to 36 hours, so unknown purchase references, unhandled event types, and
   sandbox/production mismatches are acknowledged with `200 {ignored}` and logged.
   An invalid signature stays a `403` on purpose: that is a misconfiguration that
   should stay noisy.
@@ -128,14 +128,15 @@ Then open one of:
 - `http://127.0.0.1:8642/?demo=%EA%B3%A0%EC%88%98&tour=neon&mute` (Korean)
 
 A bot plays the game through the same inputs a person uses, while a panel walks
-through the integration in ten steps. It is not a slideshow: most steps send a
+through the integration in 13 steps. It is not a slideshow: most steps send a
 real request and print the response, so the price, the entitlement and the refund
 on screen are what the server just returned. The purchase and the refund go
 through the same `repository.fulfill` and `repository.revoke` a signed webhook
 reaches.
 
-The tour refunds its own purchase when it starts, so reloading replays it cleanly
-rather than stopping at the duplicate-purchase guard.
+The tour uses mock mode, observes normal gameplay, and stops automatically at step 13. Mock fulfillment bypasses signature verification but uses the same repository as signed webhooks. The opening resets a previous mock entitlement for replay.
+
+See the companion [current review](https://github.com/Hakhyun-Kim/neon-checkout-integration/blob/main/docs/12-review.md) for concurrent checkout, cross-origin market and API-only save limitations. Unmapped refunds are retained by purchase ID until the purchase event supplies its reference.
 
 Run `npm run store:check` for the focused integration test. The implementation
 follows Neon's official [hosted checkout](https://docs.neonpay.com/docs/creating-a-checkout),

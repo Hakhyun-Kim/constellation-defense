@@ -2765,9 +2765,11 @@ body.tour-on #toasts {
   top: 10px; left: 12px; width: auto; max-width: 40vw;
   transform: none; align-items: flex-start;
 }
+body.tour-on:has(#neonStoreModal:not(.hidden)) #toasts { display: none; }
 @media (max-width: 900px) {
   #neonTour { top: auto; right: 8px; bottom: 8px; left: 8px; width: auto; max-height: 46vh; }
-  body.tour-on #neonStoreModal .modal-card { margin-right: 0; }
+  body.tour-on #neonStoreModal { align-items: flex-start; padding-top: 8px; }
+  body.tour-on #neonStoreModal .modal-card { margin-right: 0; max-height: 48vh; overflow-y: auto; padding: 14px; }
 }
 @media (max-width: 620px) {
   .neon-product { grid-template-columns: 58px 1fr; }

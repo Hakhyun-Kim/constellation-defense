@@ -2146,28 +2146,14 @@ window.__game = {
   previewTactic(kind = 'flare', lane = 1, size = 3) { return tactics.preview(kind, lane, size); },
 };
 
-/* ?tour=neon — 게임이 도는 동안 옆에서 결제 통합을 설명한다.
- *
- * 여기서 시작하는 이유: 투어가 판을 몰아붙였다가 무너뜨리는 연출을 쓰는데,
- * 그 함수들이 이 지점에서야 존재한다. 디버그 훅(window.__game)을 빌려 쓰지 않고
- * 필요한 것만 명시적으로 넘긴다 — 데모가 디버그 표면에 기대면 둘 다 망가진다. */
+/* Payment narration only: observe the wave without changing simulation state. */
 if (urlParams.get('tour') === 'neon') {
   initNeonTour({
     locale,
-    openStore: () => neonStore?.open(),
+    openStore: () => { closeStory(); neonStore?.open(); },
     closeStore: () => neonStore?.close(),
     refreshStore: () => neonStore?.refresh(),
     stage: {
-      /* 후반 웨이브로 건너뛰어 보스가 섞인 편성을 부른다. */
-      hurry(wave) { state.wave = Math.max(state.wave, wave); refreshAll(); },
-      /* 성을 무너뜨려 판을 끝낸다. 결제 이야기로 넘어가는 장면 전환일 뿐,
-       * 파는 물건은 전투에 아무 영향이 없는 치장품이다. */
-      fall() {
-        state.castleHp = 0;
-        state.phase = 'over';
-        state.shardsEarned = D.shardReward(state.wave, state.bossKills);
-        onGameOver();
-      },
       wave: () => state.wave,
     },
   });

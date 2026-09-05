@@ -91,3 +91,4 @@ assert.equal(used.length, ko.steps.length, '모든 단계 텍스트가 쓰인다
 assert.match(source, /resetOwnState/, '투어는 시작 전에 자기가 만든 보유 상태를 되돌린다');
 
 console.log(`tour check: ${ko.steps.length}단계 × ${locales.length}개 언어 · DOM 계약 · 실제 호출 경로 통과`);
+assert.doesNotMatch(source, /ctx\.stage\.(hurry|fall)/, 'payment tour cannot alter game progress');

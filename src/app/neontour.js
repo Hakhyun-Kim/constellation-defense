@@ -1,16 +1,6 @@
-/* 안내 투어 — 게임 화면만 보고 결제 통합을 이해할 수 있게 한다.
- *
- * 구성이 "게임 설명 + 결제 설명"이 아니라 "판이 무너진 뒤의 결제 수명 전체"인
- * 이유: 결제 회사가 보고 싶은 것은 잘 되는 한 번이 아니라 잘못될 수 있는
- * 모든 경우다. 그래서 앞은 짧게 몰아붙여 끝내고, 뒤에서 위조 서명·재전송·
- * 이중 구매·환불·환불 뒤 뒤늦은 지급을 하나씩 실제로 던져 본다.
- *
- * 각 단계는 진짜 요청을 보내고 응답을 그대로 찍는다. 화면의 값은 전부 방금
- * 서버가 준 것이고, 지급과 회수는 서명된 웹훅이 지나는 같은 함수를 지난다.
- *
- * 파는 물건이 치장품이라는 점은 일부러 짚는다. 판이 무너진 직후는 힘을 파는
- * 자리이기 쉬운데, 여기서 파는 것은 전투에 영향이 없고 그래서 지급 여부를
- * 눈으로 증명할 수 있다. */
+/* Payment walkthrough: normal gameplay continues while mock requests exercise
+ * the same ledger as real webhooks. Valid signature verification and the hosted
+ * payment page are demonstrated separately in the sandbox. */
 
 const DEFAULT_MS = 8000;
 const BANNER = 'cosmetic.celestial_banner';
@@ -40,10 +30,10 @@ const TEXT = {
     noIntent: '결제 의도가 없습니다 — 앞 단계를 먼저 실행하세요.',
     sameCode: '같은 상품, 같은 코드. 자릿수는 통화가 정합니다.',
     steps: [
-      ['판이 어려워집니다',
-        '이미 만들어 배포한 3D 게임입니다. 봇이 사람과 같은 조작으로 실제 플레이하고 있고, 지금 후반 웨이브로 밀어 보스가 섞인 편성을 부릅니다.'],
-      ['성이 무너졌습니다',
-        '여기가 대부분의 게임이 힘을 파는 자리입니다. 이 게임이 파는 것은 전투에 아무 영향이 없는 치장품이고, 그래서 지급됐는지 아닌지를 눈으로 증명할 수 있습니다 — 화폐 묶음이었다면 "지급이 됐는가"와 "경제에 반영됐는가"가 뒤섞입니다.'],
+      ['게임에 연결된 결제 흐름',
+        '기존 3D 게임 위에 독립 결제 서비스를 연결했습니다. 봇은 원래 게임 규칙으로 플레이하고, 이 투어는 모의 결제의 요청과 지급·환불 결과를 보여 줍니다.'],
+      ['전투에 영향을 주지 않는 상품',
+        '상품은 영구 배너 하나입니다. 지급되면 상점이 보유 상태로 바뀌고 HUD에 깃발이 나타납니다. 전투 수치와 진행도는 결제 서비스가 변경하지 않습니다.'],
       ['가격은 서버가 정합니다',
         '상점을 열면 카탈로그를 받아옵니다. 가격·통화·청구 국가가 전부 서버 응답에 있습니다. 청구 국가는 게임 언어가 아니라 명시적 선택·지리 헤더·브라우저 지역 순으로 서버가 정합니다.'],
       ['₩4,900이 490000으로 나갑니다',
@@ -52,8 +42,8 @@ const TEXT = {
         '가격도, 통화도, 국가도 보내지 않습니다. 서버가 허용 목록에서 값을 붙이고, 비밀 키로 Neon을 호출하고, 플레이어가 떠나기 전에 결제 의도를 원장에 기록합니다.'],
       ['① 위조된 웹훅 — 403',
         '웹훅 주소는 인터넷에 열려 있습니다. 누구나 던질 수 있으니, 서명이 유일한 문지기입니다. 지금 브라우저에서 가짜 서명으로 직접 던져 보겠습니다.'],
-      ['② 진짜 지급',
-        '서명을 원문 그대로 검증하고, 기록해 둔 결제 의도와 계정·SKU·수량·금액을 대조한 뒤에야 권리를 씁니다.'],
+      ['② 모의 지급 — 실제 원장 경로',
+        '이 단계는 모의 결제입니다. 서명 검증을 생략하고 실제 fulfill 함수에서 계정·SKU·수량·금액을 대조합니다. Neon 호스팅 페이지와 유효한 서명 검증은 별도 샌드박스 구매로 확인합니다.'],
       ['구매는 기기가 아니라 계정에 붙습니다',
         '지금까지 신원은 브라우저 하나에 묶인 소지자 자격이었습니다 — 기기를 바꾸면 산 것이 따라오지 않습니다. 인계 코드가 그걸 옮깁니다. 쿠키도 토큰도 없는 기기가 코드를 넣고 권리를 물려받는 것을 지금 보겠습니다.'],
       ['③ 같은 이벤트가 또 오면',
@@ -88,8 +78,8 @@ const TEXT = {
       legend: '점선은 아무 권한이 없다. 굵은 선(서명된 웹훅)만 권리를 쓴다.',
     },
     serverDown: {
-      title: '결제 서버가 응답하지 않습니다',
-      body: '이 투어의 각 단계는 실제 서버에 요청을 보냅니다. API가 떠 있지 않으면(정적 배포이거나 서버 미실행) 보여줄 응답이 없습니다. 터미널에서 아래를 실행하고 새로고침하세요:',
+      title: '투어에는 모의 결제 서버가 필요합니다',
+      body: '이 투어의 각 단계는 실제 서버에 요청을 보냅니다. NEON_MOCK_CHECKOUT=1로 API를 실행하세요. Hosted 모드는 별도 수동 샌드박스 구매로 확인하며 투어는 실제 결제 세션을 생성하지 않습니다. 터미널에서 아래를 실행하고 새로고침하세요:',
       note: '브라우저 페이지는 서버를 직접 띄울 수 없습니다 — 터미널에서 실행해야 합니다.', cmd: 'cp .env.example .env   # 최초 1회',
     },
   },
@@ -99,10 +89,10 @@ const TEXT = {
     noIntent: 'No checkout intent yet — run the earlier step first.',
     sameCode: 'Same product, same code. The currency decides the decimals.',
     steps: [
-      ['The run gets hard',
-        'A 3D game that was already built and published. A bot is playing it for real, through the same inputs a person uses — and the tour has just pushed the run into late waves, where bosses join the formation.'],
-      ['The citadel falls',
-        'This is the moment most games sell power. What this one sells is a cosmetic with no effect on combat, which is exactly why fulfillment is provable by eye — a currency pack would blur "did the grant land" with "did the economy apply it".'],
+      ['Checkout inside an existing game',
+        'An independent payment service added to an existing 3D game. The bot plays through normal game rules while this tour shows live mock checkout, fulfillment and refund responses.'],
+      ['One cosmetic, visible fulfillment',
+        'The product is one permanent banner. Fulfillment changes the store to Owned and adds a flag to the HUD. The payment service never changes combat stats or campaign progress.'],
       ['The server decides the price',
         'Opening the store fetches a catalogue. Price, currency and billing country all come from the server. Billing country is never the game language: an explicit choice, then a platform geo header, then the browser region.'],
       ['₩4,900 travels as 490000',
@@ -111,8 +101,8 @@ const TEXT = {
         'No price, no currency, no country. The server looks the SKU up in an allowlist, calls Neon with the secret key, and records the intent in the ledger before the player leaves.'],
       ['① A forged webhook — 403',
         'The webhook endpoint is open to the internet; anyone can post to it, so the signature is the only gatekeeper. Watch the browser post one with a fake digest right now.'],
-      ['② The real grant',
-        'The signature is verified over the raw body, then account, SKU, quantity and amount are matched against the recorded intent before anything is written.'],
+      ['② Mock grant, real ledger',
+        'This mock request skips signature verification and calls the real fulfill function, which checks the recorded account, SKU, quantity and amount. The hosted payment page and valid signatures require a separate sandbox purchase.'],
       ['The purchase belongs to an account, not this device',
         'Identity used to be a bearer credential bound to one browser — change device and the purchase does not follow. A transfer code moves it, the way Korean and Japanese mobile games have always done it. Watch a device with no cookie and no token claim the code and inherit the entitlement.'],
       ['③ The same event, delivered again',
@@ -147,8 +137,8 @@ const TEXT = {
       legend: 'The dotted arrow has no authority. Only the bold one — the signed webhook — writes an entitlement.',
     },
     serverDown: {
-      title: 'The payment server is not responding',
-      body: 'Every step of this tour sends a real request to the server. If the API is not running (a static deployment, or the server simply is not started), there are no responses to show. Run this in a terminal, then reload:',
+      title: 'The tour needs a mock payment server',
+      body: 'Every step of this tour sends a real request to the server. Start the local API with NEON_MOCK_CHECKOUT=1. Hosted mode uses a separate manual sandbox purchase; this tour never creates real checkout sessions. Run this in a terminal, then reload:',
       note: 'A browser page cannot start the server itself — it has to be run from a terminal.', cmd: 'cp .env.example .env   # first time only',
     },
   },
@@ -202,14 +192,13 @@ function buildSteps(ctx, text) {
        * 화살표인지 알고 볼 수 있게. */
       diagram: 'flow',
       run: async () => {
-        ctx.stage.hurry(24);
         return `wave → ${ctx.stage.wave()}`;
       },
     },
     {
       ...card(s[1]),
       ms: 6000,
-      run: async () => { ctx.stage.fall(); return 'GAME OVER'; },
+      run: async () => { ctx.openStore(); return 'CELESTIAL_BANNER'; },
     },
     {
       ...card(s[2]),
@@ -219,7 +208,6 @@ function buildSteps(ctx, text) {
         const { data } = await api(`/api/store/catalog?locale=${ctx.locale}`);
         ctx.refreshStore();
         return pretty({
-          playerId: data.playerId,
           price: data.items?.[0]?.price,
           displayPrice: data.items?.[0]?.displayPrice,
           currency: data.currency,
@@ -298,7 +286,7 @@ function buildSteps(ctx, text) {
         if (!ctx.reference) return text.noIntent;
         const again = await post('/api/store/mock-complete', { reference: ctx.reference });
         const owned = await api('/api/store/entitlements');
-        return `${line(again.status, again.data)}\n\npurchases: ${Object.keys(owned.data.entitlements).length}`;
+        return `${line(again.status, again.data)}\n\nentitlements: ${Object.keys(owned.data.entitlements).length}`;
       },
       diagram: 'codes',
     },
@@ -356,7 +344,7 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
     openStore: openStore || noop,
     closeStore: closeStore || noop,
     refreshStore: refreshStore || noop,
-    stage: { hurry: noop, fall: noop, wave: () => 0, ...(stage || {}) },
+    stage: { wave: () => 0, ...(stage || {}) },
   };
   const script = buildSteps(ctx, text);
   let index = -1;
@@ -365,6 +353,8 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
   /* show() 는 비동기다. 자동 진행과 사람의 클릭이 겹치면 늦게 끝난 단계가
    * 다음 단계의 라이브 칸을 덮어쓸 수 있어, 자기 차례인지 확인하고 그린다. */
   let ticket = 0;
+  let stopped = false;
+  let busy = false;
 
   prevBtn.textContent = text.controls.prev;
   nextBtn.textContent = text.controls.next;
@@ -421,11 +411,22 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
 
   function schedule() {
     clearTimeout(timer);
-    if (paused) return;
-    timer = setTimeout(() => { show(index + 1).then(schedule); }, script[index]?.ms || DEFAULT_MS);
+    if (paused || stopped || index === script.length - 1) return;
+    timer = setTimeout(() => { go(index + 1); }, script[index]?.ms || DEFAULT_MS);
   }
 
-  const go = (next) => { show(next).then(schedule); };
+  const go = async (next) => {
+    if (busy || stopped) return;
+    clearTimeout(timer);
+    busy = true;
+    prevBtn.disabled = nextBtn.disabled = true;
+    try { await show(next); }
+    finally {
+      busy = false;
+      prevBtn.disabled = nextBtn.disabled = false;
+      schedule();
+    }
+  };
 
   prevBtn.addEventListener('click', () => go(index - 1));
   /* nextBtn 은 onclick 으로만 제어한다 — boot() 은 정상 진행, showServerDown() 은
@@ -438,6 +439,7 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
   exitBtn.addEventListener('click', () => {
     clearTimeout(timer);
     ticket += 1;
+    stopped = true;
     panel.classList.add('hidden');
     document.body.classList.remove('tour-on');
   });
@@ -462,7 +464,8 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
   async function serverUp() {
     try {
       const response = await fetch('/api/store/catalog?locale=' + locale, { credentials: 'same-origin' });
-      return response.ok;
+      const data = await response.json();
+      return response.ok && data.checkoutMode === 'mock';
     } catch { return false; }
   }
 
@@ -495,5 +498,5 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
   panel.classList.remove('hidden');
   document.body.classList.add('tour-on');
   boot();
-  return { next: () => go(index + 1), stop: () => { clearTimeout(timer); ticket += 1; } };
+  return { next: () => go(index + 1), stop: () => { stopped = true; clearTimeout(timer); ticket += 1; } };
 }

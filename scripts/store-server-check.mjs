@@ -14,12 +14,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { formatPrice, PRODUCTS } from '../server/catalog.mjs';
+import { checkoutItem, formatPrice, PRODUCTS } from '../server/catalog.mjs';
 import { JsonRepository } from '../server/repository.mjs';
 import { createStoreApi } from '../server/store-api.mjs';
+import './store-regression-check.mjs';
 
 const secret = 'test-webhook-secret';
 const quiet = { info() {}, warn() {}, error() {} };
+assert.equal(checkoutItem('constructor', { country: 'KR', locale: 'en' }), null);
 
 async function runSuite(repository, label) {
   let origin;
@@ -93,6 +95,8 @@ async function runSuite(repository, label) {
     assert.equal(englishCatalog.country, 'KR', '언어 토글이 청구 국가를 바꾸지 않는다');
     assert.equal(englishCatalog.items[0].currency, 'KRW');
     assert.equal(englishCatalog.items[0].name, 'Celestial Pioneer Banner', '표시 문구만 번역된다');
+    const englishCheckout = await openCheckout(cookie, { locale: 'en' });
+    assert.equal(new URL((await englishCheckout.json()).redirectUrl).searchParams.get('lang'), 'en');
 
     // 브라우저 지역 신호는 국가로 인정된다.
     const usCatalog = await call('/api/store/catalog?locale=ko', { headers: { 'accept-language': 'en-US,en;q=0.9' } })
@@ -231,6 +235,10 @@ async function runSuite(repository, label) {
     assert.equal(revoke.payload.revoked, true, 'externalReferenceId 가 null 이어도 purchaseId 로 찾아낸다');
     assert.equal(await ownsBanner(refunded.cookie), false, '환불하면 치장품이 회수된다');
     assert.equal((await repository.pendingCheckout(refunded.reference)).status, 'refunded');
+    if (repository.db) {
+      assert.equal((await repository.checkouts.doc(refunded.reference).get()).data().expiresAt, undefined,
+        'refunded checkouts must survive pending-checkout TTL cleanup');
+    }
 
     // 구매 기록은 지우지 않고 표시만 한다 — 감사 흔적이 남아야 한다.
     const history = await repository.purchases(refunded.accountId);
@@ -264,7 +272,17 @@ async function runSuite(repository, label) {
 
     const unknownRefund = await deliver(refundEvent({ id: 'refund-nowhere' }, { id: 'rf_x', purchaseId: 'purchase-nowhere' }));
     assert.equal(unknownRefund.response.status, 200, '모르는 환불도 재시도를 부르지 않는다');
-    assert.equal(unknownRefund.payload.ignored, 'unknown checkout reference');
+    assert.equal(unknownRefund.payload.deferred, true, 'unmapped refunds are retained, not discarded');
+    const earlyCookie = sessionCookie(await call('/api/store/catalog'));
+    const earlyCheckout = await openCheckout(earlyCookie);
+    const earlyRef = referenceOf((await earlyCheckout.json()).redirectUrl);
+    const earlyRecord = await repository.pendingCheckout(earlyRef);
+    const earlyGrant = await deliver(purchaseEvent({ id: 'purchase-after-early-refund' }, {
+      id: 'purchase-nowhere', accountId: earlyRecord.accountId, externalReferenceId: earlyRef,
+    }));
+    assert.equal(earlyGrant.payload.ignored, 'purchase was refunded before fulfillment');
+    assert.equal(await ownsBanner(earlyCookie), false);
+    assert.equal((await repository.pendingCheckout(earlyRef)).status, 'refunded');
 
     const strangerRefund = await boughtOnce('c');
     const wrongOwner = await deliver(refundEvent(

@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { loadConfig, isFatal } from '../server/config.mjs';
 import { createLogger } from '../server/logger.mjs';
 import { startService } from '../server/index.mjs';
+import './serve-check.mjs';
 
 const quiet = { log() {}, warn() {}, error() {} };
 const base = {

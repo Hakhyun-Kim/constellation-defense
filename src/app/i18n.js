@@ -8,6 +8,10 @@ export function normalizeLocale(value) {
 
 const EN = new Map(Object.entries({
   ...CONTENT_EN,
+  '지난 모험이 자동 저장돼 있어요': 'Your previous adventure was saved automatically.',
+  '이전': 'Previous',
+  '다음': 'Next',
+  '투어 끝내기': 'Close tour',
   '웨이브': 'Wave',
   '방어': 'Defense',
   '성 체력': 'Citadel HP',
@@ -400,6 +404,12 @@ export function translateKnownText(value, locale = activeLocale) {
     if (match) translated = `${match[1]}-match · ${EN.get(match[2]) || match[2]}`;
     match = core.match(/^(왼쪽|가운데|오른쪽) 길 길을 조준해요$/);
     if (match) translated = `Aiming at the ${EN.get(match[1])} lane`;
+    match = core.match(/^(왼쪽|가운데|오른쪽) 길 · (.+) 연결!$/);
+    if (match) translated = `${EN.get(match[1])} lane · ${EN.get(match[2]) || match[2]} linked!`;
+    match = core.match(/^⏩ 이어하기 — (\d+)웨이브부터 \(Enter\)$/);
+    if (match) translated = `⏩ Continue from Wave ${match[1]} (Enter)`;
+    match = core.match(/^(?:웨이브|Wave) (\d+) · (.+) 난이도 · 🧍 용사 (\d+)명$/);
+    if (match) translated = `Wave ${match[1]} · ${translateKnownText(match[2], 'en')} difficulty · ${match[3]} heroes`;
     match = core.match(/^🔥 콤보 (\d+)$/);
     if (match) translated = `🔥 Combo ${match[1]}`;
     /* 방어 완료 보너스와 레벨업 안내 — 판이 계속 돌면 반복해서 뜬다. */

@@ -28,6 +28,7 @@ export class FirestoreRepository {
   get players() { return this.root.collection('players'); }
   get events() { return this.root.collection('processedEvents'); }
   get limits() { return this.root.collection('rateLimits'); }
+  get refunds() { return this.root.collection('refunds'); }
 
   async recordCheckout(record) {
     const at = this.now();
@@ -64,6 +65,14 @@ export class FirestoreRepository {
       if (pending.accountId !== event.accountId) throw new PermanentRejection('account does not match checkout');
       if (pending.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
       if (event.quantity !== 1) throw new PermanentRejection('unexpected quantity');
+      const refund = await tx.get(this.refunds.doc(event.purchaseId));
+      if (refund.exists) {
+        const at = refund.data().at;
+        tx.update(checkoutRef, { status: 'refunded', purchaseId: event.purchaseId,
+          refundedAt: at, expiresAt: FieldValue.delete() });
+        tx.set(eventRef, { purchaseId: event.purchaseId, at });
+        return { ignored: 'purchase was refunded before fulfillment' };
+      }
       /* 결제 통화가 우리가 만든 그대로면 금액도 그대로여야 한다. 플레이어가 결제
        * 페이지에서 국가를 바꾼 경우는 Neon 이 환산한 값이므로 비교 대상이 아니다. */
       if (event.currency && event.currency === pending.currency && event.price != null && event.price !== pending.price) {
@@ -89,7 +98,7 @@ export class FirestoreRepository {
         at,
         expiresAt: new Date(this.now() + EVENT_TTL_MS),
       });
-      tx.update(checkoutRef, { status: 'fulfilled', purchaseId: event.purchaseId });
+      tx.update(checkoutRef, { status: 'fulfilled', purchaseId: event.purchaseId, expiresAt: FieldValue.delete() });
       return { duplicate: false };
     });
   }
@@ -119,7 +128,12 @@ export class FirestoreRepository {
         const found = await tx.get(this.checkouts.where('purchaseId', '==', event.purchaseId).limit(1));
         if (!found.empty) [checkoutSnapshot] = found.docs;
       }
-      if (!checkoutSnapshot) throw new PermanentRejection('unknown checkout reference');
+      if (!checkoutSnapshot) {
+        const at = new Date(this.now()).toISOString();
+        tx.set(this.refunds.doc(event.purchaseId), { at, refundId: event.refundId });
+        tx.set(eventRef, { refundId: event.refundId, at });
+        return { deferred: true, revoked: false };
+      }
 
       const checkout = checkoutSnapshot.data();
       if (event.accountId && checkout.accountId !== event.accountId) {
@@ -140,7 +154,7 @@ export class FirestoreRepository {
         }, { merge: true });
       }
       /* 아직 pending 이어도 refunded 로 넘긴다 — 뒤늦은 지급 웹훅을 fulfill 이 거절한다. */
-      tx.update(checkoutSnapshot.ref, { status: 'refunded', refundedAt: at });
+      tx.update(checkoutSnapshot.ref, { status: 'refunded', refundedAt: at, expiresAt: FieldValue.delete() });
       tx.set(eventRef, { refundId: event.refundId || null, at, expiresAt: new Date(this.now() + EVENT_TTL_MS) });
       return { duplicate: false, revoked: granted };
     });

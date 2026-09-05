@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-const EMPTY = () => ({ checkouts: {}, players: {}, processedEvents: {}, transfers: {}, saves: {} });
+const EMPTY = () => ({ checkouts: {}, players: {}, processedEvents: {}, transfers: {}, saves: {}, refunds: {} });
 
 /* 30일이 지난 미결제 의도와 오래된 멱등성 기록은 지운다. 원장이 무한히 커지면
  * 파일 저장소가 먼저 무너지기 때문. 멱등성 창은 Neon의 재시도 기간(36시간)보다
@@ -58,13 +58,15 @@ export class JsonRepository {
 
   async mutate(operation) {
     const run = this.queue.then(async () => {
-      const data = await this.load();
+      // Publish only a committed snapshot: a failed write must remain retryable.
+      const data = structuredClone(await this.load());
       const result = operation(data);
       this.prune(data);
       await mkdir(dirname(this.path), { recursive: true });
       const temporary = `${this.path}.tmp`;
       await writeFile(temporary, JSON.stringify(data, null, 2));
       await rename(temporary, this.path);
+      this.data = data;
       return result;
     });
     this.queue = run.catch(() => {});
@@ -91,6 +93,14 @@ export class JsonRepository {
       if (pending.accountId !== event.accountId) throw new PermanentRejection('account does not match checkout');
       if (pending.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
       if (event.quantity !== 1) throw new PermanentRejection('unexpected quantity');
+      const refund = data.refunds[event.purchaseId];
+      if (refund) {
+        pending.status = 'refunded';
+        pending.purchaseId = event.purchaseId;
+        pending.refundedAt = refund.at;
+        data.processedEvents[event.eventId] = { purchaseId: event.purchaseId, at: refund.at };
+        return { ignored: 'purchase was refunded before fulfillment' };
+      }
       /* 결제 통화가 우리가 만든 그대로면 금액도 그대로여야 한다. 플레이어가 결제
        * 페이지에서 국가를 바꾼 경우(initialCurrency ≠ currency)는 Neon이 환산한
        * 값이므로 금액 비교 대상이 아니다 — 대신 기록만 남긴다. */
@@ -135,7 +145,13 @@ export class JsonRepository {
     return this.mutate((data) => {
       if (data.processedEvents[event.eventId]) return { duplicate: true };
       const checkout = this.findCheckout(data, event);
-      if (!checkout) throw new PermanentRejection('unknown checkout reference');
+      if (!checkout) {
+        // A refund may arrive before the purchase supplies the reference mapping.
+        const at = new Date(this.now()).toISOString();
+        data.refunds[event.purchaseId] = { at, refundId: event.refundId };
+        data.processedEvents[event.eventId] = { refundId: event.refundId, at };
+        return { deferred: true, revoked: false };
+      }
       if (event.accountId && checkout.accountId !== event.accountId) {
         throw new PermanentRejection('account does not match checkout');
       }

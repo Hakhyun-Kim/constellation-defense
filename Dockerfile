@@ -14,8 +14,8 @@ COPY . .
 
 # Cloud Run 은 모든 인터페이스 바인딩과 $PORT 수신을 요구한다 — server/index.mjs 의
 # 서비스 기본값이 이미 0.0.0.0 이라 HOST 는 명시만 해 둔다.
-# PUBLIC_URL 은 일부러 비워 둔다 — 서버가 x-forwarded-proto/host 로 실제 오리진을
-# 읽으므로, 배포 URL 을 미리 알아야 하는 닭-달걀 문제가 생기지 않는다.
+# Set PUBLIC_URL to the game client origin at deployment time. The service
+# requires it in hosted mode; it is not the webhook/API origin when split.
 ENV HOST=0.0.0.0 \
     NODE_ENV=production \
     LOG_FORMAT=json \

@@ -48,12 +48,20 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
-createServer(async (req, res) => {
+const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (await storeApi(req, res, url)) return;
     let rel = decodeURIComponent(url.pathname);
     if (rel.endsWith('/')) rel += 'index.html';
+
+    // This used to serve the entire repository, including payment credentials
+    // and bearer identities in the ledger. Only the game's public build is served.
+    if (!/^\/(?:index\.html|(?:assets|css|dist)\/[^\\:]+)$/.test(rel)
+        || rel.split('/').some((part) => part.startsWith('.'))) {
+      res.writeHead(404).end('404');
+      return;
+    }
 
     /* 루트 밖으로 나가는 경로는 거부한다 (../ 트래버설) */
     const full = normalize(join(root, rel));
@@ -74,5 +82,5 @@ createServer(async (req, res) => {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404');
   }
 }).listen(config.port, config.host, () => {
-  log.info(`Constellation Defense → http://localhost:${config.port}/`, { ledger: backend });
+  log.info(`Constellation Defense → http://localhost:${server.address().port}/`, { ledger: backend });
 });

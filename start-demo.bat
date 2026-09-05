@@ -19,6 +19,10 @@ setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
 set "PORT=8642"
+set "NEON_MOCK_CHECKOUT=1"
+set "NEON_ENVIRONMENT=sandbox"
+set "STORE_BACKEND=json"
+set "PUBLIC_URL=http://127.0.0.1:8642"
 set "TOUR=http://127.0.0.1:%PORT%/?lang=en&demo=expert&tour=neon&mute"
 set "TOUR_KO=http://127.0.0.1:%PORT%/?demo=%%EA%%B3%%A0%%EC%%88%%98&tour=neon&mute"
 
@@ -56,7 +60,7 @@ echo.
 REM Give the server a moment to bind, then open the tour in the default
 REM browser as a separate process. The & inside the URL is safe because
 REM it sits inside the double-quoted -Command argument.
-start "" powershell -NoProfile -Command "Start-Sleep 4; Start-Process '!TOUR!'"
+start "" /b powershell -WindowStyle Hidden -NoProfile -Command "Start-Sleep 4; Start-Process '!TOUR!'"
 
 REM Server runs in the foreground here so its logs stay visible.
 call npm run serve
