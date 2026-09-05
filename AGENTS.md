@@ -139,6 +139,32 @@ start-demo.command        원클릭(macOS/Linux): 같은 동작, Node 22.9+ 검�
 
 > `server/` 변경이 포함돼 외부로 공유되는 PR 은 **영어** 커밋 메시지를 쓴다.
 
+## Dedicated 게임 서버 (`dedicated/`)
+
+시뮬레이션을 권위적으로 소유하는 별도 프로세스. 클라이언트(웹, 이후
+Unity/Unreal)는 스냅샷을 렌더링하는 뷰어이고, 게임 규칙은 클라이언트에서
+돌지 않는다. 결정 근거: `docs/design/dedicated-server-architecture.md`,
+와이어 계약: `dedicated/PROTOCOL.md` (실행 명세는 `npm run dedicated:check`).
+
+```
+dedicated/server.mjs   WS 엔드포인트 · hello 역할 인증(viewer/controller) · 방송
+dedicated/host.mjs     권위 세션: engine+balance+bot 정책, 스냅샷/이벤트/결정 생성
+dedicated/ws.mjs       의존성 없는 RFC6455 서버 (텍스트 프레임)
+src/app/dedicated-client.js   스냅샷 병합 + 이동 보간 — 규칙 없음
+src/app/dedicated-overlay.js  데모 오버레이(상태·아키텍처·흐름·코드맵·컨트롤)
+clients/unity·unreal   같은 계약의 엔진 클라이언트 샘플 (여기서 실행은 안 됨)
+start-dedicated.bat / .command   서버 2개 실행 + ?dedicated=1 뷰어 열기
+```
+
+**지켜야 할 규약:**
+- `dedicated/`는 `src/engine·balance·bot`, `scripts/balance-bot.mjs`의 정책
+  헬퍼, `server/logger.mjs`만 import 한다. 결제 코드와 섞지 않는다.
+- 클라이언트에 게임 규칙을 넣지 않는다. 스냅샷이 항상 로컬 추측을 덮는다.
+- 프로토콜을 바꾸면 `PROTOCOL.md`와 `scripts/dedicated-check.mjs`를 같은
+  커밋에서 갱신한다 — 문서와 검사가 어긋나면 검사가 이긴다.
+- 컨트롤 키는 데모용 공유 비밀이다. 배포에서는 반드시 교체하고, 로컬
+  `local-demo-key`를 문서 밖 예제에 쓰지 않는다.
+
 ## 작업 방식
 
 - 변경 전 `git status --short`로 기존 사용자 변경을 확인하고, 관련 없는 변경은 건드리지 않는다.

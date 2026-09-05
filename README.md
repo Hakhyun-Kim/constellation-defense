@@ -78,6 +78,30 @@ record — architecture, decisions, verification, open questions — lives in th
 companion [neon-checkout-integration](https://github.com/Hakhyun-Kim/neon-checkout-integration)
 repository.
 
+## Dedicated server demo
+
+The simulation can also run in an authoritative server process, with every
+client — this web build, and the Unity/Unreal samples in `clients/` — acting
+as a renderer of its snapshots. No game rule runs client-side in that mode.
+
+- **Windows** — double-click `start-dedicated.bat`
+- **macOS / Linux** — run `./start-dedicated.command`
+
+Both start the dedicated server (`ws://127.0.0.1:8643`) and the web client
+(`http://127.0.0.1:8642`), then open the live viewer, where a server-side bot
+plays immediately. The on-screen panel shows the architecture, command flow,
+code map and progress, and a **Try the game** button switches to an ordinary
+local run. Watching is public; pausing, changing speed, and restarting the
+session require the controller key (the launcher passes a loopback demo key).
+
+Manual equivalent: `npm run dedicated` in one terminal, `npm run serve` in
+another, then open `http://127.0.0.1:8642/?lang=en&dedicated=1`. The wire
+contract is [`dedicated/PROTOCOL.md`](dedicated/PROTOCOL.md), enforced by
+`npm run dedicated:check`; the decision record is
+[`docs/design/dedicated-server-architecture.md`](docs/design/dedicated-server-architecture.md).
+A `compose.yaml`/`dedicated/Dockerfile` container path exists for
+deployment-shaped review (not executed on the development machine).
+
 ## Built with Codex
 
 Codex was used as a development collaborator to evolve an existing 3D defense foundation into a focused match-3 tactics game. It helped separate deterministic simulation rules from presentation, add the tactical board, create the fixed-squad growth system, automate balance runs with real match-3 actions, and retain procedural 3D visuals and synthesized audio.

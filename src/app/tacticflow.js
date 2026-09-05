@@ -309,6 +309,17 @@ export function createTacticFlow({ getPhase, random, resolveTactic, onCast, onMa
       return !!from && !!to;
     },
     getBoard: () => [...cells],
+    /* Dedicated viewer: mirror the server's authoritative board as-is. */
+    setBoard(next) {
+      if (!Array.isArray(next) || next.length !== BOARD_SIZE * BOARD_SIZE) return false;
+      if (next.every((type, index) => type === cells[index])) return true;
+      cancelPending();
+      selected = null;
+      cells = [...next];
+      clearVisuals();
+      draw();
+      return true;
+    },
     swap(first, second) {
       if (!Number.isInteger(first) || !Number.isInteger(second)) return false;
       return attemptSwap(first, second);

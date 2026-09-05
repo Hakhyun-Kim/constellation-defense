@@ -1,0 +1,31 @@
+# Optional container path for the dedicated demo:
+#
+#   docker compose up --build
+#   → open http://localhost:8642/?lang=en&dedicated=1&key=local-demo-key
+#
+# The primary supported path stays start-dedicated.bat / start-dedicated.command
+# (plain Node, no Docker). Honest status: this file is provided for reviewers
+# who prefer containers and has not been executed on the development machine.
+services:
+  web:
+    # Static game + payment API (mock mode) on one origin, like the launcher.
+    build: .
+    command: node scripts/serve.mjs
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8642
+      NEON_MOCK_CHECKOUT: 1
+      NEON_ENVIRONMENT: sandbox
+      STORE_BACKEND: json
+      PUBLIC_URL: http://localhost:8642
+    ports:
+      - "8642:8642"
+
+  dedicated:
+    build:
+      context: .
+      dockerfile: dedicated/Dockerfile
+    environment:
+      DEDICATED_CONTROL_KEY: local-demo-key
+    ports:
+      - "8643:8643"

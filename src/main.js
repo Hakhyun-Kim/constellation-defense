@@ -32,6 +32,8 @@ import { CastlePreview } from './gfx/castle-preview.js';
 import { initNeonStore } from './app/neon-store.js';
 import { startExposedLaneDemo } from './app/neon-scenario.js';
 import { initNeonTour } from './app/neontour.js';
+import { initDedicatedClient } from './app/dedicated-client.js';
+import { initDedicatedOverlay } from './app/dedicated-overlay.js';
 
 registerDucker((amt, dur) => music.duck(amt, dur));
 
@@ -53,6 +55,13 @@ window.addEventListener('pagehide', () => castlePreview?.dispose(), { once: true
 const urlGfx = urlParams.get('gfx');
 const judgeMode = urlParams.has('judge');
 const demoRoute = urlParams.has('demo');
+/* ?dedicated=1 turns this page into a viewer of the dedicated server; the
+ * parameter value may override the ws:// address for remote hosts. */
+const dedicatedRoute = urlParams.has('dedicated');
+const dedicatedUrl = (urlParams.get('dedicated') || '').startsWith('ws')
+  ? urlParams.get('dedicated') : `ws://${location.hostname || '127.0.0.1'}:8643`;
+let remoteView = false;
+let dedicatedClient = null;
 const previewBlueprint = urlParams.has('blueprint');
 const previewChapter = urlParams.get('chapter') === '2' || previewBlueprint ? 'beyond-page' : null;
 const weeklyChallenge = urlParams.has('weekly') ? createWeeklyChallenge(urlParams.get('weekly')) : null;
@@ -66,7 +75,7 @@ let reducedEffects = systemReducedEffects || store.effectsReduced !== false;
 document.body.classList.toggle('reduced-effects', reducedEffects);
 const weeklyReplay = weeklyChallenge ? createSwapReplay(weeklyChallenge.id) : null;
 const sessionEligible = !judgeMode && !previewChapter && !urlParams.has('demo')
-  && !urlParams.has('perf') && !urlParams.has('sessionqa');
+  && !urlParams.has('perf') && !urlParams.has('sessionqa') && !dedicatedRoute;
 const playtestLog = createLocalPlaytestLog();
 ui.setPlaytestLogStatus(playtestLog.records().length);
 let keyBindings = normalizeBindings(store.keyBindings);
@@ -1561,6 +1570,8 @@ document.addEventListener('click', (ev) => {
 });
 
 document.addEventListener('keydown', (ev) => {
+  /* Viewer mode: the server plays; local game hotkeys stay off. */
+  if (remoteView) return;
   const key = ev.key;
 
   /* Store physical key codes so shortcuts work consistently with Korean IME and English layouts. Reserve Escape, Enter, Space, Tab and arrows for UI navigation. */
@@ -1865,7 +1876,11 @@ function frame(now) {
   /* The demo still manages its flow while modals are open. */
   if (demo.active) demo.step(realDt);
 
-  if (!isPaused() && !perfMode) {
+  if (remoteView) {
+    /* The dedicated server owns the simulation. Between its snapshots only
+     * enemy motion is interpolated; no game rule runs in this browser. */
+    dedicatedClient?.smooth(realDt);
+  } else if (!isPaused() && !perfMode) {
     /* Fixed-step simulation maintains game speed independently of rendering FPS. */
     simAcc = Math.min(simAcc + realDt * speed, STEP * MAX_STEPS);
     while (simAcc >= STEP) {
@@ -1896,7 +1911,7 @@ function frame(now) {
     } else if (state.phase === 'prep') music.setTrack('prep');
   }
 
-  const autoPhaseRemaining = updateAutoPhaseFlow(realDt);
+  const autoPhaseRemaining = remoteView ? null : updateAutoPhaseFlow(realDt);
 
   /* UI updates. */
   ui.updateHud(state, store.shards, store.best(state.difficulty));
@@ -1931,11 +1946,11 @@ function frame(now) {
 
 /* Offer resume when autosave exists. Demo URLs skip the startup menu for immediate viewing. */
 const bootSave = (() => {
-  if (urlParams.has('demo') || judgeMode || previewChapter) return null;
+  if (urlParams.has('demo') || judgeMode || previewChapter || dedicatedRoute) return null;
   const s = store.autosave;
   return s && Number.isFinite(s.wave) && Array.isArray(s.bench) ? s : null;
 })();
-newGame(store.diff, { holdStory: !!bootSave || !!previewChapter });
+newGame(store.diff, { holdStory: !!bootSave || !!previewChapter || dedicatedRoute });
 
 /* The tactics board accepts input only during waves and sends results through existing render/sound event paths. */
 tactics = createTacticFlow({
@@ -2062,8 +2077,8 @@ demo.attach({
   },
 });
 
-/* ?demo=expert starts spectating unless the interactive payment inspector owns the flow. Console callers may use __game.demo.start('expert'). */
-if (urlParams.has('demo') && urlParams.get('tour') !== 'neon') {
+/* ?demo=expert starts spectating unless the interactive payment inspector or the dedicated viewer owns the flow. Console callers may use __game.demo.start('expert'). */
+if (urlParams.has('demo') && urlParams.get('tour') !== 'neon' && !dedicatedRoute) {
   setTimeout(() => demo.start(urlParams.get('demo') || '고수'), 900);
 }
 
@@ -2115,5 +2130,77 @@ if (urlParams.get('tour') === 'neon') {
       tryStartWave();
     },
     stage: { snapshot: () => ({ wave: state.wave, hp: state.castleHp, maxHp: state.castleMax, phase: state.phase }) },
+  });
+}
+
+/* ?dedicated=1 — render the dedicated server's authoritative session.
+ * The local engine stays idle; snapshots overwrite the volatile state the
+ * renderer and HUD already read. The overlay explains the architecture and
+ * offers the switch back to an ordinary local game. */
+if (dedicatedRoute) {
+  remoteView = true;
+  ui.hideStart();
+  closeStory();
+  ui.setDemoMode(true, locale === 'en' ? 'server' : '서버');
+  let refreshHold = 0;
+  const overlay = initDedicatedOverlay({
+    locale,
+    backUrl: location.href,
+    client: { command: (op, args) => dedicatedClient
+      ? dedicatedClient.command(op, args)
+      : Promise.resolve({ ok: false, error: 'disconnected' }) },
+    onTryGame: () => {
+      remoteView = false;
+      dedicatedClient?.disconnect();
+      overlay.minimize();
+      ui.setDemoMode(false);
+      newGame(store.diff, { replaceSession: true });
+    },
+  });
+  dedicatedClient = initDedicatedClient({
+    url: dedicatedUrl,
+    key: urlParams.get('key') || null,
+    api: {
+      getState: () => state,
+      onBoard: (cells) => { if (remoteView) tactics?.setBoard(cells); },
+      onPhase: () => {
+        if (!remoteView) return;
+        closeStory();
+        ui.hideOver();
+        ui.hideDefenseVictory();
+        refreshAll();
+        refreshHold = performance.now();
+      },
+      onEvents: (events) => { if (remoteView) renderer.onEvents(state, events); },
+      onDecision: (decision) => {
+        if (!remoteView) return;
+        const text = overlay.caption(decision);
+        if (text) ui.setDemoCaption(text, '', decision.action === 'tactic' ? 'action' : 'guide');
+        if (decision.action === 'tactic') {
+          for (const cast of decision.casts || []) {
+            if (!cast.ok) continue;
+            SFX.tactic(cast.kind, cast.size);
+            renderer.tacticCast(state, null, cast.kind, cast.route, cast.size);
+            tacticFeedback.showPreview(cast.kind, cast.route, cast.size);
+          }
+        }
+        if (decision.action === 'startWave') SFX.waveStart();
+      },
+      onSession: () => { if (remoteView) refreshAll(); },
+      onStatus: (status) => overlay.setStatus(status),
+      onSnapshot: (snapshot) => {
+        if (!remoteView) return;
+        overlay.setLive({
+          wave: snapshot.wave, castleHp: Math.ceil(snapshot.castleHp),
+          castleMax: snapshot.castleMax, phase: snapshot.phase,
+          tick: snapshot.tick, viewers: snapshot.viewers || 0,
+        });
+        /* Panels rebuild at most once a second; the HUD already updates every frame. */
+        if (performance.now() - refreshHold > 1000) {
+          refreshHold = performance.now();
+          refreshAll();
+        }
+      },
+    },
   });
 }
