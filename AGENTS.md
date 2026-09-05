@@ -105,17 +105,22 @@ server/repository.mjs     JSON 원장: 결제 의도·권리·멱등성·환불�
 server/firestore-repository.mjs   같은 인터페이스를 Firestore 트랜잭션으로
 server/config.mjs · logger.mjs    부팅 시 설정 판정(fatal/warn) · text/json 로그
 src/app/neon-store.js     상점 UI · 체크아웃 시작 · 복귀 폴링 · 인계 코드 UI
-src/app/neontour.js       안내 투어 (?tour=neon)
-start-demo.bat            원클릭: .env 생성·빌드·서버 실행·브라우저로 투어 열기
+src/app/neontour.js       체크아웃 인스펙터 (?tour=neon) — 자동 진행 없이 실제 상점을 관찰
+src/app/neon-events.js    인스펙터로 가는 관찰 이벤트 · 민감 필드 redact
+scripts/payment-excerpts.mjs  빌드 시 검토된 소스 발췌를 번들로 생성
+start-demo.bat            원클릭(Windows): .env 생성·빌드·서버 실행·브라우저 열기
+start-demo.command        원클릭(macOS/Linux): 같은 동작, Node 22.9+ 검사 포함
 ```
 
-**실행·검토:** `start-demo.bat` 더블클릭이 가장 빠르다. 수동은
-`cp .env.example .env` (모의 모드 이미 설정) → `npm run serve` →
-`http://127.0.0.1:8642/?lang=en&demo=expert&tour=neon&mute` (결제 수명 전체를
-13단계 실연, 화면 값은 전부 실제 응답). 검증: `npm run store:check`(~50 단언,
-실패 경로 위주) · `service:check` · `tour:check` — 모두 `npm run check` 게이트에
-포함. Firestore 백엔드는 에뮬레이터 띄우고 `FIRESTORE_EMULATOR_HOST=127.0.0.1:8787
-npm run store:check`.
+**실행·검토:** Windows는 `start-demo.bat`, macOS는 `./start-demo.command`가
+가장 빠르다. 수동은 `cp .env.example .env` (모의 모드 이미 설정) →
+`npm run serve` → `http://127.0.0.1:8642/?lang=en&demo=expert&tour=neon&mute`.
+인스펙터는 5단계 안내·실제 소스 발췌·redact된 HTTP 기록을 보여 주지만 구매를
+스스로 만들지 않는다 — 구매·환불은 상점의 실제 버튼으로 한다. 모의 구매 상태는
+자동으로 지워지지 않는다(새로고침에도 유지). 초기화는 상점의 Test refund 또는
+`.data/` 삭제. 검증: `npm run store:check`(실패 경로 위주) · `service:check` ·
+`tour:check` — 모두 `npm run check` 게이트에 포함. Firestore 백엔드는 에뮬레이터
+띄우고 `FIRESTORE_EMULATOR_HOST=127.0.0.1:8787 npm run store:check`.
 
 **지켜야 할 규약 (어기면 결제가 조용히 깨진다):**
 

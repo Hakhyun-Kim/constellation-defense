@@ -1,0 +1,6 @@
+# Shell launchers must keep LF endings even on Windows checkouts,
+# or the shebang line breaks on macOS/Linux.
+*.command text eol=lf
+*.sh text eol=lf
+# Batch files only run with CRLF endings.
+*.bat text eol=crlf
