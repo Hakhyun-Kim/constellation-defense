@@ -2752,6 +2752,8 @@ body.combat-focus #benchCard .bench { margin-top: 4px; }
   background: #2a2350; color: #ded7ff; font: inherit; font-size: 12px; cursor: pointer;
 }
 .tour-actions button:hover { background: #342c63; }
+.tour-diagram svg { display: block; width: 100%; height: auto; }
+.tour-serverdown-note { display: block; margin-top: 8px; color: #9c95bb; font-size: 11px; }
 /* 투어 중에는 상점 모달을 왼쪽으로 밀어 패널과 겹치지 않게 한다. */
 body.tour-on #neonStoreModal .modal-card { margin-right: min(440px, 45vw); }
 /* 해설자는 하나여야 한다. 봇 관전 자막과 투어 패널이 동시에 말하면 둘 다

@@ -79,6 +79,19 @@ const TEXT = {
       ['원장', 'repository.mjs', '멱등성 · 의도 대조 · 트랜잭션'],
       ['Neon', 'POST /checkout · 웹훅', '호스팅 결제 · 서명된 이벤트'],
     ],
+    flow: {
+      client: '게임 클라이언트', server: '내 서버', neon: 'Neon',
+      serverNote: '가격 · 국가 · 권리 소유', neonNote: '호스팅 결제 페이지',
+      e1: '① SKU · 언어 (가격 없음)', e2: '② X-API-KEY + 서버 가격',
+      e3: '③ redirectUrl → 결제', e5: '⑤ 리다이렉트 — 지급 안 함',
+      e6: '⑥ 서명된 웹훅 — 지급', e7: '⑦ 소유 확인까지 폴링',
+      legend: '점선은 아무 권한이 없다. 굵은 선(서명된 웹훅)만 권리를 쓴다.',
+    },
+    serverDown: {
+      title: '결제 서버가 응답하지 않습니다',
+      body: '이 투어의 각 단계는 실제 서버에 요청을 보냅니다. API가 떠 있지 않으면(정적 배포이거나 서버 미실행) 보여줄 응답이 없습니다. 터미널에서 아래를 실행하고 새로고침하세요:',
+      note: '브라우저 페이지는 서버를 직접 띄울 수 없습니다 — 터미널에서 실행해야 합니다.', cmd: 'cp .env.example .env   # 최초 1회',
+    },
   },
   en: {
     controls: { prev: '◀', next: '▶', pause: '⏸ Pause', resume: '▶ Resume', exit: '✕' },
@@ -125,8 +138,57 @@ const TEXT = {
       ['Ledger', 'repository.mjs', 'idempotency · intent matching · transactions'],
       ['Neon', 'POST /checkout · webhooks', 'hosted checkout · signed events'],
     ],
+    flow: {
+      client: 'Game client', server: 'Your server', neon: 'Neon',
+      serverNote: 'owns price · country · entitlements', neonNote: 'hosted payment page',
+      e1: '① SKU + locale (no price)', e2: '② X-API-KEY + server price',
+      e3: '③ redirectUrl → pay', e5: '⑤ redirect — grants nothing',
+      e6: '⑥ signed webhook — grants', e7: '⑦ poll until owned',
+      legend: 'The dotted arrow has no authority. Only the bold one — the signed webhook — writes an entitlement.',
+    },
+    serverDown: {
+      title: 'The payment server is not responding',
+      body: 'Every step of this tour sends a real request to the server. If the API is not running (a static deployment, or the server simply is not started), there are no responses to show. Run this in a terminal, then reload:',
+      note: 'A browser page cannot start the server itself — it has to be run from a terminal.', cmd: 'cp .env.example .env   # first time only',
+    },
   },
 };
+
+/* 결제 플로우를 그림 하나로. 패널이 좁아(≈380px) 세로로 쌓는다. 정적 SVG 이고
+ * 문자열은 전부 우리 표에서 오므로 innerHTML 로 넣어도 안전하다. 점선(리다이렉트,
+ * 권한 없음)과 굵은 선(서명된 웹훅, 지급)의 대비가 이 그림의 핵심이다. */
+function flowSvg(f) {
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const node = (y, title, note) => `
+    <rect x="24" y="${y}" width="292" height="44" rx="10" fill="#241d47" stroke="#4a3d7d"/>
+    <text x="40" y="${y + 20}" fill="#efeaff" font-size="14" font-weight="700">${esc(title)}</text>
+    ${note ? `<text x="40" y="${y + 36}" fill="#9c95bb" font-size="11">${esc(note)}</text>` : ''}`;
+  const edge = (y, label) => `<text x="170" y="${y}" fill="#bdb7d4" font-size="11" text-anchor="middle">${esc(label)}</text>`;
+  return `<svg viewBox="0 0 340 350" width="100%" xmlns="http://www.w3.org/2000/svg" role="img">
+    <defs>
+      <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#8f83d6"/>
+      </marker>
+    </defs>
+    ${node(12, f.client, null)}
+    <line x1="170" y1="56" x2="170" y2="78" stroke="#8f83d6" stroke-width="1.5" marker-end="url(#ar)"/>
+    ${edge(72, f.e1)}
+    ${node(86, f.server, f.serverNote)}
+    <line x1="170" y1="130" x2="170" y2="152" stroke="#8f83d6" stroke-width="1.5" marker-end="url(#ar)"/>
+    ${edge(146, f.e2)}
+    ${node(160, f.neon, f.neonNote)}
+    ${edge(224, f.e3)}
+    <!-- 리다이렉트: 점선, 권한 없음 -->
+    <line x1="150" y1="204" x2="60" y2="250" stroke="#6b6390" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+    <text x="24" y="268" fill="#8a82ab" font-size="11">${esc(f.e5)}</text>
+    <!-- 웹훅: 굵은 선, 지급 -->
+    <line x1="200" y1="204" x2="248" y2="290" stroke="#c9a24a" stroke-width="3" marker-end="url(#ar)"/>
+    <text x="316" y="286" fill="#e6c46f" font-size="11" text-anchor="end" font-weight="700">${esc(f.e6)}</text>
+    <rect x="24" y="292" width="292" height="30" rx="8" fill="#1b1734" stroke="#3a3060"/>
+    <text x="40" y="311" fill="#cfc4ff" font-size="11">${esc(f.e7)}</text>
+    <text x="24" y="342" fill="#8a82ab" font-size="10.5">${esc(f.legend)}</text>
+  </svg>`;
+}
 
 function buildSteps(ctx, text) {
   const s = text.steps;
@@ -136,6 +198,9 @@ function buildSteps(ctx, text) {
     {
       ...card(s[0]),
       ms: 6000,
+      /* 첫 화면에 결제 플로우 전체를 한 장으로 — 뒤 단계들이 이 그림의 어느
+       * 화살표인지 알고 볼 수 있게. */
+      diagram: 'flow',
       run: async () => {
         ctx.stage.hurry(24);
         return `wave → ${ctx.stage.wave()}`;
@@ -310,6 +375,11 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
     diagramEl.replaceChildren();
     diagramEl.classList.toggle('hidden', !kind);
     if (!kind) return;
+    if (kind === 'flow') {
+      /* SVG 는 우리가 만든 정적 문자열이라 innerHTML 이 안전하다. */
+      diagramEl.innerHTML = flowSvg(text.flow);
+      return;
+    }
     for (const [label, value, note] of text[kind]) {
       const box = document.createElement('div');
       box.className = 'tour-box';
@@ -358,7 +428,8 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
   const go = (next) => { show(next).then(schedule); };
 
   prevBtn.addEventListener('click', () => go(index - 1));
-  nextBtn.addEventListener('click', () => go(index + 1));
+  /* nextBtn 은 onclick 으로만 제어한다 — boot() 은 정상 진행, showServerDown() 은
+   * 재시도로 바꿔 끼우기 때문에 addEventListener 와 섞으면 이중 발동한다. */
   pauseBtn.addEventListener('click', () => {
     paused = !paused;
     pauseBtn.textContent = paused ? text.controls.resume : text.controls.pause;
@@ -385,8 +456,44 @@ export function initNeonTour({ locale = 'ko', openStore, closeStore, refreshStor
     } catch { /* 서버가 없으면 되돌릴 상태도 없다 */ }
   }
 
+  /* API 가 응답하는지 먼저 본다. 안 뜬 상태(정적 배포·서버 미실행)면 각 단계가
+   * 전부 빈 응답을 내므로, 투어를 돌리는 대신 어떻게 띄우는지 안내한다. 브라우저
+   * 페이지가 서버 프로세스를 직접 띄울 수는 없으니 명령을 보여 주는 게 최선이다. */
+  async function serverUp() {
+    try {
+      const response = await fetch('/api/store/catalog?locale=' + locale, { credentials: 'same-origin' });
+      return response.ok;
+    } catch { return false; }
+  }
+
+  function showServerDown() {
+    clearTimeout(timer);
+    stepEl.textContent = '⚠';
+    titleEl.textContent = text.serverDown.title;
+    bodyEl.textContent = text.serverDown.body;
+    renderDiagram(null);
+    liveEl.textContent = `${text.serverDown.cmd}\nnpm run serve`;
+    liveEl.classList.remove('hidden');
+    /* 안내 아래에 왜 자동 실행이 안 되는지 한 줄. */
+    const why = document.createElement('small');
+    why.className = 'tour-serverdown-note';
+    why.textContent = text.serverDown.note;
+    liveEl.after(why);
+    /* 자동 진행·다음 버튼은 의미가 없으니 재시도만 남긴다. */
+    nextBtn.textContent = '↻';
+    nextBtn.onclick = () => { why.remove(); boot(); };
+  }
+
+  async function boot() {
+    if (!(await serverUp())) { showServerDown(); return; }
+    nextBtn.textContent = text.controls.next;
+    nextBtn.onclick = () => go(index + 1);
+    await resetOwnState();
+    go(0);
+  }
+
   panel.classList.remove('hidden');
   document.body.classList.add('tour-on');
-  resetOwnState().then(() => go(0));
+  boot();
   return { next: () => go(index + 1), stop: () => { clearTimeout(timer); ticket += 1; } };
 }

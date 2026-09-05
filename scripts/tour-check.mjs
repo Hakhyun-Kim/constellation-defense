@@ -42,7 +42,24 @@ for (const locale of locales) {
     assert.ok(text.controls[key], `${locale} 조작 버튼 문구 ${key}`);
   }
   assert.equal(typeof text.needServer, 'function', `${locale} 는 서버가 없을 때의 안내를 갖는다`);
+
+  /* 첫 화면 플로우 다이어그램: 세 노드와 여섯 화살표 라벨이 모두 있어야
+   * 그림이 완성된다. */
+  for (const key of ['client', 'server', 'neon', 'serverNote', 'neonNote',
+    'e1', 'e2', 'e3', 'e5', 'e6', 'e7', 'legend']) {
+    assert.ok(text.flow[key], `${locale} flow 라벨 ${key}`);
+  }
+  /* 서버 다운 안내: 제목·본문·왜-직접-못-띄우는지. */
+  for (const key of ['title', 'body', 'note']) {
+    assert.ok(text.serverDown[key], `${locale} serverDown ${key}`);
+  }
 }
+
+/* 첫 단계가 플로우 그림을 달고, 서버 프리플라이트가 살아 있는지 소스로 확인 —
+ * 둘 다 게임은 멀쩡히 돌기 때문에 빠져도 눈에 안 띈다. */
+assert.match(source, /diagram: 'flow'/, '첫 단계에 결제 플로우 그림이 붙는다');
+assert.match(source, /async function serverUp/, '서버가 떠 있는지 먼저 확인한다');
+assert.match(source, /showServerDown/, '서버가 없으면 실행 안내를 보여준다');
 
 /* 모듈이 찾는 id 가 실제로 문서에 있어야 한다. 하나라도 없으면 투어가 통째로
  * 뜨지 않거나 빈 칸이 남는다. */
