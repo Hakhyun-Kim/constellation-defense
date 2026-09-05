@@ -2,7 +2,7 @@ import { createHash, createHmac, randomInt, randomUUID, timingSafeEqual } from '
 import {
   DEFAULT_COUNTRY, checkoutItem, isSupportedCountry, marketFor, MARKETS, PRODUCTS, publicCatalog,
 } from './catalog.mjs';
-import { createNeonCheckout } from './neon-client.mjs';
+import { createNeonCheckout, createNeonRefund, getNeonPurchase } from './neon-client.mjs';
 import { PermanentRejection } from './repository.mjs';
 
 const PLAYER_COOKIE = 'cd_player';
@@ -305,12 +305,23 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           return json(res, 429, { error: 'too many checkout attempts' });
         }
         const externalReferenceId = randomUUID();
-        /* Use the request origin when PUBLIC_URL is absent; warn on a configured mismatch that could lose session cookies. */
+        /* Return the player to the page that started checkout. An allowlisted
+         * cross-origin browser announces itself via the Origin header, and may
+         * add a validated same-origin path (a Pages project site lives under a
+         * path Origin cannot carry). Otherwise PUBLIC_URL, then the request
+         * origin, apply as before. The return URL also carries api=<this
+         * service> so the arriving page polls the right payment service. */
         const observed = requestOrigin(req);
-        const origin = String(config.publicUrl || observed || '').replace(/\/$/, '');
-        if (config.publicUrl && observed && !config.publicUrl.startsWith(observed)) {
+        const clientOrigin = String(req.headers.origin || '');
+        const returnPath = /^\/[\w\-./]*$/.test(String(input.returnPath || '')) && !String(input.returnPath).includes('..')
+          ? String(input.returnPath).replace(/\/$/, '') : '';
+        const origin = ((config.allowedOrigins || []).includes(clientOrigin)
+          ? clientOrigin + returnPath
+          : String(config.publicUrl || observed || '')).replace(/\/$/, '');
+        if (config.publicUrl && observed && !config.publicUrl.startsWith(observed) && !(config.allowedOrigins || []).includes(clientOrigin)) {
           log.warn?.(`[store] PUBLIC_URL(${config.publicUrl})과 요청 오리진(${observed})이 다릅니다 — 결제 후 세션 쿠키를 잃습니다.`);
         }
+        const apiParam = `&api=${encodeURIComponent(String(observed || '').replace(/\/$/, ''))}`;
         const payload = {
           items: [resolved.item],
           externalReferenceId,
@@ -319,11 +330,11 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           playerCountry: country,
           currency: resolved.currency,
           storeUrl: origin,
-          successUrl: `${origin}/?lang=${locale}&purchase=return&sku=${encodeURIComponent(resolved.item.sku)}`,
-          cancelUrl: `${origin}/?lang=${locale}&purchase=cancelled&sku=${encodeURIComponent(resolved.item.sku)}`,
+          successUrl: `${origin}/?lang=${locale}&purchase=return&sku=${encodeURIComponent(resolved.item.sku)}${apiParam}`,
+          cancelUrl: `${origin}/?lang=${locale}&purchase=cancelled&sku=${encodeURIComponent(resolved.item.sku)}${apiParam}`,
         };
         const checkout = config.mock
-          ? { checkoutId: `mock-${externalReferenceId}`, redirectUrl: `${origin}/?lang=${locale}&purchase=mock&reference=${externalReferenceId}` }
+          ? { checkoutId: `mock-${externalReferenceId}`, redirectUrl: `${origin}/?lang=${locale}&purchase=mock&reference=${externalReferenceId}${apiParam}` }
           : await createNeonCheckout({ apiKey: config.apiKey, apiUrl: config.apiUrl, payload, fetchImpl });
         await repository.recordCheckout({
           externalReferenceId, accountId, sku: resolved.item.sku, entitlement: resolved.entitlement,
@@ -389,6 +400,33 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           source: 'mock',
           describe: () => `fulfilled ${mockPurchase.sku} for ${mockPurchase.accountId}`,
         });
+      }
+
+      /* Hosted-mode self-refund, so the shared demo can show the whole
+       * lifecycle. Account-scoped: only the purchase owner may request it.
+       * The route only ASKS Neon (item-level body — the empty-body path is a
+       * recorded sandbox 500); the entitlement is revoked exclusively by the
+       * signed refund.processed webhook that follows, which the client
+       * observes by polling. A production title would gate refunds behind
+       * support tooling rather than a player-facing button. */
+      if (req.method === 'POST' && url.pathname === '/api/store/refund' && !config.mock) {
+        const input = readJson(await body(req));
+        const resolved = checkoutItem(input.sku, { locale: 'en', country: DEFAULT_COUNTRY });
+        if (!resolved) return json(res, 400, { error: 'unknown product' });
+        const accountId = account(req, res, cookieOptionsFor(req));
+        const owned = (await repository.entitlements(accountId))[resolved.entitlement];
+        if (!owned?.purchaseId) return json(res, 404, { error: 'not owned' });
+        const purchase = await getNeonPurchase({
+          apiKey: config.apiKey, apiUrl: config.apiUrl, purchaseId: owned.purchaseId, fetchImpl,
+        });
+        const item = (purchase.items || []).find((entry) => entry.sku === input.sku && entry.refundableQuantity > 0);
+        if (!item) return json(res, 409, { error: 'not refundable' });
+        const refund = await createNeonRefund({
+          apiKey: config.apiKey, apiUrl: config.apiUrl,
+          purchaseId: owned.purchaseId, itemId: item.id, fetchImpl,
+        });
+        log.info?.(`[store] refund requested for ${input.sku} (${accountId}); revocation follows the webhook`);
+        return json(res, 202, { requested: true, refundId: refund.refundId || refund.id || null });
       }
 
       /* Mock-only refunds validate account ownership and use repository.revoke(), the same entry point as real refund webhooks. */

@@ -535,7 +535,81 @@ async function runSuite(repository, label) {
       assert.equal((await incomplete.checkout(buyer)).status, 500, 'redirectUrl 없는 응답은 성공으로 치지 않는다');
     } finally { await incomplete.close(); }
 
-    console.log(`  ✅ ${label}: 카탈로그·국가 해석·가격 계약·서명·재전송·환경·속도 제한·환불 회수·계정 인계·저장본·실호출 경로`);
+    /* Shared-link returns: an allowlisted Origin (plus a validated path) wins
+     * over PUBLIC_URL, and every return URL carries api=<this service>. */
+    {
+      const pagesHandler = createStoreApi({
+        repository,
+        config: { mock: true, webhookSecret: secret, publicUrl: 'https://tunnel.example.test', environment: 'sandbox', allowedOrigins: ['https://pages.example.test'] },
+        log: quiet,
+      });
+      const pages = createServer(async (req, res) => pagesHandler(req, res, new URL(req.url, 'https://x.local')));
+      await new Promise((resolve) => pages.listen(0, '127.0.0.1', resolve));
+      const at = `http://127.0.0.1:${pages.address().port}`;
+      const linkCheckout = (headers, extra = {}) => fetch(`${at}/api/store/checkout`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ sku: 'CELESTIAL_BANNER', locale: 'en', ...extra }),
+      }).then((r) => r.json()).then((data) => new URL(data.redirectUrl));
+      try {
+        const cookie = sessionCookie(await fetch(`${at}/api/store/catalog?locale=en`));
+        const fromPages = await linkCheckout({ cookie, origin: 'https://pages.example.test' }, { returnPath: '/constellation-defense/' });
+        assert.equal(fromPages.origin, 'https://pages.example.test', '허용된 Origin 이 복귀 기준이 된다');
+        assert.equal(fromPages.pathname, '/constellation-defense/', '검증된 returnPath 가 붙는다');
+        assert.ok(fromPages.searchParams.get('api').startsWith('http://127.0.0.1'), '복귀 URL 이 api=<이 서비스> 를 싣는다');
+        const forged = await linkCheckout({ cookie, origin: 'https://evil.example.test' }, { returnPath: '/x/' });
+        assert.equal(forged.origin, 'https://tunnel.example.test', '허용 목록 밖 Origin 은 PUBLIC_URL 로 돌아간다');
+        const traversal = await linkCheckout({ cookie, origin: 'https://pages.example.test' }, { returnPath: '/../evil' });
+        assert.equal(traversal.pathname, '/', '경로 검증 실패 시 returnPath 는 무시된다');
+      } finally { await new Promise((resolve) => pages.close(resolve)); }
+    }
+
+    /* Hosted self-refund: account-scoped, asks Neon item-level, never revokes
+     * by itself — the webhook does. Mock mode does not expose the route. */
+    {
+      const rBuyer = sessionCookie(await call('/api/store/catalog?locale=ko'));
+      const rRef = referenceOf((await (await openCheckout(rBuyer)).json()).redirectUrl);
+      await call('/api/store/mock-complete', {
+        method: 'POST', headers: { cookie: rBuyer, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reference: rRef }),
+      });
+      assert.equal((await call('/api/store/refund', {
+        method: 'POST', headers: { cookie: rBuyer, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku: 'CELESTIAL_BANNER' }),
+      })).status, 404, 'mock 모드에는 실환불 라우트가 없다');
+
+      let sentRefund = null;
+      const refundStub = (refundable = 1) => async (url, options = {}) => {
+        if (String(url).endsWith('/refund')) {
+          sentRefund = { url: String(url), body: JSON.parse(options.body) };
+          return new Response(JSON.stringify({ refundId: 'rf_1' }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ status: 'complete', items: [{ id: 'itm_9', sku: 'CELESTIAL_BANNER', refundableQuantity: refundable }] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+      const hosted = await liveServer(refundStub());
+      const refundCall = (cookie) => fetch(`${hosted.at}/api/store/refund`, {
+        method: 'POST', headers: { cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku: 'CELESTIAL_BANNER' }),
+      });
+      try {
+        const accepted = await refundCall(rBuyer);
+        assert.equal(accepted.status, 202, '환불 요청은 202 — 회수는 웹훅 몫');
+        assert.equal((await accepted.json()).requested, true);
+        assert.ok(sentRefund.url.includes(`/purchases/mock-purchase-${rRef}/refund`), '원장의 purchaseId 로 Neon 에 요청한다');
+        assert.deepEqual(sentRefund.body, { items: [{ itemId: 'itm_9', quantity: 1 }] }, 'item 단위 본문 — 빈 본문은 샌드박스 500');
+        const stranger = sessionCookie(await fetch(`${hosted.at}/api/store/catalog?locale=ko`));
+        assert.equal((await refundCall(stranger)).status, 404, '남의 구매는 환불할 수 없다');
+      } finally { await hosted.close(); }
+      const spent = await liveServer(refundStub(0));
+      try {
+        assert.equal((await (await fetch(`${spent.at}/api/store/refund`, {
+          method: 'POST', headers: { cookie: rBuyer, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sku: 'CELESTIAL_BANNER' }),
+        })).status), 409, 'refundableQuantity 0 이면 409');
+      } finally { await spent.close(); }
+    }
+
+    console.log(`  ✅ ${label}: 카탈로그·국가 해석·가격 계약·서명·재전송·환경·속도 제한·환불 회수·계정 인계·저장본·실호출·복귀주소·실환불 경로`);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

@@ -97,8 +97,16 @@ decorations. Pricing and fulfillment are server-owned (`server/`), the game
 engine knows nothing about payments, and on static hosting the store simply
 hides itself. `start-demo.bat` / `./start-demo.command` runs the full local
 demo in mock mode with a checkout inspector on the game screen;
-`npm run store:check` is the focused integration suite. The full record —
-architecture, decisions, verification, open questions — lives in the companion
+`npm run store:check` is the focused integration suite.
+
+A deployed payment service can also be targeted **from a shared link**:
+`?store=1&api=<payment-service-origin>` points this static build at it — the
+origin must appear in the page's CSP `connect-src` (the allowlist is what
+keeps any other value inert), return URLs carry the parameter back, and owned
+items expose a **real sandbox refund** that shows the whole sequence on
+screen: request → Neon item-level refund → signed `refund.processed` webhook
+→ ledger revoke → Owned gone. The full record — architecture, decisions,
+verification, open questions — lives in the companion
 [neon-checkout-integration](https://github.com/Hakhyun-Kim/neon-checkout-integration)
 repository.
 

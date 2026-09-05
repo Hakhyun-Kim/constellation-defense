@@ -2871,3 +2871,19 @@ body.dedicated-on #dedicatedPanel { pointer-events: auto; }
 /* Gateway store button: distinct from the primary local-play action. */
 #dedicatedPanel .dp-store { border-color: #a97b1f; background: #4a3a14; color: #ffe1a1; font-size: 13px; font-weight: 700; padding: 8px 12px; }
 #dedicatedPanel .dp-store:hover { background: #5c4a1c; }
+
+/* Hosted-mode real-refund flow: live step states while the webhook is awaited. */
+.neon-flow { margin-top: 10px; padding: 10px 12px; border: 1px solid #d8cfae; border-radius: 10px; background: #fbf7ea; }
+.neon-flow-steps { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 12.5px; }
+.neon-flow-steps li[data-state="wait"] { color: #a89f86; }
+.neon-flow-steps li[data-state="run"] { color: #8a6d1a; font-weight: 700; }
+.neon-flow-steps li[data-state="run"]::after { content: " …"; }
+.neon-flow-steps li[data-state="done"] { color: #2e7d4f; }
+.neon-flow-steps li[data-state="done"]::marker { content: "✓ "; }
+.neon-flow-steps li[data-state="fail"] { color: #b3541e; }
+.neon-flow-error { margin: 8px 0 0; color: #b3541e; font-size: 12px; }
+.neon-flow-done { margin: 8px 0 0; color: #2e7d4f; font-size: 12.5px; font-weight: 700; }
+.neon-flow-code { margin-top: 8px; }
+.neon-flow-code summary { cursor: pointer; font-size: 12px; color: #6b5d33; }
+.neon-flow-code code { display: block; margin-top: 6px; color: #8a6d1a; font-size: 11px; }
+.neon-flow-code pre { margin: 2px 0 0; padding: 8px 10px; overflow-x: auto; border-radius: 8px; background: #241f3d; color: #cfe8d8; font-size: 10.5px; line-height: 1.5; }

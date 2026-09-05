@@ -54,8 +54,8 @@ non-`hello` message before `hello` gets `{"type":"error","code":"hello_first"}`.
 ### The store surface
 
 `store.path` must be one of the client-facing payment paths — currently
-`/api/store/catalog · market · entitlements · checkout · mock-complete ·
-mock-refund` and `/api/account/transfer-code · claim`. The gateway forwards
+`/api/store/catalog · market · entitlements · checkout · refund ·
+mock-complete · mock-refund` and `/api/account/transfer-code · claim`. The gateway forwards
 the request to `PAYMENT_API_URL` with `Authorization: Bearer <account>` and a
 per-connection cookie jar (explicit market selection is cookie-based and
 works through it). Everything else is refused with status 403 — including,

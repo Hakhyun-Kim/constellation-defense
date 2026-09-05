@@ -5,6 +5,7 @@ const windows = {
   hosted: ['server/neon-client.mjs', '  const response = await fetchImpl', 6],
   fulfill: ['server/repository.mjs', '  async fulfill(', 20],
   refund: ['server/repository.mjs', '  async revoke(', 16],
+  refundRequest: ['server/store-api.mjs', "url.pathname === '/api/store/refund'", 18],
   visuals: ['src/gfx/cosmetics.js', '  setEntitlements(', 3],
 };
 const excerpts = {};

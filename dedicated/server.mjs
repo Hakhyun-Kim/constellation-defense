@@ -35,6 +35,7 @@ const STORE_PATHS = new Set([
   '/api/store/market',
   '/api/store/entitlements',
   '/api/store/checkout',
+  '/api/store/refund',
   '/api/store/mock-complete',
   '/api/store/mock-refund',
   '/api/account/transfer-code',
@@ -163,6 +164,13 @@ export function startDedicatedServer(overrides = {}) {
         client.conn.send(JSON.stringify({ type: 'storeIdentity', playerId: client.storeToken }));
       }
       if (ENTITLEMENT_OPS.has(pathname) && response.ok) await refreshCosmetics(client);
+      /* A real refund revokes via the webhook seconds later; re-check the
+       * ledger a few times so the shared castle sheds the cosmetic. */
+      if (pathname === '/api/store/refund' && response.ok) {
+        for (const delay of [2000, 5000, 12000]) {
+          setTimeout(() => { refreshCosmetics(client); }, delay).unref?.();
+        }
+      }
       log.info(`store ${message.method || 'GET'} ${pathname} → ${response.status}`);
     } catch (error) {
       respond(502, { error: `payment service unreachable: ${error.message}` });
