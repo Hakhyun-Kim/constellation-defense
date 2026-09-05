@@ -157,6 +157,10 @@ start-dedicated.bat / .command   서버 2개 실행 + ?dedicated=1 뷰어 열기
 ```
 
 **지켜야 할 규약:**
+- **클라이언트 모드가 게임의 기준이다.** 기본 게임(Pages·index.html 더블클릭·
+  `npm run serve`)은 서버 0개로 돌아야 하고, dedicated 코드는 `?dedicated=1`
+  없이는 연결·오버레이·입력 차단 어느 것도 활성화하지 않는다(번들 +약 21KB
+  외 비용 없음). 이 경계를 무너뜨리는 변경은 하지 않는다.
 - `dedicated/`는 `src/engine·balance·bot`, `scripts/balance-bot.mjs`의 정책
   헬퍼, `server/logger.mjs`만 import 한다. 결제 코드와 섞지 않는다.
 - 클라이언트에 게임 규칙을 넣지 않는다. 스냅샷이 항상 로컬 추측을 덮는다.

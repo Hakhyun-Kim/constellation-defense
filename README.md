@@ -28,17 +28,20 @@ guided live-demo subtitles are documented in
 [docs/design/hero-linked-puzzle-and-cinematic-demo.md](docs/design/hero-linked-puzzle-and-cinematic-demo.md).
 For a fresh setup or handoff to another computer, start with [docs/CONTINUATION.md](docs/CONTINUATION.md).
 
-## Play
+## Play — client mode, the default game
 
-[Play in the browser](https://hakhyun-kim.github.io/constellation-defense/)
+The game itself is a static client build. It needs **no server of any kind**:
 
-[Watch the guided live demo](https://hakhyun-kim.github.io/constellation-defense/?demo=1)
-— a real deterministic bot run with two-line explanations for lane/color
-mapping, Hero Sigils, linked hero actives, held Guardian timing, phase flow,
-boss cut-ins, and expedition growth. The teaching Hero Sigil is still made by
-a legal adjacent swap and resolved through the normal combat engine.
+- [Play in the browser](https://hakhyun-kim.github.io/constellation-defense/) —
+  the hosted Pages build.
+- Or clone and double-click `index.html`; the committed `dist/game.js` runs
+  without a build step.
+- [Guided live demo](https://hakhyun-kim.github.io/constellation-defense/?demo=1)
+  — a real deterministic bot run with two-line explanations of the core rules;
+  every action goes through the normal combat engine.
+- `?lang=en` for the English build, or change **Language** in the ⚙️ panel.
 
-Use `?lang=en` for the English build, or change **Language** from the in-game ⚙️ settings panel.
+For development:
 
 ```bash
 npm install
@@ -48,51 +51,32 @@ npm run check
 npm run balance:check
 ```
 
-## Optional store — Neon checkout
+## Two ways to run
 
-The **별빛 상점 / Celestial Store** sells permanent, cosmetic-only castle
-decorations. Pricing and fulfillment are server-owned (`server/`), and the game
-engine knows nothing about payments. The hosted Pages build above is the static
-game only — with no payment server present, the store hides itself and nothing
-else changes.
+| Mode | Start | What runs |
+|---|---|---|
+| **Client mode** (default) | Pages · `index.html` · `npm run serve` | The whole game simulates locally in your browser. No servers, no account. |
+| **Server mode** (optional) | `start-dedicated.bat` / `./start-dedicated.command` | A dedicated server owns the simulation; the browser is an authenticated viewer of its live demo session. |
 
-Run the full local flow, no credentials needed:
+The optional Neon store demo (`start-demo.bat` / `./start-demo.command`) adds a
+local payment server to client mode; without one the store hides itself. The
+modes stay separate on purpose: server-mode code is inert without
+`?dedicated=1` and adds ~21 KB (1.5%) to the bundle, nothing else.
 
-- **Windows** — double-click `start-demo.bat`
-- **macOS / Linux** — run `./start-demo.command`
+## Server mode — the dedicated server
 
-Both create a mock-mode `.env`, install, build, start the local server, and open
-the checkout inspector at
-`http://127.0.0.1:8642/?lang=en&demo=expert&tour=neon&mute` — a panel on the game
-screen that observes the real store: source excerpts from this build, live
-redacted HTTP evidence, purchases delivered on the 3D castle, and per-item test
-refunds. Manual equivalent on any platform with Node 22.9+:
-
-```bash
-cp .env.example .env    # NEON_MOCK_CHECKOUT=1 is already set
-npm install && npm run build && npm run serve
-```
-
-`npm run store:check` runs the focused integration suite. The full design
-record — architecture, decisions, verification, open questions — lives in the
-companion [neon-checkout-integration](https://github.com/Hakhyun-Kim/neon-checkout-integration)
-repository.
-
-## Dedicated server demo
-
-The simulation can also run in an authoritative server process, with every
+The same simulation can run in an authoritative server process, with every
 client — this web build, and the Unity/Unreal samples in `clients/` — acting
 as a renderer of its snapshots. No game rule runs client-side in that mode.
 
-- **Windows** — double-click `start-dedicated.bat`
-- **macOS / Linux** — run `./start-dedicated.command`
-
-Both start the dedicated server (`ws://127.0.0.1:8643`) and the web client
-(`http://127.0.0.1:8642`), then open the live viewer, where a server-side bot
+`start-dedicated.bat` (Windows) or `./start-dedicated.command` (macOS/Linux)
+starts the dedicated server (`ws://127.0.0.1:8643`) and the web client
+(`http://127.0.0.1:8642`), then opens the live viewer, where a server-side bot
 plays immediately. The on-screen panel shows the architecture, command flow,
-code map and progress, and a **Try the game** button switches to an ordinary
-local run. Watching is public; pausing, changing speed, and restarting the
-session require the controller key (the launcher passes a loopback demo key).
+code map and progress, and a **Try the game** button switches back to an
+ordinary client-mode run. Watching is public; pausing, changing speed, and
+restarting the session require the controller key (the launcher passes a
+loopback demo key).
 
 Manual equivalent: `npm run dedicated` in one terminal, `npm run serve` in
 another, then open `http://127.0.0.1:8642/?lang=en&dedicated=1`. The wire
@@ -102,6 +86,18 @@ contract is [`dedicated/PROTOCOL.md`](dedicated/PROTOCOL.md), enforced by
 A `compose.yaml`/`dedicated/Dockerfile` container path exists for
 deployment-shaped review (not executed on the development machine).
 
+## Optional store — Neon checkout
+
+The **별빛 상점 / Celestial Store** sells permanent, cosmetic-only castle
+decorations. Pricing and fulfillment are server-owned (`server/`), the game
+engine knows nothing about payments, and on static hosting the store simply
+hides itself. `start-demo.bat` / `./start-demo.command` runs the full local
+demo in mock mode with a checkout inspector on the game screen;
+`npm run store:check` is the focused integration suite. The full record —
+architecture, decisions, verification, open questions — lives in the companion
+[neon-checkout-integration](https://github.com/Hakhyun-Kim/neon-checkout-integration)
+repository.
+
 ## Built with Codex
 
 Codex was used as a development collaborator to evolve an existing 3D defense foundation into a focused match-3 tactics game. It helped separate deterministic simulation rules from presentation, add the tactical board, create the fixed-squad growth system, automate balance runs with real match-3 actions, and retain procedural 3D visuals and synthesized audio.
@@ -110,7 +106,8 @@ The design decisions were human-led: matching must map to a visible road, each t
 
 ## Technical notes
 
-- Browser-only static build with esbuild.
+- Static client build with esbuild; the optional server mode runs the same
+  pure simulation in a Node process and streams it to viewers.
 - `src/engine/` is DOM- and renderer-free, enabling deterministic Node checks.
 - `src/balance/` is the single source for tactical and squad-growth numbers.
 - `src/app/tacticflow.js` owns board input and cascades; `src/engine/tactics.js` resolves their commands into combat events.
