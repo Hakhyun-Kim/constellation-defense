@@ -32,7 +32,8 @@ for (const decision of traced.trace) {
   for (const cast of decision.casts || []) {
     assert.ok(['flare', 'tide', 'bloom'].includes(cast.kind), 'trace records tactic kind');
     assert.ok(cast.route >= 0 && cast.route <= 2, 'trace records target lane');
-    assert.ok(cast.size >= 3 && cast.size <= 5, 'trace clamps match size');
+    /* Sizes 3–5 are ordinary matches; 6 is the semantic Hero Sigil tier. */
+    assert.ok(cast.size >= 3 && cast.size <= 6, 'trace records a known match size');
   }
 }
 

@@ -1,13 +1,12 @@
 /* Authoritative real-time game session for the dedicated server.
  * The simulation, decisions and tactic board all live here; clients only
- * render what this host broadcasts. Decisions reuse the shared bot policy
- * (src/bot.js + scripts/balance-bot.mjs) so the hosted demo plays by the
- * same public information and command paths as a player or the balance gate. */
+ * render what this host broadcasts. Decisions reuse the shared bot policy in
+ * src/bot.js, so the hosted demo plays by the same public information and
+ * command paths as a player or the balance gate. */
 import * as E from '../src/engine.js';
 import * as D from '../src/data.js';
 import * as Bot from '../src/bot.js';
 import { createStableBoard } from '../src/tactics/board.js';
-import { choosePolicySwap, resolveTacticSwap } from '../scripts/balance-bot.mjs';
 
 const STEP = 1 / 60;                  // Same fixed timestep as the browser client.
 const WAVE_DECISION_SECONDS = 2.0;    // Watchable pacing, matching the browser demo.
@@ -157,10 +156,10 @@ export function createHost(options = {}) {
 
   function waveDecision(state) {
     const P = profile();
-    const swap = choosePolicySwap('threat', state, host.board, P, state.rng);
+    const swap = Bot.choosePolicySwap('threat', state, host.board, P, state.rng);
     if (swap) {
       const casts = [];
-      host.board = resolveTacticSwap(state, swap, (cast) => casts.push(cast)).cells;
+      host.board = Bot.resolveTacticSwap(state, swap, (cast) => casts.push(cast)).cells;
       emitDecision('tactic', {
         from: swap.from, to: swap.to,
         casts: casts.map(({ kind, route, size, ok }) => ({ kind, route, size, ok })),

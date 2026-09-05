@@ -2,7 +2,7 @@
 import * as D from '../src/data.js';
 import * as E from '../src/engine.js';
 import * as Bot from '../src/bot.js';
-import { createStableBoard, findLegalSwaps, findMatchGroups, laneForGroup, refillCells, tacticSizeForGroup } from '../src/tactics/board.js';
+import { createStableBoard, findLegalSwaps } from '../src/tactics/board.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -42,49 +42,16 @@ function spendTownSpecializations(state) {
   }
 }
 
-/* Match the view adapter's resolveQueue order: resolve independent matches separately, then handle refill cascades. */
-export const TACTIC_POLICIES = ['none', 'random', 'threat'];
+/* Swap policies and resolution live in src/bot.js so the dedicated host and
+ * the browser share one implementation; re-export for existing consumers. */
+export { TACTIC_POLICIES, choosePolicySwap, resolveTacticSwap } from '../src/bot.js';
+import { choosePolicySwap, resolveTacticSwap } from '../src/bot.js';
 
 function lanePressure(state) {
   return [0, 1, 2].map(route => (state.enemies || [])
     .filter(enemy => !enemy.dead && enemy.route === route)
     .reduce((sum, enemy) => sum + 1 + ((enemy.s || 0) / D.ROUTE_LENS[route]) * 2.5
       + (enemy.boss ? 4 : enemy.midBoss ? 2 : 0), 0));
-}
-
-export function choosePolicySwap(policy, state, board, profile, rng, legalMoves = findLegalSwaps(board)) {
-  if (policy === 'none' || !legalMoves.length) return null;
-  if (policy === 'random') {
-    if (rng() > profile.tacticUse) return null;
-    return legalMoves[Math.floor(rng() * legalMoves.length)];
-  }
-  return Bot.chooseTacticSwap(state, board, profile, rng);
-}
-
-export function resolveTacticSwap(state, move, onCast = null) {
-  let cells = move.cells;
-  let groups = move.groups;
-  let casts = 0;
-  for (let cascade = 0; groups.length && cascade < 12; cascade++) {
-    for (const group of groups) {
-      const kind = cells[group[0]];
-      const route = laneForGroup(group);
-      const size = tacticSizeForGroup(group);
-      const result = E.castTactic(state, route, kind, size);
-      if (result.ok) casts++;
-      onCast?.({
-        cascade: cascade + 1,
-        kind,
-        route,
-        size,
-        ok: result.ok,
-        reason: result.reason || null,
-      });
-      cells = refillCells(cells, group, state.rng);
-    }
-    groups = findMatchGroups(cells);
-  }
-  return { cells, casts };
 }
 
 export function playRun(profileName, difficulty, seed, options = {}) {

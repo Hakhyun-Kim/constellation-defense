@@ -1,7 +1,7 @@
 /* Pure AI decisions shared by the headless balance bot and browser demo. No DOM, timers or Node APIs. Expose both batch prepActions and streamed nextPrepAction so both clients use the same policy. */
 import * as D from './data.js';
 import * as E from './engine.js';
-import { findLegalSwaps, laneForGroup, tacticSizeForGroup } from './tactics/board.js';
+import { findLegalSwaps, findMatchGroups, laneForGroup, refillCells, tacticSizeForGroup } from './tactics/board.js';
 
 /* Seeded randomness makes repeated runs deterministic. */
 export function mulberry32(a) {
@@ -213,6 +213,48 @@ export function chooseTacticSwap(state, cells, P, rng = state.rng || Math.random
   return moves
     .map(move => ({ move, score: move.groups.reduce((sum, group) => sum + groupScore(state, move.cells, group), 0) }))
     .sort((a, b) => b.score - a.score || a.move.from - b.move.from || a.move.to - b.move.to)[0].move;
+}
+
+/* Named swap policies shared by the balance gate, its reports, and the
+ * dedicated host — one implementation for every consumer of "how the bot
+ * decides to swap". */
+export const TACTIC_POLICIES = ['none', 'random', 'threat'];
+
+export function choosePolicySwap(policy, state, board, profile, rng, legalMoves = findLegalSwaps(board)) {
+  if (policy === 'none' || !legalMoves.length) return null;
+  if (policy === 'random') {
+    if (rng() > profile.tacticUse) return null;
+    return legalMoves[Math.floor(rng() * legalMoves.length)];
+  }
+  return chooseTacticSwap(state, board, profile, rng);
+}
+
+/* Resolve one chosen swap the way the view adapter does: independent matches
+ * first, then refill cascades, each cast through the ordinary engine command. */
+export function resolveTacticSwap(state, move, onCast = null) {
+  let cells = move.cells;
+  let groups = move.groups;
+  let casts = 0;
+  for (let cascade = 0; groups.length && cascade < 12; cascade++) {
+    for (const group of groups) {
+      const kind = cells[group[0]];
+      const route = laneForGroup(group);
+      const size = tacticSizeForGroup(group);
+      const result = E.castTactic(state, route, kind, size);
+      if (result.ok) casts++;
+      onCast?.({
+        cascade: cascade + 1,
+        kind,
+        route,
+        size,
+        ok: result.ok,
+        reason: result.reason || null,
+      });
+      cells = refillCells(cells, group, state.rng);
+    }
+    groups = findMatchGroups(cells);
+  }
+  return { cells, casts };
 }
 
 /* Stream one preparation action at a time so summoning, combining and placement remain visible. null means preparation is complete. */

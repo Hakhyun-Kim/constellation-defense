@@ -11,7 +11,6 @@ const EN = new Map(Object.entries({
   '지난 모험이 자동 저장돼 있어요': 'Your previous adventure was saved automatically.',
   '이전': 'Previous',
   '다음': 'Next',
-  '투어 끝내기': 'Close tour',
   '웨이브': 'Wave',
   '방어': 'Defense',
   '성 체력': 'Citadel HP',

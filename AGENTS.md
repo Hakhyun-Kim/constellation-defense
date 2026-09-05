@@ -163,9 +163,9 @@ start-dedicated.bat / .command   서버 2개 실행 + ?dedicated=1 뷰어 열기
   `npm run serve`)은 서버 0개로 돌아야 하고, dedicated 코드는 `?dedicated=1`
   없이는 연결·오버레이·입력 차단 어느 것도 활성화하지 않는다. 이 경계를
   무너뜨리는 변경은 하지 않는다.
-- `dedicated/`는 `src/engine·balance·bot`, `scripts/balance-bot.mjs`의 정책
-  헬퍼, `server/logger.mjs`만 import 한다. 결제 코드는 import 하지 않고
-  **HTTP로만** 부른다(`PAYMENT_API_URL`, 기본 `http://127.0.0.1:8642`).
+- `dedicated/`는 `src/`(engine·balance·bot·tactics)와 `server/logger.mjs`만
+  import 한다. 결제 코드는 import 하지 않고 **HTTP로만** 부른다
+  (`PAYMENT_API_URL`, 기본 `http://127.0.0.1:8642`).
 - 클라이언트에 게임 규칙을 넣지 않는다. 스냅샷이 항상 로컬 추측을 덮는다.
 - **게이트웨이는 허용 목록 밖을 중계하지 않는다.** 특히 `/api/webhooks/*`는
   이유를 적어 403 — 웹훅은 Neon→결제 서비스 트래픽이다. 새 클라이언트 경로가

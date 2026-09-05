@@ -11,12 +11,11 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
-# The dedicated server imports src/engine, src/balance, src/bot, the shared
-# bot-policy helpers and the logger only — no build step, no npm dependencies.
+# The dedicated server imports src/ and the shared logger only — no build
+# step, no npm dependencies.
 COPY package.json ./
 COPY dedicated ./dedicated
 COPY server/logger.mjs ./server/logger.mjs
-COPY scripts/balance-bot.mjs ./scripts/balance-bot.mjs
 COPY src ./src
 
 EXPOSE 8643
