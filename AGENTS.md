@@ -92,6 +92,48 @@ node scripts/asset-budget-check.mjs
 - 콘솔 오류와 누락 파일이 없어야 하며, 공개 Pages URL은 시크릿 창에서 로그인 없이 열려야 한다.
 - 외부 에셋이 있으면 `assets/manifest.json`, `CREDITS.md`, `npm.cmd run asset:check`, 데스크톱 high·모바일 lite 성능 전후 기록이 모두 있어야 한다. 폰트도 라이선스와 폴백을 `CREDITS.md`에 기록한다.
 
+## Neon 결제 통합 (`server/`)
+
+게임은 원래 서버가 없는 정적 빌드였다. `server/`는 결제만을 위한 독립 영역이고
+게임 엔진과 분리돼 있다 — `src/engine/`은 이 코드를 모른다.
+
+```
+server/index.mjs          결제 API 독립 서비스 (정적 파일 서빙 안 함, 배포용 진입점)
+server/store-api.mjs      HTTP 라우트 · 신원(토큰→쿠키) · 국가 해석 · 웹훅 검증/분류
+server/catalog.mjs        SKU 허용 목록 + 가격이 존재하는 유일한 곳
+server/repository.mjs     JSON 원장: 결제 의도·권리·멱등성·환불·인계 코드·저장본
+server/firestore-repository.mjs   같은 인터페이스를 Firestore 트랜잭션으로
+server/config.mjs · logger.mjs    부팅 시 설정 판정(fatal/warn) · text/json 로그
+src/app/neon-store.js     상점 UI · 체크아웃 시작 · 복귀 폴링 · 인계 코드 UI
+src/app/neontour.js       안내 투어 (?tour=neon)
+start-demo.bat            원클릭: .env 생성·빌드·서버 실행·브라우저로 투어 열기
+```
+
+**실행·검토:** `start-demo.bat` 더블클릭이 가장 빠르다. 수동은
+`cp .env.example .env` (모의 모드 이미 설정) → `npm run serve` →
+`http://127.0.0.1:8642/?lang=en&demo=expert&tour=neon&mute` (결제 수명 전체를
+13단계 실연, 화면 값은 전부 실제 응답). 검증: `npm run store:check`(~50 단언,
+실패 경로 위주) · `service:check` · `tour:check` — 모두 `npm run check` 게이트에
+포함. Firestore 백엔드는 에뮬레이터 띄우고 `FIRESTORE_EMULATOR_HOST=127.0.0.1:8787
+npm run store:check`.
+
+**지켜야 할 규약 (어기면 결제가 조용히 깨진다):**
+
+- 가격·통화·국가는 서버만 소유한다. 클라이언트는 `{sku, locale}`만 보낸다.
+- 지급은 `repository.fulfill()` 한 곳에서만 — 서명된 웹훅만 권리를 쓴다.
+  리다이렉트는 권한이 없다(웹훅이 늦을 수 있어서).
+- 웹훅 응답은 "재시도가 의미 있는가"로 가른다. Neon은 비-2xx를 36시간 재시도.
+  재시도로 못 푸는 것은 `200 {ignored}`+로그, 서명 실패만 403, 저장 실패만 5xx.
+- 가격은 100배 정수, 표시는 `Intl`로 파생. ₩4,900=`490000`. 손으로 적지 말 것.
+- 국가는 게임 언어에서 유추하지 않는다. `?lang=en`이 청구 국가를 바꾸면 안 된다.
+- 모의 모드도 실제 지급 경로(`fulfill`/`revoke`)를 그대로 지난다.
+- `?lang=en` 새 UI 문자열은 `i18n.js` 표에 등록, 숫자가 섞이면 패턴으로.
+
+설계·판단 근거·미완 항목의 전체 기록은 별도 문서 저장소
+`neon-checkout-integration`(README → docs 00~11)에 있다.
+
+> `server/` 변경이 포함돼 외부로 공유되는 PR 은 **영어** 커밋 메시지를 쓴다.
+
 ## 작업 방식
 
 - 변경 전 `git status --short`로 기존 사용자 변경을 확인하고, 관련 없는 변경은 건드리지 않는다.

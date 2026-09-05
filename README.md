@@ -57,7 +57,9 @@ granted only after a signed `purchase.completed` webhook. The client polls the
 entitlement endpoint after returning from checkout because the redirect can arrive
 before the webhook.
 
-Run the complete local flow without credentials:
+Run the complete local flow without credentials. On Windows, double-clicking
+`start-demo.bat` does all of it — copies `.env`, installs, builds, starts the
+server, and opens the guided tour in your browser. By hand, on any platform:
 
 ```bash
 cp .env.example .env    # NEON_MOCK_CHECKOUT=1 is already set
