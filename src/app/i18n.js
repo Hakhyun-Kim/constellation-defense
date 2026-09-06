@@ -339,6 +339,9 @@ const EN = new Map(Object.entries({
 
   /* Journey map: star roads, chapter endings and the town revisit card. */
   '별길': 'Star Road',
+  '누구의 설명을 기록할까': 'Whose account will you record?',
+  '봉합': 'Sealing',
+  '공동 집필': 'Co-authored',
   '분기': 'Fork',
   '대장간·별빛 신전·탐험가 길드에서 전문화를 정합니다.': 'Choose specializations at the Starforge, the Starlight Temple and the Explorers Guild.',
   '두 책갈피의 마지막 선택': 'The last choice of the two bookmarks',
@@ -491,6 +494,16 @@ export function translateKnownText(value, locale = activeLocale) {
     if (match) translated = `🛡 ${match[1]} defenses`;
     match = core.match(/^(\d+)개 수집$/);
     if (match) translated = `${match[1]} collected`;
+    /* Chapter completion, ending cards and the branch prompt on the journey map. */
+    match = core.match(/^(.+) 완수$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} complete`;
+    match = core.match(/^(.+) 엔딩$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} Ending`;
+    /* The resume card splits its line across elements, so the tail arrives on its own. */
+    match = core.match(/^· (.+) 난이도 · 🧍 용사 (\d+)명$/);
+    if (match) translated = `· ${translateKnownText(match[1], 'en')} difficulty · 🧍 ${match[2]} heroes`;
+    match = core.match(/^(.+) · 방어 (\d+)\/(\d+)$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} · Defense ${match[2]}/${match[3]}`;
     match = core.match(/^(.+) · 보급 \+(\d+)$/);
     if (match) translated = `${EN.get(match[1]) || match[1]} · Supply +${match[2]}`;
   }

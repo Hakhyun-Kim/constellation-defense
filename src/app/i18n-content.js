@@ -1,5 +1,24 @@
 /* Content translations cover names and descriptions from balance data. Keep them separate from UI structure translations because they change with game content. Keys must exactly match their source strings; i18n-check verifies the contract. */
 export const CONTENT_EN = Object.freeze({
+  // Journey annotations, branch tags and endings shown on the expedition map.
+  '여백 주석 01': 'Margin Note 01',
+  '여백 주석 02': 'Margin Note 02',
+  '여백 주석 03': 'Margin Note 03',
+  '여백 주석 04': 'Margin Note 04',
+  '마지막 여백': 'The Last Margin',
+  '시스템': 'System',
+  '역촌 기록관': 'Station Registrar',
+  '초고 0호': 'Draft Zero',
+  '별자리는 별이 아니었어. 문장을 제자리에 고정하는 교정 기호였어.': 'The constellations were never stars. They were correction marks holding sentences in place.',
+  '제7게이트가 재난 등급으로 승격되었습니다. 축하 쿠폰은 지급되지 않습니다.': 'Gate 7 has been raised to disaster class. No celebratory coupon will be issued.',
+  '이름을 적어 두면 배경 인물로 덮어써져도 누군가 다시 불러 줄 수 있다.': 'Write a name down and, even overwritten as a background character, someone can call it back.',
+  '나는 처음 죽은 일을 기억한다. 네가 다시 만들 때마다 그 기억도 다시 생겼다.': 'I remember dying the first time. Every time you remade me, the memory came back with me.',
+  '우리를 움직일 수 있다는 것과, 우리 대신 선택해도 된다는 건 다른 말이야.': 'Being able to move us and being allowed to choose for us are not the same sentence.',
+  '3A · 연합': '3A · Union',
+  '3B · 여백회': '3B · Margin Society',
+  '두 책갈피로 책을 닫아 현실을 지키되, 책 세계와 몬스터의 기록도 끝낸다.': 'Close the book with both bookmarks: reality is saved, and the book world and its monsters end with it.',
+  '편집 권한을 규칙으로 제한하고 영웅과 몬스터가 함께 다음 장을 쓴다.': 'Bind editing rights with rules, and let heroes and monsters write the next chapter together.',
+
   // Hero active abilities.
   '성광 일섬': 'Radiant Slash',
   '가장 위험한 적 하나를 강하게 베고 잠깐 멈춥니다.': 'Cuts down the single most dangerous enemy and briefly stops it.',

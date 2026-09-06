@@ -35,6 +35,12 @@ assert.equal(translateKnownText('마도사의 별자리 전문화를 엽니다. 
 assert.equal(translateKnownText('보물 · 보급 +80'), 'Treasure · Supply +80');
 assert.equal(translateKnownText('갈림길 마을 3D 광장'), 'Crossroads Village 3D plaza');
 assert.equal(translateKnownText('👥 구조 12명'), '👥 12 rescued');
+assert.equal(translateKnownText('여명의 성도 완수'), 'Pilgrimage of Dawn complete');
+assert.equal(translateKnownText('봉합 엔딩'), 'Sealing Ending');
+assert.equal(translateKnownText('⌁ 누구의 설명을 기록할까'), '⌁ Whose account will you record?');
+assert.equal(translateKnownText('여백 주석 01'), 'Margin Note 01');
+assert.equal(translateKnownText('보스 · 방어 1/5'), 'Boss · Defense 1/5');
+assert.equal(translateKnownText(' · ⚔️ 보통 난이도 · 🧍 용사 3명'), ' · ⚔️ Normal difficulty · 🧍 3 heroes');
 assert.equal(translateKnownText('3개 수집'), '3 collected');
 /* The village 3D scene draws its labels into canvas textures, which the DOM
  * observer cannot reach; gfx/village.js must translate them at creation. */
