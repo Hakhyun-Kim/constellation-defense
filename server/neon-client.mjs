@@ -38,8 +38,10 @@ export async function getNeonPurchase({ apiKey, apiUrl = DEFAULT_API_URL, purcha
   return data;
 }
 
-/* Item-level refunds work in the sandbox; the empty-body full refund returns
- * 500 there (recorded vendor defect). The purchase object names the item id
+/* Item-level refunds work in the sandbox; the total-refund request returns
+ * 500 there — the empty body and the documented { fee: 0 } alike, while
+ * malformed bodies get a clean 400/415 (recorded vendor defect, re-verified
+ * 2026-09-07). The purchase object names the item id
  * `items[].id`, while this request wants it as `itemId`. Revocation itself
  * still arrives only through the signed refund.processed webhook. */
 export async function createNeonRefund({ apiKey, apiUrl = DEFAULT_API_URL, purchaseId, itemId, quantity = 1, fetchImpl = fetch, timeoutMs = 10000 }) {
