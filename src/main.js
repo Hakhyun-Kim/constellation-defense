@@ -2010,7 +2010,7 @@ if (judgeMode) {
   prepareJudgeWave(state);
   refreshAll();
   /* The direct review route skips menus, not the first-defense countdown.
-   * Reviewers can still use the same manual-start override as normal play. */
+   * The same manual-start override as normal play still applies. */
   /* Performance comparisons advance an identical seeded opening by fixed ticks, then freeze the engine so loading differences do not change the measured scene. */
   if (perfMode) {
     for (let tick = 0; tick < 120; tick++) E.tick(state, STEP);

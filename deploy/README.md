@@ -14,12 +14,13 @@
 
 1. Enables the APIs: Cloud Run, Cloud Build, Artifact Registry, Secret Manager, Firestore.
 2. Creates the `(default)` Firestore database (Native mode) in the region if it does not exist.
-3. Creates the secrets `neon-api-key` and `neon-webhook-secret` if missing, then adds a new version of each from the env file or the prompt. `--skip-secrets` leaves the existing versions unchanged.
-4. Grants the compute default service account `roles/secretmanager.secretAccessor` on both secrets, plus `roles/datastore.user` and `roles/cloudbuild.builds.builder` on the project. The last binding is needed because projects created since 2024 no longer give that account the Cloud Build roles, so a `--source` deploy fails reading its own upload.
-5. Runs `gcloud run deploy --source .` with `--allow-unauthenticated`, `--min-instances 0 --max-instances 1 --memory 512Mi`. Environment: `NEON_MOCK_CHECKOUT=0`, `NEON_ENVIRONMENT=sandbox`, `STORE_BACKEND=firestore`, `LOG_FORMAT=json`, `GOOGLE_CLOUD_PROJECT`, `PUBLIC_URL`, `ALLOWED_ORIGINS`. Secrets are mounted as `NEON_API_KEY` and `NEON_WEBHOOK_SECRET` (`:latest`).
-6. Smoke checks against the service URL: `GET /api/store/catalog?locale=en` expects 200 (liveness), `GET /readyz` expects 200 (Firestore reachable), and a `POST /api/webhooks/neon` with a forged `x-neon-digest` expects 403, which proves the secret is loaded. `/healthz` is not probed because Google's frontend answers it before the container on run.app URLs.
-7. With `--smoke-checkout`, also posts `{"sku":"CELESTIAL_BANNER","locale":"en"}` to `/api/store/checkout` and expects 201 with a `redirectUrl`. That is one real sandbox API call. No money moves and nothing is granted; grants require the signed webhook.
-8. Prints the next steps (below). Exits 1 if any smoke check failed.
+3. Enables a TTL policy on `expiresAt` for the `checkouts`, `processedEvents`, `rateLimits` and `transferCodes` collection groups (idempotent, `--async`), so expired intents, dedup records, limiter docs and transfer codes are actually deleted.
+4. Creates the secrets `neon-api-key` and `neon-webhook-secret` if missing, then adds a new version of each from the env file or the prompt. `--skip-secrets` leaves the existing versions unchanged.
+5. Grants the compute default service account `roles/secretmanager.secretAccessor` on both secrets, plus `roles/datastore.user` and `roles/cloudbuild.builds.builder` on the project. The last binding is needed because projects created since 2024 no longer give that account the Cloud Build roles, so a `--source` deploy fails reading its own upload.
+6. Runs `gcloud run deploy --source .` with `--allow-unauthenticated`, `--min-instances 0 --max-instances 1 --memory 512Mi`. Environment: `NEON_MOCK_CHECKOUT=0`, `NEON_ENVIRONMENT=sandbox`, `STORE_BACKEND=firestore`, `LOG_FORMAT=json`, `GOOGLE_CLOUD_PROJECT`, `PUBLIC_URL`, `ALLOWED_ORIGINS`. Secrets are mounted as `NEON_API_KEY` and `NEON_WEBHOOK_SECRET` (`:latest`).
+7. Smoke checks against the service URL: `GET /api/store/catalog?locale=en` expects 200 (liveness), `GET /readyz` expects 200 (Firestore reachable), a `POST /api/webhooks/neon` with a forged `x-neon-digest` expects 403, which proves the secret is loaded, and an `OPTIONS /api/store/catalog` preflight sent with the last `--allowed-origins` entry as `Origin` (the hosted client, `https://hakhyun-kim.github.io` by default) expects 204, which proves CORS still admits the shared link. `/healthz` is not probed because Google's frontend answers it before the container on run.app URLs.
+8. With `--smoke-checkout`, also posts `{"sku":"CELESTIAL_BANNER","locale":"en"}` to `/api/store/checkout` and expects 201 with a `redirectUrl`. That is one real sandbox API call. No money moves and nothing is granted; grants require the signed webhook.
+9. Prints the next steps (below). Exits 1 if any smoke check failed.
 
 Unauthenticated access is deliberate: Neon webhooks and browsers must reach the service. Per the script's comments, the meaningful routes are protected by bearer identity and raw-body HMAC verification, the catalog is public information, and checkout creation is rate limited per account. `max-instances=1` keeps the sandbox cheap; Firestore itself is multi-instance safe.
 
@@ -31,7 +32,7 @@ Unauthenticated access is deliberate: Neon webhooks and browsers must reach the 
 | `--region REGION` | `asia-northeast3` | Cloud Run and Firestore region. |
 | `--service NAME` | `neon-payment` | Cloud Run service name. |
 | `--public-url URL` | `http://127.0.0.1:8642` | Origin the player's browser returns to after the hosted page (`successUrl`/`cancelUrl` base). Neon never fetches it, so a localhost value is valid. Not the API or webhook origin. |
-| `--allowed-origins CSV` | `http://127.0.0.1:8642,http://localhost:8642` | Browser origins allowed by CORS to call the API. |
+| `--allowed-origins CSV` | `http://127.0.0.1:8642,http://localhost:8642,https://hakhyun-kim.github.io` | Browser origins allowed by CORS to call the API. The Pages origin is in the default so a redeploy without the flag keeps the shared link working; `--set-env-vars` replaces the whole list, so repeat it in full when it differs. |
 | `--env-file PATH` | `.env` | Where the two secret values are read from. |
 | `--skip-secrets` | off | Reuse the existing Secret Manager versions. |
 | `--smoke-only` | off | Skip APIs, Firestore, secrets, IAM and deploy. Run only the smoke checks against the existing service. |

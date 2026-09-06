@@ -53,7 +53,7 @@ docker build -f dedicated/Dockerfile -t cd-dedicated . && docker run --rm -p 864
 - `command` ops: `pause`, `resume`, `speed` (0.5, 1, 2, 4), `restart` (optional `seed`). Answered with `commandResult`. From a viewer it returns `error: forbidden`.
 - `store` `{ id, path, method, body }` is forwarded to `PAYMENT_API_URL` with `Authorization: Bearer <account>` and a per-connection cookie jar, and answered with `storeResult { id, status, data }`. `storeIdentity` announces the account. Limits: 4 requests in flight (429), 64 KiB body (413), 10 s upstream timeout (502).
 - Allowlisted `STORE_PATHS`: `/api/store/catalog`, `/api/store/market`, `/api/store/entitlements`, `/api/store/checkout`, `/api/store/refund`, `/api/store/mock-complete`, `/api/store/mock-refund`, `/api/account/transfer-code`, `/api/account/claim`. Any other path is 403. `/api/webhooks/*` is refused with a written reason: webhooks travel from Neon to the payment service, never through a client connection.
-- `GET /healthz` returns `{ service, protocol, clients, session, gateway }`.
+- `GET /healthz` (also served at `GET /`) returns `{ service, protocol, clients, session, gateway }`.
 
 ## Rules
 

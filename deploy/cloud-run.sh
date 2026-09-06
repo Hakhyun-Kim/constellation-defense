@@ -219,7 +219,7 @@ smoke() { # path expected-status label
 }
 SMOKE_FAILED=0
 if [ "$DRY_RUN" = 1 ]; then
-  echo "DRY-RUN> smoke: catalog=200 · GET /readyz=200 (Firestore) · forged webhook=403"
+  echo "DRY-RUN> smoke: catalog=200 · GET /readyz=200 (Firestore) · forged webhook=403 · CORS preflight=204"
 else
   # Google's frontend intercepts /healthz on run.app URLs before the request
   # reaches the container (HTML 404, nothing in the service logs), so
@@ -232,10 +232,10 @@ else
   if [ "$status" = 403 ]; then echo "[✓] forged webhook rejected (403)"; else echo "[!] forged webhook: got $status, expected 403"; SMOKE_FAILED=1; fi
   # The last allowed origin (the hosted client) must pass the CORS preflight,
   # otherwise the shared link fails at its first fetch with no server error.
-  first_origin="${ALLOWED_ORIGINS##*,}"
+  last_origin="${ALLOWED_ORIGINS##*,}"
   status=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$URL/api/store/catalog" \
-    -H "Origin: $first_origin" -H 'Access-Control-Request-Method: GET')
-  if [ "$status" = 204 ]; then echo "[✓] CORS preflight for $first_origin (204)"; else echo "[!] CORS preflight for $first_origin: got $status, expected 204"; SMOKE_FAILED=1; fi
+    -H "Origin: $last_origin" -H 'Access-Control-Request-Method: GET')
+  if [ "$status" = 204 ]; then echo "[✓] CORS preflight for $last_origin (204)"; else echo "[!] CORS preflight for $last_origin: got $status, expected 204"; SMOKE_FAILED=1; fi
   if [ "$SMOKE_CHECKOUT" = 1 ]; then
     # One real sandbox checkout create (a Neon API call; no money moves and
     # nothing is granted — grants require the signed webhook).

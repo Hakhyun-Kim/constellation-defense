@@ -314,6 +314,38 @@ const EN = new Map(Object.entries({
   '현실 기억과 초고 0호가 처음 쓰인 기록을 발견한다.': 'Discover real memories and the first record of Draft Zero.',
   '중간보스 둘과 졸개가 세 길을 동시에 막는 최종 전초전.': 'The final approach: two commanders and their minions lock down all three lanes.',
   '초고 0호와 살아남은 교정관 편성을 넘어 두 번째 책갈피를 되찾는다.': 'Defeat Draft Zero and the surviving Correctors to reclaim the second bookmark.',
+
+  /* Village screen: the walkable town square, its facilities and its dialogs. */
+  'WASD·방향키 또는 광장을 클릭해 걸어가세요. 빛나는 표식 가까이에서 대화할 수 있습니다.': 'Walk with WASD or the arrow keys, or click the square. Stand near a glowing marker to talk.',
+  '시설을 방문하거나 지도에서 다음 별길로 출발하세요.': 'Visit a facility, or set out on the next star road from the map.',
+  '동료 한 명과 대화해야 다음 길이 열립니다.': 'Talk with one ally to open the next road.',
+  '이름을 잃지 않도록 구조 기록을 지키고 다음 방어를 준비합니다.': 'Keep the rescue records so no name is lost, and prepare the next defense.',
+  '이 시설을 이용할 영웅이 아직 원정대에 없습니다.': 'No hero in the expedition can use this facility yet.',
+  '마을 시설': 'Town facility',
+  '마을 광장': 'Town Square',
+  '마을 이동': 'Village movement',
+  '대화 닫기': 'Close conversation',
+  '시설 닫기': 'Close facility',
+  '수문 초소': 'Watergate Post',
+  '전령 길드': 'Courier Guild',
+  '아린 · 수호단장': 'Arin · Guard Captain',
+  '헌터 구조대': 'Hunter Rescue Corps',
+  '몬스터 연락망': 'Monster Network',
+  '독립 피난민': 'Independent Refugees',
+  '이미 함께하고 있습니다.': 'Already travelling with you.',
+  '함께 원정에 합류합니다.': 'Joins the expedition with you.',
+  '합류': 'Joined',
+  '영입': 'Recruit',
+
+  /* Journey map: star roads, chapter endings and the town revisit card. */
+  '별길': 'Star Road',
+  '분기': 'Fork',
+  '대장간·별빛 신전·탐험가 길드에서 전문화를 정합니다.': 'Choose specializations at the Starforge, the Starlight Temple and the Explorers Guild.',
+  '두 책갈피의 마지막 선택': 'The last choice of the two bookmarks',
+  '이 선택은 현재 원정에 한 번만 기록됩니다.': 'This choice is recorded once per expedition.',
+  '선택 완료': 'Choice made',
+  '붉은 성문 뒤에서 출구가 아닌 다음 장이 열렸습니다. 파티와 성장을 그대로 이어갑니다.': 'Behind the red gate the next chapter opened instead of an exit. The party and its growth carry over.',
+  '선택은 역촌의 지원 세력과 청사진 권한에 이어집니다.': 'The choice carries into the station's backers and its blueprint authority.',
 }));
 
 const PATTERNS = Object.freeze([
@@ -418,6 +450,49 @@ export function translateKnownText(value, locale = activeLocale) {
     if (match) translated = `💾 Save location · ${EN.get(match[1]) || match[1]}`;
     match = core.match(/^⚠️ (중간보스|대보스) (.+) 접근(!+)$/);
     if (match) translated = `⚠️ ${match[1] === '대보스' ? 'Great boss' : 'Commander'} ${translateKnownText(match[2], 'en')} approaching${match[3]}`;
+    /* Village hints, buttons and dialogs interpolate a facility or hero name, so translate the name and keep the sentence fixed. */
+    match = core.match(/^([^\p{L}\p{N}]*)(.+) 근처입니다\. Enter 또는 대화 버튼을 누르세요\.$/u);
+    if (match) translated = `${match[1]}Near ${EN.get(match[2]) || match[2]}. Press Enter or the talk button.`;
+    match = core.match(/^([^\p{L}\p{N}]*)(.+) 방문$/u);
+    if (match) translated = `${match[1]}Visit ${EN.get(match[2]) || match[2]}`;
+    match = core.match(/^([^\p{L}\p{N}]*)(.+?)\s?와 대화$/u);
+    if (match) translated = `${match[1]}Talk with ${EN.get(match[2]) || match[2]}`;
+    match = core.match(/^([^\p{L}\p{N}]*)(.+) 영입하기$/u);
+    if (match) translated = `${match[1]}Recruit ${EN.get(match[2]) || match[2]}`;
+    match = core.match(/^(.+)의 전술을 원정대에 더합니다\. 이번 원정에는 한 명만 설득할 수 있습니다\.$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} adds their tactics to the expedition. Only one ally can be persuaded per expedition.`;
+    match = core.match(/^(\S+)\s(.+)에서 전문화를 선택할 수 있습니다\.$/);
+    if (match) translated = `${match[1]} Specializations can be chosen at the ${EN.get(match[2]) || match[2]}.`;
+    match = core.match(/^(.+) 전투에서 얻은 전문화 포인트는 이곳에서만 사용합니다\.$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} Specialization points earned in battle are spent only here.`;
+    match = core.match(/^(.+) 3D 광장$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} 3D plaza`;
+    /* Facility skill rows: the effect text is content, the point suffix is UI. */
+    match = core.match(/^완료 (\d+)\/(\d+)$/);
+    if (match) translated = `Complete ${match[1]}/${match[2]}`;
+    match = core.match(/^Lv (\d+) 필요$/);
+    if (match) translated = `Lv ${match[1]} required`;
+    match = core.match(/^포인트 1 · (\d+)\/(\d+)$/);
+    if (match) translated = `1 point · ${match[1]}/${match[2]}`;
+    match = core.match(/^(.+) · 포인트 1 · (\d+)\/(\d+)$/);
+    if (match) translated = `${translateKnownText(match[1], 'en')} · 1 point · ${match[2]}/${match[3]}`;
+    match = core.match(/^(.+) · 완료 (\d+)\/(\d+)$/);
+    if (match) translated = `${translateKnownText(match[1], 'en')} · Complete ${match[2]}/${match[3]}`;
+    match = core.match(/^Lv (\d+) · 전문화 (\d+)$/);
+    if (match) translated = `Lv ${match[1]} · ${match[2]} specialization`;
+    match = core.match(/^전문화 (\d+)P 준비$/);
+    if (match) translated = `${match[1]} specialization points ready`;
+    /* Refuge status chips and the journey annotation counter. */
+    match = core.match(/^👥 구조 (\d+)명$/);
+    if (match) translated = `👥 ${match[1]} rescued`;
+    match = core.match(/^♥ 사기 (.+)$/);
+    if (match) translated = `♥ Morale ${match[1]}`;
+    match = core.match(/^🛡 방어 (\d+)회$/);
+    if (match) translated = `🛡 ${match[1]} defenses`;
+    match = core.match(/^(\d+)개 수집$/);
+    if (match) translated = `${match[1]} collected`;
+    match = core.match(/^(.+) · 보급 \+(\d+)$/);
+    if (match) translated = `${EN.get(match[1]) || match[1]} · Supply +${match[2]}`;
   }
   if (!translated) {
     for (const [pattern, replacement] of PATTERNS) {

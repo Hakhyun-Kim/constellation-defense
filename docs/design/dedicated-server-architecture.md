@@ -76,7 +76,7 @@ game's entity counts (snapshots are a few KB).
 
 `start-dedicated.bat` / `start-dedicated.command` run both processes and open
 the viewer (Node 22.9+, no other install). Docker is optional on purpose:
-reviewers need Node anyway for the web build, and Docker Desktop is a heavier
+Node is needed anyway for the web build, and Docker Desktop is a heavier
 ask on macOS than `node dedicated/server.mjs`; `dedicated/Dockerfile` and
 `compose.yaml` exist for container-shaped deployments and are marked as not
 yet executed on the development machine.

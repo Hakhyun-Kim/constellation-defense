@@ -1,7 +1,7 @@
 /* Demo-mode overlay for the dedicated viewer: connection status, live session
  * facts, the architecture and command-flow diagrams, the code map, honest
  * progress notes, and the controls — including the one that matters to a
- * reviewer: switching the server demo off and just playing the game. */
+ * most: switching the server demo off and just playing the game. */
 
 const TEXT = {
   en: {
@@ -243,7 +243,7 @@ export function initDedicatedOverlay({ locale, client, onTryGame, onOpenStore, b
   }
 
   return {
-    /* Small floating chip shown while the reviewer plays locally. */
+    /* Small floating chip shown while the demo is minimized and the game is played locally. */
     minimize() {
       root.classList.add('hidden');
       document.body.classList.remove('dedicated-on');
