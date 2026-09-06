@@ -161,7 +161,7 @@ dedicated game server in the multiplayer sense.
   next seam. The mock lifecycle runs entirely in-modal and is unaffected.
 - Town/village interiors are shown as map state, not as the walkable scene.
 - The Unity/Unreal samples verify the protocol from engine runtimes but have
-  not been executed here (neither engine is installed on this machine); the
+  not yet been executed inside an engine; the
   Node conformance check is the enforced contract. They do not render
   anything — an engine *viewer* (snapshot → scene objects keyed on entity
   id, `decision` → captions) is still to be written on top of them.
