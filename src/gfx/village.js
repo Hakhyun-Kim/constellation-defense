@@ -2,11 +2,15 @@
  * combat state or decides rewards; app/ui owns walking, proximity and actions. */
 import * as THREE from 'three';
 import { VILLAGE_BUILDINGS, VILLAGE_START } from '../app/village-layout.js';
+import { translateKnownText } from '../app/i18n.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: .82, ...extra });
 
-function labelSprite(text, color = '#fff4c4') {
+/* Sprite labels are canvas textures, so the document-wide DOM localization
+ * never reaches them; translate the text before it is drawn. */
+function labelSprite(source, color = '#fff4c4') {
+  const text = translateKnownText(source);
   const canvas = document.createElement('canvas');
   canvas.width = 384; canvas.height = 96;
   const ctx = canvas.getContext('2d');

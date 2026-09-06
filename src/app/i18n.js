@@ -345,7 +345,7 @@ const EN = new Map(Object.entries({
   '이 선택은 현재 원정에 한 번만 기록됩니다.': 'This choice is recorded once per expedition.',
   '선택 완료': 'Choice made',
   '붉은 성문 뒤에서 출구가 아닌 다음 장이 열렸습니다. 파티와 성장을 그대로 이어갑니다.': 'Behind the red gate the next chapter opened instead of an exit. The party and its growth carry over.',
-  '선택은 역촌의 지원 세력과 청사진 권한에 이어집니다.': 'The choice carries into the station's backers and its blueprint authority.',
+  '선택은 역촌의 지원 세력과 청사진 권한에 이어집니다.': "The choice carries into the station's backers and its blueprint authority.",
 }));
 
 const PATTERNS = Object.freeze([
@@ -479,7 +479,7 @@ export function translateKnownText(value, locale = activeLocale) {
     match = core.match(/^(.+) · 완료 (\d+)\/(\d+)$/);
     if (match) translated = `${translateKnownText(match[1], 'en')} · Complete ${match[2]}/${match[3]}`;
     match = core.match(/^Lv (\d+) · 전문화 (\d+)$/);
-    if (match) translated = `Lv ${match[1]} · ${match[2]} specialization`;
+    if (match) translated = `Lv ${match[1]} · ${match[2]} specialization points`;
     match = core.match(/^전문화 (\d+)P 준비$/);
     if (match) translated = `${match[1]} specialization points ready`;
     /* Refuge status chips and the journey annotation counter. */
