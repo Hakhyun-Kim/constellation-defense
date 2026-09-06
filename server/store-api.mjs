@@ -313,14 +313,18 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
          * service> so the arriving page polls the right payment service. */
         const observed = requestOrigin(req);
         const clientOrigin = String(req.headers.origin || '');
-        const returnPath = /^\/[\w\-./]*$/.test(String(input.returnPath || '')) && !String(input.returnPath).includes('..')
-          ? String(input.returnPath).replace(/\/$/, '') : '';
+        /* returnPath may carry view parameters (spectate/inspector) so the
+         * return resumes the same mode; validate path and query separately. */
+        const [rawPath = '', rawQuery = ''] = String(input.returnPath || '').split('?');
+        const returnPath = /^\/[\w\-./]*$/.test(rawPath) && !rawPath.includes('..') ? rawPath.replace(/\/$/, '') : '';
+        const returnQuery = /^[\w\-.=&%~]*$/.test(rawQuery) ? rawQuery : '';
         const origin = ((config.allowedOrigins || []).includes(clientOrigin)
           ? clientOrigin + returnPath
           : String(config.publicUrl || observed || '')).replace(/\/$/, '');
         if (config.publicUrl && observed && !config.publicUrl.startsWith(observed) && !(config.allowedOrigins || []).includes(clientOrigin)) {
           log.warn?.(`[store] PUBLIC_URL(${config.publicUrl})과 요청 오리진(${observed})이 다릅니다 — 결제 후 세션 쿠키를 잃습니다.`);
         }
+        const carried = returnQuery && (config.allowedOrigins || []).includes(clientOrigin) ? `${returnQuery}&` : '';
         const apiParam = `&api=${encodeURIComponent(String(observed || '').replace(/\/$/, ''))}`;
         const payload = {
           items: [resolved.item],
@@ -330,11 +334,11 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           playerCountry: country,
           currency: resolved.currency,
           storeUrl: origin,
-          successUrl: `${origin}/?lang=${locale}&purchase=return&sku=${encodeURIComponent(resolved.item.sku)}${apiParam}`,
-          cancelUrl: `${origin}/?lang=${locale}&purchase=cancelled&sku=${encodeURIComponent(resolved.item.sku)}${apiParam}`,
+          successUrl: `${origin}/?${carried}lang=${locale}&purchase=return&sku=${encodeURIComponent(resolved.item.sku)}${apiParam}`,
+          cancelUrl: `${origin}/?${carried}lang=${locale}&purchase=cancelled&sku=${encodeURIComponent(resolved.item.sku)}${apiParam}`,
         };
         const checkout = config.mock
-          ? { checkoutId: `mock-${externalReferenceId}`, redirectUrl: `${origin}/?lang=${locale}&purchase=mock&reference=${externalReferenceId}${apiParam}` }
+          ? { checkoutId: `mock-${externalReferenceId}`, redirectUrl: `${origin}/?${carried}lang=${locale}&purchase=mock&reference=${externalReferenceId}${apiParam}` }
           : await createNeonCheckout({ apiKey: config.apiKey, apiUrl: config.apiUrl, payload, fetchImpl });
         await repository.recordCheckout({
           externalReferenceId, accountId, sku: resolved.item.sku, entitlement: resolved.entitlement,

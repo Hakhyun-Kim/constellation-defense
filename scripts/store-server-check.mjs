@@ -560,6 +560,13 @@ async function runSuite(repository, label) {
         assert.equal(forged.origin, 'https://tunnel.example.test', '허용 목록 밖 Origin 은 PUBLIC_URL 로 돌아간다');
         const traversal = await linkCheckout({ cookie, origin: 'https://pages.example.test' }, { returnPath: '/../evil' });
         assert.equal(traversal.pathname, '/', '경로 검증 실패 시 returnPath 는 무시된다');
+        const withView = await linkCheckout({ cookie, origin: 'https://pages.example.test' },
+          { returnPath: '/constellation-defense/?demo=expert&tour=neon&mute=' });
+        assert.equal(withView.searchParams.get('tour'), 'neon', '관전/인스펙터 파라미터가 복귀 URL 에 보존된다');
+        assert.equal(withView.searchParams.get('demo'), 'expert');
+        const badQuery = await linkCheckout({ cookie, origin: 'https://pages.example.test' },
+          { returnPath: '/constellation-defense/?x=<script>' });
+        assert.equal(badQuery.searchParams.get('x'), null, '검증 실패 쿼리는 통째로 버린다');
       } finally { await new Promise((resolve) => pages.close(resolve)); }
     }
 

@@ -313,6 +313,9 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
         const item = catalog.items.find(item => item.sku === selectedSku);
         if (item && owns(item)) {
           status.replaceChildren(document.createTextNode(words.owned));
+          /* Polling observed the webhook's grant — the hosted-mode
+           * counterpart of the mock confirm's fulfilled announcement. */
+          paymentEvent('fulfilled', { sku: item.sku });
           return;
         }
         await sleep(POLL_INTERVAL_MS);
@@ -386,8 +389,14 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
     selectedSku = item.sku;
     /* returnPath lets the server rebuild this page's address for the
      * post-payment redirect (a Pages project site lives under a path the
-     * Origin header cannot carry); the server validates it. */
-    const data = await postJson('/api/store/checkout', { sku: item.sku, locale, returnPath: location.pathname });
+     * Origin header cannot carry), including view parameters like the
+     * spectate demo and inspector so the return resumes the same mode.
+     * The server validates both parts; it re-appends lang/api itself. */
+    const keep = new URLSearchParams(location.search);
+    for (const drop of ['purchase', 'reference', 'sku', 'api', 'lang']) keep.delete(drop);
+    const query = keep.toString();
+    const returnPath = location.pathname + (query ? `?${query}` : '');
+    const data = await postJson('/api/store/checkout', { sku: item.sku, locale, returnPath });
     if (catalog.checkoutMode === 'mock') {
       const reference = new URL(data.redirectUrl).searchParams.get('reference');
       if (!reference) throw new Error('Missing mock checkout reference');
@@ -396,6 +405,9 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
       paymentEvent('checkout', { sku: item.sku });
       status.textContent = label('Checkout created. No entitlement until you confirm.', '결제 생성 완료. 확인 전에는 지급되지 않습니다.');
     } else {
+      /* Announce the created intent before leaving so the inspector can
+       * caption stage 3 on the hosted path too. */
+      paymentEvent('checkout', { sku: item.sku });
       location.assign(data.redirectUrl);
     }
   }
