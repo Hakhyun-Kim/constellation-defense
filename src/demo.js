@@ -106,7 +106,10 @@ export const demo = {
     return alias[String(name).toLowerCase()] || null;
   },
 
-  start(profileName) {
+  /* `intro: false` skips the opening rule cards and plays at once — for views
+   * such as the checkout inspector, whose panel hides the caption bar and
+   * explains the flow itself, so a silent ten-second wait would look stalled. */
+  start(profileName, { intro = true } = {}) {
     if (!this.api) return false;
     const p = this.resolveProfile(profileName);
     if (p) this.profileName = p;
@@ -116,10 +119,17 @@ export const demo = {
     this.captionHold = 0;
     this.guidesSeen = new Set();
     this.overSeen = false;
-    this.tourIndex = 0;
-    this.tourT = DEMO_TOUR[0].duration;
     this.api.onStart(this.profileName, Bot.PROFILES[this.profileName]);
-    this.present(DEMO_TOUR[0], true);
+    if (intro) {
+      this.tourIndex = 0;
+      this.tourT = DEMO_TOUR[0].duration;
+      this.present(DEMO_TOUR[0], true);
+    } else {
+      this.tourIndex = -1;
+      this.tourT = 0;
+      this.say(`🎬 ${this.profileName} 플레이어의 실제 자동 플레이를 시작합니다`,
+        '이후 모든 이동·스왑·시전은 플레이어와 같은 공개 정보와 게임 명령을 사용합니다.', 'guide', true);
+    }
     return true;
   },
 

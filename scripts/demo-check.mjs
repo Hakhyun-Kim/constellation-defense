@@ -45,6 +45,17 @@ const heldCaption = caption;
 check(!demo.say('덮어쓰면 안 되는 일반 행동') && caption === heldCaption,
   'important guide captions stay readable while ordinary bot actions continue');
 
+/* The checkout inspector hides the caption bar, so its spectate must not sit
+ * silently behind ten seconds of invisible rule cards. */
+demo.stop();
+demo.start('expert', { intro: false });
+check(demo.active && demo.profileName === '고수' && demo.tourIndex === -1 && caption.includes('실제 자동 플레이'),
+  'intro-less start resolves the English alias and skips straight to real-rule play');
+demo.step(0.1);
+check(demo.overSeen && caption.includes('결과를 확인'),
+  'intro-less start reads the live game on its very first step instead of a rule card');
+demo.stop();
+
 demo.start('초보');
 for (const scene of DEMO_TOUR) demo.step(scene.duration + .01);
 demo.step(0.1);

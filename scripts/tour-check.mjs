@@ -37,6 +37,13 @@ const html = readFileSync('index.html', 'utf8');
 for (const match of source.matchAll(/get\('([^']+)'\)/g)) assert.ok(html.includes(`id="${match[1]}"`), match[1]);
 assert.doesNotMatch(source, /mock-complete|mock-refund|fetch\(/, 'Inspector observes the shared store; it cannot secretly purchase');
 assert.doesNotMatch(source, /ctx\.stage\.(hurry|fall)|castleHp\s*=/);
+/* The shared guided link (?demo=expert&tour=neon) promises a bot playing behind the
+ * inspector; the route guard must not exclude the inspector from starting it. */
+const main = readFileSync('src/main.js', 'utf8');
+const route = main.match(/if \(urlParams\.has\('demo'\)([^\n]*)\) \{\n([\s\S]*?)\n\}/);
+assert.ok(route && /demo\.start\(/.test(route[2]), 'main.js keeps a ?demo route that starts the spectator bot');
+assert.doesNotMatch(route[1], /tour/, 'The route guard must not exclude the inspector from starting the bot');
+assert.match(route[2], /demo\.start\([^\n]*intro/, 'The inspector route starts the bot without the hidden intro cards');
 console.log('tour check: independent 3D delivery/refund, stable allocations, redacted events, DOM contract');
 
 // A poor legal formation reaches real defeat without changing HP or wave data.

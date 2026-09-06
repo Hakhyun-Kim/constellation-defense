@@ -2093,9 +2093,13 @@ demo.attach({
   },
 });
 
-/* ?demo=expert starts spectating unless the interactive payment inspector or the dedicated viewer owns the flow. Console callers may use __game.demo.start('expert'). */
-if (urlParams.has('demo') && urlParams.get('tour') !== 'neon' && !dedicatedRoute) {
-  setTimeout(() => demo.start(urlParams.get('demo') || '고수'), 900);
+/* ?demo=expert starts spectating unless the dedicated viewer owns the flow. Console callers may use __game.demo.start('expert').
+ * The checkout inspector (?tour=neon) rides on top of the same bot: its panel hides the caption bar and explains the
+ * payment flow itself, so the opening rule cards are skipped there and the bot plays immediately. The inspector's
+ * Play / Risky-defense buttons stop the bot and hand the run to the viewer. */
+if (urlParams.has('demo') && !dedicatedRoute) {
+  const intro = urlParams.get('tour') !== 'neon';
+  setTimeout(() => demo.start(urlParams.get('demo') || '고수', { intro }), 900);
 }
 
 /* Debug hooks for automated validation and testing. */
