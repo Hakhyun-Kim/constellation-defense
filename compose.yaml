@@ -4,8 +4,8 @@
 #   → open http://localhost:8642/?lang=en&dedicated=1&key=local-demo-key
 #
 # The primary supported path stays start-dedicated.bat / start-dedicated.command
-# (plain Node, no Docker). Honest status: this file is provided for reviewers
-# who prefer containers and has not been executed on the development machine.
+# (plain Node, no Docker). Honest status: this file is provided for anyone who
+# prefers containers and has not been executed on the development machine.
 services:
   web:
     # Static game + payment API (mock mode) on one origin, like the launcher.

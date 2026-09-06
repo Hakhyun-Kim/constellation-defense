@@ -60,23 +60,29 @@ export class FirestoreRepository {
         tx.set(eventRef, { purchaseId: event.purchaseId, at });
         return { ignored: 'purchase was refunded before fulfillment' };
       }
-      /* Compare the amount when settlement currency matches the checkout currency. Neon-converted amounts after a country change are not directly comparable. */
-      if (event.currency && event.currency === pending.currency && event.price != null && event.price !== pending.price) {
+      /* Item prices arrive in the settled currency. Compare only when it matches the checkout currency; after a country switch on the hosted page the converted amount is recorded, not compared. */
+      const settled = event.settledCurrency ?? event.currency ?? null;
+      if (settled && settled === pending.currency && event.price != null && event.price !== pending.price) {
         throw new PermanentRejection('amount does not match checkout');
       }
 
       const at = new Date(this.now()).toISOString();
       const playerRef = this.players.doc(event.accountId);
-      tx.set(playerRef, {
-        entitlements: { [pending.entitlement]: { grantedAt: at, purchaseId: event.purchaseId } },
-      }, { merge: true });
+      /* Read before the writes below (transaction rule). A second paid purchase of an already-granted permanent item keeps the original grant. */
+      const duplicateGrant = Boolean((await tx.get(playerRef)).data()?.entitlements?.[pending.entitlement]);
+      if (!duplicateGrant) {
+        tx.set(playerRef, {
+          entitlements: { [pending.entitlement]: { grantedAt: at, purchaseId: event.purchaseId } },
+        }, { merge: true });
+      }
       tx.set(playerRef.collection('purchases').doc(event.purchaseId), {
         purchaseId: event.purchaseId,
         orderNumber: event.orderNumber,
         sku: event.sku,
         price: event.price ?? pending.price,
-        currency: event.currency ?? pending.currency,
-        currencySwitched: Boolean(event.currency && event.currency !== pending.currency),
+        currency: settled ?? pending.currency,
+        currencySwitched: Boolean(settled && settled !== pending.currency),
+        duplicateGrant,
         at,
       });
       tx.set(eventRef, {
@@ -126,10 +132,16 @@ export class FirestoreRepository {
 
       const at = new Date(this.now()).toISOString();
       const granted = checkout.status === 'fulfilled';
+      let revoked = false;
       if (granted) {
         const playerRef = this.players.doc(checkout.accountId);
-        /* Entitlement keys contain dots. Use FieldPath so Firestore does not interpret them as nested paths. */
-        tx.update(playerRef, new FieldPath('entitlements', checkout.entitlement), FieldValue.delete());
+        /* Revoke only the grant this purchase made; a duplicate purchase's refund leaves the first purchase's item in place.
+         * Entitlement keys contain dots. Use FieldPath so Firestore does not interpret them as nested paths. */
+        const grant = (await tx.get(playerRef)).data()?.entitlements?.[checkout.entitlement];
+        if (grant && (!grant.purchaseId || grant.purchaseId === checkout.purchaseId)) {
+          tx.update(playerRef, new FieldPath('entitlements', checkout.entitlement), FieldValue.delete());
+          revoked = true;
+        }
         tx.set(playerRef.collection('purchases').doc(checkout.purchaseId), {
           refundedAt: at, refundId: event.refundId || null,
         }, { merge: true });
@@ -137,7 +149,7 @@ export class FirestoreRepository {
       /* Mark even pending intents refunded so late fulfillment is rejected. */
       tx.update(checkoutSnapshot.ref, { status: 'refunded', refundedAt: at, expiresAt: FieldValue.delete() });
       tx.set(eventRef, { refundId: event.refundId || null, at, expiresAt: new Date(this.now() + EVENT_TTL_MS) });
-      return { duplicate: false, revoked: granted };
+      return { duplicate: false, revoked };
     });
   }
 

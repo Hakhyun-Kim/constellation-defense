@@ -95,20 +95,24 @@ export class JsonRepository {
         data.processedEvents[event.eventId] = { purchaseId: event.purchaseId, at: refund.at };
         return { ignored: 'purchase was refunded before fulfillment' };
       }
-      /* Compare prices only when settlement currency matches the original checkout currency. Neon-converted amounts are recorded rather than compared directly. */
-      if (event.currency && event.currency === pending.currency && event.price != null && event.price !== pending.price) {
+      /* Item prices arrive in the settled currency. Compare only when it matches the checkout currency; after a country switch on the hosted page the converted amount is recorded, not compared. */
+      const settled = event.settledCurrency ?? event.currency ?? null;
+      if (settled && settled === pending.currency && event.price != null && event.price !== pending.price) {
         throw new PermanentRejection('amount does not match checkout');
       }
       const player = data.players[event.accountId] ||= { entitlements: {}, purchases: [] };
       const at = new Date(this.now()).toISOString();
-      player.entitlements[pending.entitlement] = { grantedAt: at, purchaseId: event.purchaseId };
+      /* A second paid purchase of an already-granted permanent item keeps the original grant; the duplicate is recorded so it can be refunded. */
+      const duplicateGrant = Boolean(player.entitlements[pending.entitlement]);
+      if (!duplicateGrant) player.entitlements[pending.entitlement] = { grantedAt: at, purchaseId: event.purchaseId };
       player.purchases.push({
         purchaseId: event.purchaseId,
         orderNumber: event.orderNumber,
         sku: event.sku,
         price: event.price ?? pending.price,
-        currency: event.currency ?? pending.currency,
-        currencySwitched: Boolean(event.currency && event.currency !== pending.currency),
+        currency: settled ?? pending.currency,
+        currencySwitched: Boolean(settled && settled !== pending.currency),
+        duplicateGrant,
         at,
       });
       data.processedEvents[event.eventId] = { purchaseId: event.purchaseId, at };
@@ -149,9 +153,15 @@ export class JsonRepository {
 
       const at = new Date(this.now()).toISOString();
       const granted = checkout.status === 'fulfilled';
+      let revoked = false;
       if (granted) {
         const player = data.players[checkout.accountId];
-        delete player?.entitlements?.[checkout.entitlement];
+        /* Revoke only the grant this purchase made; a duplicate purchase's refund leaves the first purchase's item in place. */
+        const grant = player?.entitlements?.[checkout.entitlement];
+        if (grant && (!grant.purchaseId || grant.purchaseId === checkout.purchaseId)) {
+          delete player.entitlements[checkout.entitlement];
+          revoked = true;
+        }
         const purchase = player?.purchases?.find((entry) => entry.purchaseId === checkout.purchaseId);
         if (purchase) { purchase.refundedAt = at; purchase.refundId = event.refundId || null; }
       }
@@ -159,7 +169,7 @@ export class JsonRepository {
       checkout.status = 'refunded';
       checkout.refundedAt = at;
       data.processedEvents[event.eventId] = { refundId: event.refundId || null, at };
-      return { duplicate: false, revoked: granted };
+      return { duplicate: false, revoked };
     });
   }
 

@@ -30,6 +30,15 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM --env-file-if-exists exists from Node 22.9; older Node exits on the flag.
+node -e "const v=process.versions.node.split('.').map(Number);process.exit(v[0]*100+v[1]<2209?1:0)" >nul 2>nul
+if errorlevel 1 (
+  for /f "delims=" %%v in ('node -v') do set "NODE_VER=%%v"
+  echo [!] Node !NODE_VER! is too old. The server needs Node 22.9+ ^(--env-file-if-exists^).
+  pause
+  exit /b 1
+)
+
 if not exist ".env" (
   echo [i] No .env found - copying .env.example ^(mock mode^).
   copy /y ".env.example" ".env" >nul

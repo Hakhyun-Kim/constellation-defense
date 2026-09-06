@@ -1,9 +1,18 @@
 # Cross-machine continuation guide
 
-Last updated: 2026-08-21
+Last updated: 2026-09-06
 
 This document is the starting point for a developer or Codex session picking
 up `Constellation Defense` on another computer.
+
+## 2026-09 — payments and server mode
+
+Everything below this section predates the Neon checkout integration and the
+dedicated server. For those, start with `AGENTS.md` (sections "Neon 결제 통합"
+and "Dedicated 게임 서버") and the folder guides `server/README.md`,
+`dedicated/README.md`, `deploy/README.md` and `scripts/README.md`. The gates
+`store:check`, `service:check`, `tour:check` and `dedicated:check` are part of
+`npm run check`; `deploy/cloud-run.sh` is the one-command Cloud Run deploy.
 
 ## Current handoff state
 
@@ -225,11 +234,8 @@ desktop horizontal overflow was absent, and browser console errors were empty.
 
 ## Public/private boundary
 
-This repository is public. Do not add application copy, checklist text,
-recordings, credentials, or other submission material from the separate private
-directory `D:\constellation-defense-submission`. If that directory is not
-available on the next computer, continue game work here and leave submission
-material untouched.
+This repository is public. Do not commit credentials, private notes, or
+recordings; keep them outside the tree.
 
 ## Suggested next task
 

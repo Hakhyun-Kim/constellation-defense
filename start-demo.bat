@@ -28,7 +28,16 @@ set "TOUR_KO=http://127.0.0.1:%PORT%/?demo=%%EA%%B3%%A0%%EC%%88%%98&tour=neon&mu
 
 where npm >nul 2>nul
 if errorlevel 1 (
-  echo [!] Node.js / npm not found. Install it from https://nodejs.org and retry.
+  echo [!] Node.js / npm not found. Install Node 22.9+ from https://nodejs.org and retry.
+  pause
+  exit /b 1
+)
+
+REM --env-file-if-exists exists from Node 22.9; older Node exits on the flag.
+node -e "const v=process.versions.node.split('.').map(Number);process.exit(v[0]*100+v[1]<2209?1:0)" >nul 2>nul
+if errorlevel 1 (
+  for /f "delims=" %%v in ('node -v') do set "NODE_VER=%%v"
+  echo [!] Node !NODE_VER! is too old. The server needs Node 22.9+ ^(--env-file-if-exists^).
   pause
   exit /b 1
 )

@@ -39,8 +39,8 @@ for a remote server.
 
 These files are written against [`dedicated/PROTOCOL.md`](../dedicated/PROTOCOL.md)
 and mirror the Node conformance check, but they compile only inside a Unity or
-Unreal project — the machine that authored them has neither installed, so they
-have not been executed yet. Treat them as the reviewed starting point for an
+Unreal project and have not yet been executed inside one. Treat them as the
+reviewed starting point for an
 engine viewer, not as proof one exists. The next milestone for either engine is
 rendering `snapshot.enemies`/`snapshot.field` into a scene and mapping
 `decision` messages to captions — no game rules are needed client-side, which

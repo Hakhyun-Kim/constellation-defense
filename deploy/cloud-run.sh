@@ -4,8 +4,8 @@
 #  Cloud Run, with the Neon sandbox keys in Secret Manager.
 #
 #  This is hand-off option 1: keys stay server-side, the webhook target
-#  is stable, and a reviewer's local client completes real sandbox
-#  purchases without ever holding a credential.
+#  is stable, and a local client completes real sandbox purchases
+#  without ever holding a credential.
 #
 #    bash deploy/cloud-run.sh                  # deploy/update (idempotent)
 #    bash deploy/cloud-run.sh --dry-run        # print what would run
@@ -19,9 +19,11 @@
 #    --public-url URL      default: http://127.0.0.1:8642
 #                          The origin the PLAYER'S BROWSER returns to after
 #                          the hosted page (successUrl/cancelUrl base). Neon
-#                          never fetches it, so a reviewer's own localhost
-#                          is a valid value. Not the API/webhook origin.
-#    --allowed-origins CSV default: http://127.0.0.1:8642,http://localhost:8642
+#                          never fetches it, so a localhost value is
+#                          valid. Not the API/webhook origin.
+#    --allowed-origins CSV default: http://127.0.0.1:8642,http://localhost:8642,https://hakhyun-kim.github.io
+#                          (--set-env-vars replaces the whole environment on every deploy, so
+#                          repeat the full list whenever it differs from the default)
 #                          Browser origins allowed by CORS to call this API.
 #    --env-file PATH       default: .env — where NEON_API_KEY and
 #                          NEON_WEBHOOK_SECRET are read from (never echoed);
@@ -41,7 +43,7 @@ PROJECT=""
 REGION="asia-northeast3"
 SERVICE="neon-payment"
 PUBLIC_URL="http://127.0.0.1:8642"
-ALLOWED_ORIGINS="http://127.0.0.1:8642,http://localhost:8642"
+ALLOWED_ORIGINS="http://127.0.0.1:8642,http://localhost:8642,https://hakhyun-kim.github.io"
 ENV_FILE=".env"
 DRY_RUN=0
 SKIP_SECRETS=0
@@ -113,12 +115,20 @@ else
   echo "[i] Firestore database already exists."
 fi
 
+# --- Firestore TTL (idempotent) ---------------------------------------------
+# The repository stamps expiresAt on intents, dedup records, limiter docs and
+# transfer codes; a TTL policy per collection group is what actually deletes
+# them. Without this step they accumulate forever.
+for group in checkouts processedEvents rateLimits transferCodes; do
+  run "${GC[@]}" firestore fields ttls update expiresAt --collection-group="$group" --enable-ttl --async --quiet
+done
+
 # --- Secrets ----------------------------------------------------------------
 # Values come from $ENV_FILE or a hidden prompt; they are piped straight into
 # Secret Manager and never echoed or written anywhere else.
-read_env_value() { # name -> stdout (empty if absent)
+read_env_value() { # name -> stdout (empty if absent); strips CR and one layer of quotes
   [ -f "$ENV_FILE" ] || return 0
-  sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -1
+  sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -1 | tr -d '\r' | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
 }
 put_secret() { # secret-name value
   if ! "${GC[@]}" secrets describe "$1" >/dev/null 2>&1; then
@@ -172,7 +182,7 @@ else
 fi
 
 # --- Deploy -----------------------------------------------------------------
-# --allow-unauthenticated is deliberate: Neon webhooks and reviewer browsers
+# --allow-unauthenticated is deliberate: Neon webhooks and players' browsers
 # must reach it. The meaningful routes are protected by bearer identity and
 # raw-body HMAC verification; the catalog is public information; checkout
 # creation is rate limited per account. max-instances=1 keeps the sandbox
@@ -220,6 +230,12 @@ else
   status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/webhooks/neon" \
     -H 'content-type: application/json' -H 'x-neon-digest: forged' -d '{}')
   if [ "$status" = 403 ]; then echo "[✓] forged webhook rejected (403)"; else echo "[!] forged webhook: got $status, expected 403"; SMOKE_FAILED=1; fi
+  # The last allowed origin (the hosted client) must pass the CORS preflight,
+  # otherwise the shared link fails at its first fetch with no server error.
+  first_origin="${ALLOWED_ORIGINS##*,}"
+  status=$(curl -s -o /dev/null -w '%{http_code}' -X OPTIONS "$URL/api/store/catalog" \
+    -H "Origin: $first_origin" -H 'Access-Control-Request-Method: GET')
+  if [ "$status" = 204 ]; then echo "[✓] CORS preflight for $first_origin (204)"; else echo "[!] CORS preflight for $first_origin: got $status, expected 204"; SMOKE_FAILED=1; fi
   if [ "$SMOKE_CHECKOUT" = 1 ]; then
     # One real sandbox checkout create (a Neon API call; no money moves and
     # nothing is granted — grants require the signed webhook).

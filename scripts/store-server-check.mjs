@@ -242,6 +242,56 @@ async function runSuite(repository, label) {
       return { cookie: buyer, reference: buyerReference, accountId: record.accountId, purchaseId: `purchase-${tag}` };
     }
 
+    /* Item prices arrive in the settled currency: a country switch on the hosted page must record, not reject. */
+    {
+      const switcher = sessionCookie(await call('/api/store/catalog?locale=ko'));
+      const switchRef = referenceOf((await (await openCheckout(switcher)).json()).redirectUrl);
+      const switchRecord = await repository.pendingCheckout(switchRef);
+      const switched = await deliver(purchaseEvent(
+        { id: 'buy-switched' },
+        { id: 'purchase-switched', accountId: switchRecord.accountId, externalReferenceId: switchRef,
+          currency: 'USD', initialCurrency: 'KRW', items: [{ sku: 'CELESTIAL_BANNER', quantity: 1, price: 499 }] },
+      ));
+      assert.equal(switched.response.status, 200);
+      assert.equal(switched.payload.ignored, undefined, 'a converted amount is not compared against the KRW intent');
+      assert.equal(await ownsBanner(switcher), true, 'the switched purchase is granted');
+      const switchedHistory = await repository.purchases(switchRecord.accountId);
+      assert.equal(switchedHistory[0].currencySwitched, true, 'the switch is recorded');
+      assert.equal(switchedHistory[0].currency, 'USD');
+      const wrongAmount = await deliver(purchaseEvent(
+        { id: 'buy-wrong-amount' },
+        { id: 'purchase-wrong-amount', accountId: switchRecord.accountId, externalReferenceId: randomUUID(),
+          items: [{ sku: 'CELESTIAL_BANNER', quantity: 1, price: 1 }] },
+      ));
+      assert.equal(wrongAmount.payload.ignored, 'unknown checkout reference');
+    }
+
+    /* Two pending checkouts for the same permanent item can both settle; the refund of the duplicate must not remove the item the first purchase paid for. */
+    {
+      const twice = sessionCookie(await call('/api/store/catalog?locale=ko'));
+      const refOne = referenceOf((await (await openCheckout(twice)).json()).redirectUrl);
+      const refTwo = referenceOf((await (await openCheckout(twice)).json()).redirectUrl);
+      const twiceAccount = (await repository.pendingCheckout(refOne)).accountId;
+      await deliver(purchaseEvent({ id: 'buy-twice-1' }, { id: 'purchase-twice-1', accountId: twiceAccount, externalReferenceId: refOne }));
+      const second = await deliver(purchaseEvent({ id: 'buy-twice-2' }, { id: 'purchase-twice-2', accountId: twiceAccount, externalReferenceId: refTwo }));
+      assert.equal(second.payload.ignored, undefined, 'the duplicate purchase is recorded, not rejected');
+      const twiceHistory = await repository.purchases(twiceAccount);
+      assert.equal(twiceHistory.length, 2);
+      assert.equal(twiceHistory.find((entry) => entry.purchaseId === 'purchase-twice-2').duplicateGrant, true, 'the second purchase is flagged as a duplicate grant');
+      const refundDuplicate = await deliver(refundEvent({ id: 'refund-twice-2' }, { id: 'rf_twice_2', purchaseId: 'purchase-twice-2' }));
+      assert.equal(refundDuplicate.payload.revoked, false, 'refunding the duplicate removes no grant');
+      assert.equal(await ownsBanner(twice), true, 'the first purchase still owns the item');
+      const refundOriginal = await deliver(refundEvent({ id: 'refund-twice-1' }, { id: 'rf_twice_1', purchaseId: 'purchase-twice-1' }));
+      assert.equal(refundOriginal.payload.revoked, true);
+      assert.equal(await ownsBanner(twice), false, 'refunding the granting purchase revokes');
+    }
+
+    /* A malformed cookie from another app on the origin must not break the store. */
+    {
+      const junk = await call('/api/store/catalog?locale=ko', { headers: { cookie: 'other=%E0%A4%A; flag' } });
+      assert.equal(junk.status, 200, 'undecodable cookies are ignored, not fatal');
+    }
+
     const refunded = await boughtOnce('a');
     const revoke = await deliver(refundEvent({ id: 'refund-a' }, { id: 'rf_a', purchaseId: refunded.purchaseId }));
     assert.equal(revoke.response.status, 200);
@@ -499,12 +549,16 @@ async function runSuite(repository, label) {
       };
     }
 
-    const ok = await liveServer(stubNeon(201, { checkoutId: 'chk_1', redirectUrl: 'https://pay.example.test/chk_1' }));
+    /* Neon's create-checkout response names the identifier `id` (the sandbox returns { id, token, redirectUrl, externalProvider }). */
+    const ok = await liveServer(stubNeon(201, { id: 'chk_1', token: 'tok_1', redirectUrl: 'https://pay.example.test/chk_1', externalProvider: null }));
     try {
       const buyer = sessionCookie(await fetch(`${ok.at}/api/store/catalog?locale=ko`));
       const created = await ok.checkout(buyer);
       assert.equal(created.status, 201);
-      assert.equal((await created.json()).redirectUrl, 'https://pay.example.test/chk_1');
+      const createdBody = await created.json();
+      assert.equal(createdBody.redirectUrl, 'https://pay.example.test/chk_1');
+      assert.equal(createdBody.checkoutId, 'chk_1', 'the response id is exposed as checkoutId');
+      assert.equal((await repository.pendingCheckout(sent.body.externalReferenceId)).checkoutId, 'chk_1', 'the intent records Neon\'s id');
 
       assert.equal(sent.url, 'https://api.example.test/checkout');
       assert.equal(sent.options.headers['X-API-KEY'], 'test-secret-key', 'API 키는 헤더로만 나간다');
@@ -556,6 +610,11 @@ async function runSuite(repository, label) {
         assert.equal(fromPages.origin, 'https://pages.example.test', '허용된 Origin 이 복귀 기준이 된다');
         assert.equal(fromPages.pathname, '/constellation-defense/', '검증된 returnPath 가 붙는다');
         assert.ok(fromPages.searchParams.get('api').startsWith('http://127.0.0.1'), '복귀 URL 이 api=<이 서비스> 를 싣는다');
+        const shadowed = await linkCheckout({ cookie, origin: 'https://pages.example.test' }, { returnPath: '/constellation-defense/?api=https%3A%2F%2Fevil.example.test&demo=expert&tour=neon&mute' });
+        assert.equal(shadowed.searchParams.getAll('api').length, 1, 'a carried api= is dropped, never duplicated');
+        assert.ok(shadowed.searchParams.get('api').startsWith('http://127.0.0.1'), 'the service origin wins');
+        assert.equal(shadowed.searchParams.get('demo'), 'expert', 'view parameters still ride along');
+        assert.ok(shadowed.searchParams.has('mute'));
         const forged = await linkCheckout({ cookie, origin: 'https://evil.example.test' }, { returnPath: '/x/' });
         assert.equal(forged.origin, 'https://tunnel.example.test', '허용 목록 밖 Origin 은 PUBLIC_URL 로 돌아간다');
         const traversal = await linkCheckout({ cookie, origin: 'https://pages.example.test' }, { returnPath: '/../evil' });

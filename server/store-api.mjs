@@ -30,14 +30,23 @@ function newTransferCode() {
 /* Never store plaintext codes; return them only at issuance. */
 const hashTransferCode = (code) => createHash('sha256').update(String(code).trim().toUpperCase()).digest('hex');
 
+/* A malformed cookie set by any other app on the same origin must not turn every store call into a 500. */
 function cookies(req) {
+  const decode = (value) => { try { return decodeURIComponent(value); } catch { return value; } };
   return Object.fromEntries(
     String(req.headers.cookie || '')
       .split(';')
-      .map((part) => part.trim().split('=').map(decodeURIComponent))
+      .map((part) => {
+        const trimmed = part.trim();
+        const at = trimmed.indexOf('=');
+        return at < 0 ? [trimmed, ''] : [decode(trimmed.slice(0, at)), decode(trimmed.slice(at + 1))];
+      })
       .filter(([key, value]) => key && value),
   );
 }
+
+/* Account ids are bearer credentials; logs carry a short one-way handle instead of the credential itself. */
+const who = (accountId) => (accountId ? createHash('sha256').update(String(accountId)).digest('hex').slice(0, 12) : 'anonymous');
 
 function appendCookie(res, name, value, { secure }) {
   const cookie = `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure ? '; Secure' : ''}`;
@@ -182,7 +191,10 @@ export function classifyEvent(event, environment) {
 export function createStoreApi({ repository, config, fetchImpl = fetch, log = console }) {
   const environment = config.environment === 'production' ? 'production' : 'sandbox';
   /* Use Secure cookies behind HTTPS; fall back to the request origin when PUBLIC_URL is unset. */
-  const cookieOptionsFor = (req) => ({ secure: String(config.publicUrl || requestOrigin(req) || '').startsWith('https://') });
+  const cookieOptionsFor = (req) => ({
+    secure: String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https'
+      || String(config.publicUrl || requestOrigin(req) || '').startsWith('https://'),
+  });
 
   async function applyOrIgnore(res, run, { eventId, describe, source }) {
     try {
@@ -240,7 +252,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         const code = newTransferCode();
         const expiresAt = new Date(Date.now() + TRANSFER_TTL_MS).toISOString();
         await repository.issueTransferCode({ accountId, hash: hashTransferCode(code), expiresAt });
-        log.info?.('[store] transfer code issued', { accountId });
+        log.info?.('[store] transfer code issued', { account: who(accountId) });
         /* This is the only response exposing the plaintext transfer code. */
         return json(res, 201, { code, expiresAt });
       }
@@ -255,7 +267,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         }
         /* Switch the device's account identity; entitlements already belong to that account. */
         appendCookie(res, PLAYER_COOKIE, claimed.accountId, cookieOptionsFor(req));
-        log.info?.('[store] transfer code claimed', { accountId: claimed.accountId });
+        log.info?.('[store] transfer code claimed', { account: who(claimed.accountId) });
         return json(res, 200, { accountId: claimed.accountId });
       }
 
@@ -298,7 +310,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         const accountId = account(req, res, cookieOptionsFor(req));
         /* Enforce permanent-item ownership on the server, beyond disabled UI controls. A refunded entitlement becomes purchasable again. */
         if (resolved.permanent && (await repository.entitlements(accountId))[resolved.entitlement]) {
-          log.info?.(`[store] checkout refused: ${accountId} already owns ${resolved.entitlement}`);
+          log.info?.(`[store] checkout refused: ${who(accountId)} already owns ${resolved.entitlement}`);
           return json(res, 409, { error: 'already_owned' });
         }
         if (await repository.recentCheckoutCount(accountId, CHECKOUT_WINDOW_MS) >= CHECKOUT_LIMIT) {
@@ -317,12 +329,15 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
          * return resumes the same mode; validate path and query separately. */
         const [rawPath = '', rawQuery = ''] = String(input.returnPath || '').split('?');
         const returnPath = /^\/[\w\-./]*$/.test(rawPath) && !rawPath.includes('..') ? rawPath.replace(/\/$/, '') : '';
-        const returnQuery = /^[\w\-.=&%~]*$/.test(rawQuery) ? rawQuery : '';
+        /* Reserved keys are the server's to set: a carried api= or purchase= must never shadow them. */
+        const carriedParams = new URLSearchParams(/^[\w\-.=&%~]*$/.test(rawQuery) ? rawQuery : '');
+        for (const reserved of ['api', 'purchase', 'reference', 'sku', 'lang']) carriedParams.delete(reserved);
+        const returnQuery = carriedParams.toString();
         const origin = ((config.allowedOrigins || []).includes(clientOrigin)
           ? clientOrigin + returnPath
           : String(config.publicUrl || observed || '')).replace(/\/$/, '');
         if (config.publicUrl && observed && !config.publicUrl.startsWith(observed) && !(config.allowedOrigins || []).includes(clientOrigin)) {
-          log.warn?.(`[store] PUBLIC_URL(${config.publicUrl})과 요청 오리진(${observed})이 다릅니다 — 결제 후 세션 쿠키를 잃습니다.`);
+          log.warn?.(`[store] PUBLIC_URL (${config.publicUrl}) differs from the request origin (${observed}); a browser on that origin loses its session cookie on return unless its Origin is in ALLOWED_ORIGINS`);
         }
         const carried = returnQuery && (config.allowedOrigins || []).includes(clientOrigin) ? `${returnQuery}&` : '';
         const apiParam = `&api=${encodeURIComponent(String(observed || '').replace(/\/$/, ''))}`;
@@ -340,14 +355,15 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         const checkout = config.mock
           ? { checkoutId: `mock-${externalReferenceId}`, redirectUrl: `${origin}/?${carried}lang=${locale}&purchase=mock&reference=${externalReferenceId}${apiParam}` }
           : await createNeonCheckout({ apiKey: config.apiKey, apiUrl: config.apiUrl, payload, fetchImpl });
+        /* Neon names the checkout identifier `id`; the mock adapter uses checkoutId. Null, not undefined: Firestore rejects undefined. */
+        const checkoutId = checkout.id ?? checkout.checkoutId ?? null;
         await repository.recordCheckout({
           externalReferenceId, accountId, sku: resolved.item.sku, entitlement: resolved.entitlement,
           price: resolved.item.price, currency: resolved.currency, country,
           status: 'pending',
-          /* Observed Hosted responses can contain only redirectUrl and token. Store a missing checkoutId as null because Firestore rejects undefined. */
-          checkoutId: checkout.checkoutId ?? null,
+          checkoutId,
         });
-        return json(res, 201, { checkoutId: checkout.checkoutId, token: checkout.token, redirectUrl: checkout.redirectUrl });
+        return json(res, 201, { checkoutId, token: checkout.token, redirectUrl: checkout.redirectUrl });
       }
 
       if (req.method === 'POST' && url.pathname === '/api/webhooks/neon') {
@@ -371,13 +387,13 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
             source: 'refund webhook',
             describe: (result) => (result.revoked
               ? `revoked ${refund.sku || 'entitlement'} for purchase ${refund.purchaseId}`
-              : `marked purchase ${refund.purchaseId} refunded before it was ever granted`),
+              : `marked purchase ${refund.purchaseId} refunded (no grant of its own to remove)`),
           });
         }
         return applyOrIgnore(res, () => repository.fulfill(purchase), {
           eventId: purchase.eventId,
           source: 'webhook',
-          describe: () => `fulfilled ${purchase.sku} for ${purchase.accountId}`,
+          describe: () => `fulfilled ${purchase.sku} for ${who(purchase.accountId)}`,
         });
       }
 
@@ -429,7 +445,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           apiKey: config.apiKey, apiUrl: config.apiUrl,
           purchaseId: owned.purchaseId, itemId: item.id, fetchImpl,
         });
-        log.info?.(`[store] refund requested for ${input.sku} (${accountId}); revocation follows the webhook`);
+        log.info?.(`[store] refund requested for ${input.sku} (${who(accountId)}); revocation follows the webhook`);
         return json(res, 202, { requested: true, refundId: refund.refundId || refund.id || null });
       }
 
