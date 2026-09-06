@@ -82,6 +82,14 @@ ordinary client-mode run. Watching is public; pausing, changing speed, and
 restarting the session require the controller key (the launcher passes a
 loopback demo key).
 
+To be precise about what this mode is today: the server plays **itself**
+with the shared bot policy and streams the result; the protocol has no
+player-action message, so nobody plays *through* the server yet, and **Try
+the game** is a local client-mode game, not a game via the server. The
+`clients/` Unity/Unreal files are protocol smoke tests (no rendering, not
+yet executed in an engine). Playing through the server and engine viewers
+are the recorded next steps — see the table in the decision record.
+
 Manual equivalent: `npm run dedicated` in one terminal, `npm run serve` in
 another, then open `http://127.0.0.1:8642/?lang=en&dedicated=1`. The wire
 contract is [`dedicated/PROTOCOL.md`](dedicated/PROTOCOL.md), enforced by

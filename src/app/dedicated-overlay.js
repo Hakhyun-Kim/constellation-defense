@@ -45,8 +45,8 @@ const TEXT = {
       ['done', 'Viewer/controller roles enforced and covered by the conformance check'],
       ['done', 'Store gateway: catalog, checkout, fulfil and refund brokered over this socket'],
       ['done', 'Delivered cosmetics join the authoritative state — shared by every viewer'],
-      ['next', 'Player input through the server (web first, then engine clients)'],
-      ['next', 'Unity/Unreal viewers grown from the included protocol samples'],
+      ['next', 'Player input through the server. Today the host plays itself with the shared bot policy (dedicated/host.mjs); the protocol accepts only hello · ping · command(pause/resume/speed/restart) · store, no game action. "Try the game" disconnects and runs a local client-mode game, not a game through this server.'],
+      ['next', 'Unity/Unreal viewers. Today clients/ holds protocol smoke tests only (connect, welcome, snapshot fields, forbidden command, store catalog) — nothing renders a scene, and they have not been executed (no engine installed where they were written).'],
     ],
     decisions: {
       start: (d) => `▶ New session (seed ${d.seed})`,
@@ -113,8 +113,8 @@ const TEXT = {
       ['done', '뷰어/컨트롤러 역할 강제 + 프로토콜 검증 통과'],
       ['done', '상점 게이트웨이: 카탈로그·결제·지급·환불이 이 소켓으로 중계'],
       ['done', '지급된 장식이 권위 상태에 합류 — 모든 관전자가 공유'],
-      ['next', '서버 경유 플레이어 입력 (웹 → 엔진 클라이언트 순)'],
-      ['next', '동봉된 샘플에서 Unity/Unreal 뷰어로 확장'],
+      ['next', '서버 경유 플레이어 입력. 지금은 호스트가 공유 봇 정책으로 혼자 플레이합니다(dedicated/host.mjs). 프로토콜이 받는 메시지는 hello · ping · command(pause/resume/speed/restart) · store뿐이고 게임 행동은 없습니다. "직접 플레이"는 연결을 끊고 로컬 클라이언트 모드로 돌아가며, 이 서버를 통해 플레이하는 것이 아닙니다.'],
+      ['next', 'Unity/Unreal 뷰어. 지금 clients/에는 프로토콜 스모크 테스트만 있습니다(접속·welcome·snapshot 필드·command 거부·store 카탈로그). 장면을 그리는 코드는 없고, 엔진이 설치된 곳에서 실행된 적도 없습니다.'],
     ],
     decisions: {
       start: (d) => `▶ 새 세션 시작 (시드 ${d.seed})`,
