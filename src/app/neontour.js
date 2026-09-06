@@ -11,6 +11,8 @@ export function initNeonTour(ctx) {
   const events = [];
   let lastPhase;
   let closed = false;
+  let currentStage = 0;
+  let spectateNoted = false;
   document.body.classList.add('tour-on');
   root.classList.remove('hidden');
   get('tourTitle').textContent = text('From defense to delivery', '방어에서 지급까지');
@@ -36,6 +38,7 @@ export function initNeonTour(ctx) {
   }
   showCode('checkout');
   function stage(number, message, code) {
+    currentStage = number;
     get('tourStep').textContent = `${number} / 5`;
     get('tourTask').textContent = message;
     if (code) showCode(code);
@@ -58,6 +61,11 @@ export function initNeonTour(ctx) {
   });
   const clock = setInterval(() => {
     const state = ctx.stage.snapshot();
+    /* ?demo= starts the bot shortly after load; say so once, while stage 1 is still showing. */
+    if (!spectateNoted && ctx.spectating?.()) {
+      spectateNoted = true;
+      if (currentStage === 1) stage(1, text('1. A bot is playing this defense. Watch, take over with Play / retry, or open the shop whenever you are ready.', '1. 봇이 이 방어를 플레이 중입니다. 지켜보거나, 플레이 버튼으로 직접 잡거나, 준비되면 상점을 여세요.'));
+    }
     get('tourGame').textContent = text(`Live game · wave ${state.wave} · castle ${Math.ceil(state.hp)}/${state.maxHp} · ${state.phase}`, `실제 게임 · 웨이브 ${state.wave} · 성 ${Math.ceil(state.hp)}/${state.maxHp} · ${state.phase}`);
     if (state.phase === 'over' && lastPhase !== 'over') {
       ctx.openStore();

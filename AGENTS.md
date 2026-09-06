@@ -105,7 +105,7 @@ server/repository.mjs     JSON 원장: 결제 의도·권리·멱등성·환불�
 server/firestore-repository.mjs   같은 인터페이스를 Firestore 트랜잭션으로
 server/config.mjs · logger.mjs    부팅 시 설정 판정(fatal/warn) · text/json 로그
 src/app/neon-store.js     상점 UI · 체크아웃 시작 · 복귀 폴링 · 인계 코드 UI
-src/app/neontour.js       체크아웃 인스펙터 (?tour=neon) — 자동 진행 없이 실제 상점을 관찰
+src/app/neontour.js       체크아웃 인스펙터 (?tour=neon) — 실제 상점을 관찰; 구매·환불은 수동. ?demo=expert를 붙이면 봇이 플레이(관전)하고 Play 버튼이 봇을 멈춘다
 src/app/neon-events.js    인스펙터로 가는 관찰 이벤트 · 민감 필드 redact
 scripts/payment-excerpts.mjs  빌드 시 검토된 소스 발췌를 번들로 생성
 start-demo.bat            원클릭(Windows): .env 생성·빌드·서버 실행·브라우저 열기
@@ -115,8 +115,9 @@ start-demo.command        원클릭(macOS/Linux): 같은 동작, Node 22.9+ 검�
 **실행·검토:** Windows는 `start-demo.bat`, macOS는 `./start-demo.command`가
 가장 빠르다. 수동은 `cp .env.example .env` (모의 모드 이미 설정) →
 `npm run serve` → `http://127.0.0.1:8642/?lang=en&demo=expert&tour=neon&mute`.
-인스펙터는 5단계 안내·실제 소스 발췌·redact된 HTTP 기록을 보여 주지만 구매를
-스스로 만들지 않는다 — 구매·환불은 상점의 실제 버튼으로 한다. 모의 구매 상태는
+`demo=expert`로 봇이 방어를 플레이하고(관전), 인스펙터는 5단계 안내·실제 소스
+발췌·redact된 HTTP 기록을 보여 주지만 구매를 스스로 만들지 않는다 — 구매·환불은
+상점의 실제 버튼으로 하고, 상점이 열려 있는 동안 봇은 멈춘다(재시작 없음). 모의 구매 상태는
 자동으로 지워지지 않는다(새로고침에도 유지). 초기화는 상점의 Test refund 또는
 `.data/` 삭제. 검증: `npm run store:check`(실패 경로 위주) · `service:check` ·
 `tour:check` — 모두 `npm run check` 게이트에 포함. Firestore 백엔드는 에뮬레이터
@@ -135,7 +136,7 @@ start-demo.command        원클릭(macOS/Linux): 같은 동작, Node 22.9+ 검�
 - `?lang=en` 새 UI 문자열은 `i18n.js` 표에 등록, 숫자가 섞이면 패턴으로.
 
 설계·판단 근거·미완 항목의 전체 기록은 별도 문서 저장소
-`neon-checkout-integration`(README → docs 00~11)에 있다.
+`neon-checkout-integration`(README → docs 00~14)에 있다.
 
 > `server/` 변경이 포함돼 외부로 공유되는 PR 은 **영어** 커밋 메시지를 쓴다.
 

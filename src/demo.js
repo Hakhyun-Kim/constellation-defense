@@ -106,7 +106,8 @@ export const demo = {
     return alias[String(name).toLowerCase()] || null;
   },
 
-  start(profileName) {
+  /* cards:false skips the opening subtitles when another panel already explains the screen (the checkout inspector hides the caption bar). */
+  start(profileName, { cards = true } = {}) {
     if (!this.api) return false;
     const p = this.resolveProfile(profileName);
     if (p) this.profileName = p;
@@ -116,10 +117,10 @@ export const demo = {
     this.captionHold = 0;
     this.guidesSeen = new Set();
     this.overSeen = false;
-    this.tourIndex = 0;
-    this.tourT = DEMO_TOUR[0].duration;
+    this.tourIndex = cards ? 0 : -1;
+    this.tourT = cards ? DEMO_TOUR[0].duration : 0;
     this.api.onStart(this.profileName, Bot.PROFILES[this.profileName]);
-    this.present(DEMO_TOUR[0], true);
+    if (cards) this.present(DEMO_TOUR[0], true);
     return true;
   },
 
@@ -169,6 +170,8 @@ export const demo = {
   step(dt) {
     if (!this.active || !this.api) return;
     const A = this.api;
+    /* An open store belongs to the viewer: hold every timer so a purchase or refund is never interrupted by a restart. */
+    if (A.isStoreOpen?.()) return;
     const state = A.getState();
     const P = Bot.PROFILES[this.profileName];
     this.t -= dt;

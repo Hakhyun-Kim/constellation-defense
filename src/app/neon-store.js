@@ -446,6 +446,7 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
   return {
     open: () => { modal.classList.remove('hidden'); paymentEvent('store'); },
     close: () => modal.classList.add('hidden'),
+    isOpen: () => !modal.classList.contains('hidden'),
     refresh: () => refreshEntitlements().catch(() => {}),
   };
 }

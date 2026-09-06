@@ -2053,6 +2053,8 @@ demo.attach({
   getState: () => state,
   isStoryOpen: () => ui.isStoryOpen(),
   isRevealOpen: () => ui.isRevealOpen(),
+  /* The store belongs to the viewer: while it is open the bot holds still instead of restarting under a purchase. */
+  isStoreOpen: () => !!neonStore?.isOpen?.(),
   closeStory,
   summon: doSummon,
   place(heroId, pad) { selBench = heroId; doPlace(pad); },
@@ -2093,9 +2095,10 @@ demo.attach({
   },
 });
 
-/* ?demo=expert starts spectating unless the interactive payment inspector or the dedicated viewer owns the flow. Console callers may use __game.demo.start('expert'). */
-if (urlParams.has('demo') && urlParams.get('tour') !== 'neon' && !dedicatedRoute) {
-  setTimeout(() => demo.start(urlParams.get('demo') || '고수'), 900);
+/* ?demo=expert starts spectating unless the dedicated viewer owns the flow. With ?tour=neon the bot plays while the inspector
+ * observes; its Play buttons stop the bot and hand the defense to the viewer. Console callers may use __game.demo.start('expert'). */
+if (urlParams.has('demo') && !dedicatedRoute) {
+  setTimeout(() => demo.start(urlParams.get('demo') || '고수', { cards: urlParams.get('tour') !== 'neon' }), 900);
 }
 
 /* Debug hooks for automated validation and testing. */
@@ -2126,6 +2129,7 @@ if (urlParams.get('tour') === 'neon') {
     openStore: () => { closeStory(); ui.hideOver(); neonStore?.open(); },
     closeStore: () => neonStore?.close(),
     refreshStore: () => neonStore?.refresh(),
+    spectating: () => demo.active,
     riskyDefense: () => {
       demo.stop(); closeStory();
       startExposedLaneDemo({

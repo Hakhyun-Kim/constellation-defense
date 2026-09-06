@@ -27,7 +27,9 @@ demo.attach({
     caption = title; detail = nextDetail; tone = nextTone;
   },
   newGame: () => { restarts++; state.phase = 'journey'; },
+  isStoreOpen: () => storeOpen,
 });
+let storeOpen = false;
 
 demo.start('초보');
 check(caption.includes('CONSTELLATION DEFENSE') && detail.includes('3D 방어')
@@ -54,6 +56,26 @@ demo.step(11.5);
 check(restarts === 0 && demo.t > 0, 'spectate does not restart before the recap window ends');
 demo.step(0.6);
 check(restarts === 1 && !demo.overSeen, 'spectate restarts once after the recap window');
+demo.stop();
+
+// With the inspector's store open (the viewer is buying or refunding), every demo timer holds.
+state.phase = 'over';
+demo.start('초보');
+for (const scene of DEMO_TOUR) demo.step(scene.duration + .01);
+demo.step(0.1);
+check(demo.overSeen && demo.t === 12, 'recap window opens again for the store test');
+storeOpen = true;
+demo.step(30);
+check(restarts === 1 && demo.t === 12, 'an open store freezes the recap timer: no restart under a purchase');
+storeOpen = false;
+demo.step(12.5);
+check(restarts === 2, 'closing the store resumes the recap and the bot restarts afterwards');
+demo.stop();
+
+// Under the checkout inspector the caption bar is hidden, so the opening cards are skipped and play begins at once.
+state.phase = 'journey';
+demo.start('고수', { cards: false });
+check(demo.active && demo.tourIndex === -1 && demo.t === 0.6, 'cards:false starts real play without the opening subtitles');
 demo.stop();
 
 const seededState = E.createGame({ rng: seededRandom(DEMO_SEED), difficulty: 'normal' });

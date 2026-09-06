@@ -37,6 +37,13 @@ const html = readFileSync('index.html', 'utf8');
 for (const match of source.matchAll(/get\('([^']+)'\)/g)) assert.ok(html.includes(`id="${match[1]}"`), match[1]);
 assert.doesNotMatch(source, /mock-complete|mock-refund|fetch\(/, 'Inspector observes the shared store; it cannot secretly purchase');
 assert.doesNotMatch(source, /ctx\.stage\.(hurry|fall)|castleHp\s*=/);
+// The shared demo link is ?demo=expert&tour=neon: the bot must keep playing under the inspector, and the inspector must say so.
+const main = readFileSync('src/main.js', 'utf8');
+assert.match(main, /if \(urlParams\.has\('demo'\) && !dedicatedRoute\)/, 'the ?demo spectator bot starts under the inspector too');
+assert.match(main, /cards: urlParams\.get\('tour'\) !== 'neon'/, 'the inspector run skips the hidden opening cards');
+assert.match(main, /spectating: \(\) => demo\.active/, 'inspector is told when the bot is playing');
+assert.match(main, /isStoreOpen: \(\) => !!neonStore\?\.isOpen\?\.\(\)/, 'bot can see whether the store is open');
+assert.match(source, /ctx\.spectating\?\.\(\)/, 'inspector stage 1 reflects spectate mode');
 console.log('tour check: independent 3D delivery/refund, stable allocations, redacted events, DOM contract');
 
 // A poor legal formation reaches real defeat without changing HP or wave data.
