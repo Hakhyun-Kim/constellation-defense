@@ -91,7 +91,8 @@ yet executed in an engine). Playing through the server and engine viewers
 are the recorded next steps — see the table in the decision record.
 
 Manual equivalent: `npm run dedicated` in one terminal, `npm run serve` in
-another, then open `http://127.0.0.1:8642/?lang=en&dedicated=1`. The wire
+another, then open `http://127.0.0.1:8642/?lang=en&dedicated=1`. The folder
+guide is [`dedicated/README.md`](dedicated/README.md); the wire
 contract is [`dedicated/PROTOCOL.md`](dedicated/PROTOCOL.md), enforced by
 `npm run dedicated:check`; the decision record is
 [`docs/design/dedicated-server-architecture.md`](docs/design/dedicated-server-architecture.md).
@@ -104,8 +105,11 @@ The **별빛 상점 / Celestial Store** sells permanent, cosmetic-only castle
 decorations. Pricing and fulfillment are server-owned (`server/`), the game
 engine knows nothing about payments, and on static hosting the store simply
 hides itself. `start-demo.bat` / `./start-demo.command` runs the full local
-demo in mock mode with a checkout inspector on the game screen;
-`npm run store:check` is the focused integration suite.
+demo in mock mode with a checkout inspector on the game screen (with
+`?demo=expert` a bot plays until you take over);
+`npm run store:check` is the focused integration suite. Routes, invariants and
+configuration: [`server/README.md`](server/README.md); Cloud Run deployment:
+[`deploy/README.md`](deploy/README.md); every check script: [`scripts/README.md`](scripts/README.md).
 
 A deployed payment service can also be targeted **from a shared link**:
 `?store=1&api=<payment-service-origin>` points this static build at it — the

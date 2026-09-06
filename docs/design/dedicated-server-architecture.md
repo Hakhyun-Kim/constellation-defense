@@ -94,8 +94,8 @@ wire it is on.
 Mechanics, deliberately narrow:
 
 - **Allowlisted forwarding.** Only the client-facing store surface passes
-  (`/api/store/catalog · market · entitlements · checkout · mock-complete ·
-  mock-refund`, `/api/account/transfer-code · claim`). `/api/webhooks/*` is
+  (`/api/store/catalog · market · entitlements · checkout · refund ·
+  mock-complete · mock-refund`, `/api/account/transfer-code · claim`). `/api/webhooks/*` is
   refused with a written reason — webhooks are Neon→payment-service traffic
   and never travel through a client connection. Per-connection limits: four
   requests in flight, 64 KiB bodies, a 10 s upstream timeout.
