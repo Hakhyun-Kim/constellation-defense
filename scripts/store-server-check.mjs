@@ -520,6 +520,14 @@ async function runSuite(repository, label) {
     assert.deepEqual((await call('/api/save', { headers: { cookie: owner.cookie } }).then((r) => r.json())).save,
       { shards: 20 }, '두 기기가 같은 저장본을 본다');
 
+    /* A client-defined save must round-trip whatever JSON it holds on both ledgers; Firestore rejects nested arrays as native fields. */
+    const shaped = { grid: [[1, 2], [3]], 'dotted.key': true, nested: { list: [{ a: null, b: 'x' }] }, empty: {} };
+    const shapedPut = await putSave(owner.cookie, { save: shaped, baseVersion: 2 });
+    assert.equal(shapedPut.status, 200, 'nested arrays and dotted keys are accepted');
+    assert.equal((await shapedPut.json()).version, 3);
+    assert.deepEqual((await call('/api/save', { headers: { cookie: owner.cookie } }).then((r) => r.json())).save, shaped,
+      'the save round-trips exactly');
+
     /* Exercise the non-mock Neon adapter with injected fetch to verify outgoing payloads and failures before a sandbox attempt. */
     let sent = null;
     const stubNeon = (status, payload) => async (url, options) => {

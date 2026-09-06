@@ -42,7 +42,7 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
     if (!config.webhookSecret) fatal('NEON_WEBHOOK_SECRET is missing — every webhook would be rejected with 403');
     /* Production needs its public address; development can use the request origin. */
     if (!config.publicUrl) {
-      if (role === 'service') fatal('PUBLIC_URL is missing — successUrl and the webhook target would point nowhere reachable');
+      if (role === 'service') fatal('PUBLIC_URL is missing — successUrl and cancelUrl would point nowhere reachable (the webhook URL is registered in the Neon Console, not derived from it)');
       else warn('PUBLIC_URL is empty — falling back to the origin each request arrives on');
     }
     if (environment === 'sandbox') warn('NEON_ENVIRONMENT=sandbox — production webhooks (isSandbox=false) are ignored');

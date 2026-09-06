@@ -266,6 +266,12 @@ export function startDedicatedServer(overrides = {}) {
       onClose() {
         clearTimeout(client.helloTimer);
         clients.delete(client);
+        /* A viewer that never bought anything leaves nothing behind; a buyer's cosmetics stay on the shared castle
+         * for the life of the process (the ledger in the payment service is the truth either way). */
+        const token = client.storeToken;
+        if (token && !sessionCosmetics.get(token)?.size && ![...clients].some((other) => other.storeToken === token)) {
+          sessionCosmetics.delete(token);
+        }
       },
     });
     if (!conn) return;

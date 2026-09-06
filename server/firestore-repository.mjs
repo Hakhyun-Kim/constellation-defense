@@ -198,22 +198,33 @@ export class FirestoreRepository {
     });
   }
 
-  /* Account save snapshots. */
+  /* Account save snapshots. The save is stored as one JSON string: Firestore rejects nested arrays and
+   * some key shapes as native fields, and a client-defined document must round-trip whatever it holds.
+   * Documents written before this change carry a native `save` field and are read as they are. */
+  inflateSave(data) {
+    if (!data) return null;
+    if (typeof data.payload === 'string') {
+      const { payload, ...rest } = data;
+      return { ...rest, save: JSON.parse(payload) };
+    }
+    return data;
+  }
+
   async readSave(accountId) {
     const snapshot = await this.saves.doc(accountId).get();
-    return snapshot.exists ? snapshot.data() : null;
+    return snapshot.exists ? this.inflateSave(snapshot.data()) : null;
   }
 
   async writeSave({ accountId, save, baseVersion }) {
     const ref = this.saves.doc(accountId);
     return this.db.runTransaction(async (tx) => {
       const snapshot = await tx.get(ref);
-      const current = snapshot.exists ? snapshot.data() : null;
+      const current = snapshot.exists ? this.inflateSave(snapshot.data()) : null;
       const version = current?.version || 0;
       if (baseVersion !== undefined && baseVersion !== version) return { conflict: true, current };
-      const next = { save, version: version + 1, updatedAt: new Date(this.now()).toISOString() };
-      tx.set(ref, next);
-      return { conflict: false, current: next };
+      const updatedAt = new Date(this.now()).toISOString();
+      tx.set(ref, { payload: JSON.stringify(save), version: version + 1, updatedAt });
+      return { conflict: false, current: { save, version: version + 1, updatedAt } };
     });
   }
 
