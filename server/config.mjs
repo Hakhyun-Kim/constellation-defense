@@ -25,6 +25,8 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
     /* When unset, use the request origin to preserve cookies across localhost versus 127.0.0.1. Production specifies a public URL. */
     publicUrl: env.PUBLIC_URL || '',
     allowedOrigins: (env.ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean),
+    /* Only a proxy that sets the geography header and strips the client's own copy makes it a signal; without one it is caller-supplied input. */
+    trustGeoHeaders: trueish(env.TRUST_GEO_HEADERS),
   };
 
   const problems = [];
@@ -46,6 +48,10 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
       else warn('PUBLIC_URL is empty — falling back to the origin each request arrives on');
     }
     if (environment === 'sandbox') warn('NEON_ENVIRONMENT=sandbox — production webhooks (isSandbox=false) are ignored');
+  }
+
+  if (!config.trustGeoHeaders && role === 'service') {
+    warn('TRUST_GEO_HEADERS is unset — every player without an explicit market selection is billed as the default country (no IP geolocation is implemented)');
   }
 
   if (backend === 'json' && role === 'service') {

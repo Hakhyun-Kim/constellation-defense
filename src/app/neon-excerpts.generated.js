@@ -2,7 +2,7 @@
 export const EXCERPTS = {
   "checkout": {
     "file": "server/store-api.mjs",
-    "line": 344,
+    "line": 342,
     "code": "        const payload = {\n          items: [resolved.item],\n          externalReferenceId,\n          accountId,\n          languageLocale: locale === 'ko' ? 'ko-KR' : 'en-US',\n          playerCountry: country,\n          currency: resolved.currency,\n          storeUrl: origin,\n          successUrl: `${origin}/?${carried}lang=${locale}&purchase=return&sku=${encodeURIComponent(resolved.item.sku)}${apiParam}`,\n          cancelUrl: `${origin}/?${carried}lang=${locale}&purchase=cancelled&sku=${encodeURIComponent(resolved.item.sku)}${apiParam}`,\n        };\n        const checkout = config.mock\n          ? { checkoutId: `mock-${externalReferenceId}`, redirectUrl: `${origin}/?${carried}lang=${locale}&purchase=mock&reference=${externalReferenceId}${apiParam}` }"
   },
   "hosted": {
@@ -22,7 +22,7 @@ export const EXCERPTS = {
   },
   "refundRequest": {
     "file": "server/store-api.mjs",
-    "line": 432,
+    "line": 430,
     "code": "      if (req.method === 'POST' && url.pathname === '/api/store/refund' && !config.mock) {\n        const input = readJson(await body(req));\n        const resolved = checkoutItem(input.sku, { locale: 'en', country: DEFAULT_COUNTRY });\n        if (!resolved) return json(res, 400, { error: 'unknown product' });\n        const accountId = account(req, res, cookieOptionsFor(req));\n        const owned = (await repository.entitlements(accountId))[resolved.entitlement];\n        if (!owned?.purchaseId) return json(res, 404, { error: 'not owned' });\n        const purchase = await getNeonPurchase({\n          apiKey: config.apiKey, apiUrl: config.apiUrl, purchaseId: owned.purchaseId, fetchImpl,\n        });\n        const item = (purchase.items || []).find((entry) => entry.sku === input.sku && entry.refundableQuantity > 0);\n        if (!item) return json(res, 409, { error: 'not refundable' });\n        const refund = await createNeonRefund({\n          apiKey: config.apiKey, apiUrl: config.apiUrl,\n          purchaseId: owned.purchaseId, itemId: item.id, fetchImpl,\n        });\n        log.info?.(`[store] refund requested for ${input.sku} (${who(accountId)}); revocation follows the webhook`);\n        return json(res, 202, { requested: true, refundId: refund.refundId || refund.id || null });"
   },
   "visuals": {

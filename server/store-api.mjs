@@ -11,7 +11,7 @@ const PLAYER_RE = /^[a-f0-9-]{36}$/i;
 /* Checkout intents consume ledger space, so creation must be bounded. */
 const CHECKOUT_WINDOW_MS = 10 * 60 * 1000;
 const CHECKOUT_LIMIT = 10;
-/* Platform geography headers take precedence over browser locale. */
+/* Platform geography headers are trustworthy only behind a proxy that sets them and strips the client's copy; otherwise any caller can declare its own country with a header. Deployments opt in with TRUST_GEO_HEADERS. */
 const GEO_HEADERS = ['cf-ipcountry', 'x-vercel-ip-country', 'x-appengine-country', 'x-geo-country'];
 
 /* Avoid ambiguous O/0 and I/1/L in manually transferred codes to reduce transcription failures. */
@@ -70,17 +70,15 @@ function account(req, res, config) {
   return id;
 }
 
-/* Never derive billing country from game UI language. Neon aligns currency with playerCountry; a language toggle must not change tax or payment-method selection. Apply billing signals in priority order. */
-export function resolveCountry(req) {
+/* Never derive billing country from any language signal. Neon aligns currency, payment methods and tax jurisdiction with playerCountry, which is where the player is, not what they read: the UI toggle and the browser's Accept-Language are both language, and an English browser in Seoul is not a US resident. Accept-Language reaches Neon as languageLocale only. Signals in order: an explicit market selection, then platform geography from a trusted proxy. IP geolocation belongs above both and is not implemented here; until it is, and with no CDN in front of this service, the default market is the honest answer rather than a guess read off the request's language. */
+export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
   const chosen = String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase();
   if (isSupportedCountry(chosen)) return chosen;
-  for (const header of GEO_HEADERS) {
-    const value = String(req.headers[header] || '').toUpperCase();
-    if (isSupportedCountry(value)) return value;
-  }
-  for (const tag of String(req.headers['accept-language'] || '').split(',')) {
-    const region = tag.trim().split(';')[0].split('-')[1];
-    if (region && isSupportedCountry(region.toUpperCase())) return region.toUpperCase();
+  if (trustGeoHeaders) {
+    for (const header of GEO_HEADERS) {
+      const value = String(req.headers[header] || '').toUpperCase();
+      if (isSupportedCountry(value)) return value;
+    }
   }
   return DEFAULT_COUNTRY;
 }
@@ -223,7 +221,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
     try {
       if (req.method === 'GET' && url.pathname === '/api/store/catalog') {
         const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ko';
-        const country = resolveCountry(req);
+        const country = resolveCountry(req, config);
         /* Return identity so token-based web and native clients can persist it; same-origin cookie clients may ignore it. */
         const playerId = account(req, res, cookieOptionsFor(req));
         return json(res, 200, {
@@ -304,7 +302,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
       if (req.method === 'POST' && url.pathname === '/api/store/checkout') {
         const input = readJson(await body(req));
         const locale = input.locale === 'en' ? 'en' : 'ko';
-        const country = resolveCountry(req);
+        const country = resolveCountry(req, config);
         const resolved = checkoutItem(input.sku, { locale, country });
         if (!resolved) return json(res, 400, { error: 'unknown product' });
         const accountId = account(req, res, cookieOptionsFor(req));
