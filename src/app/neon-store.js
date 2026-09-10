@@ -71,10 +71,15 @@ function copy(locale) {
     title: 'Celestial Store', buy: 'Buy with Neon', owned: 'Owned', close: 'Close',
     pending: 'Confirming your purchase…', error: 'The store is temporarily unavailable.',
     cosmetic: 'Cosmetic only · no gameplay advantage', region: 'Billing region',
-    suggest: (country, currency) => `Your browser looks like ${country}. Switch billing to ${currency}?`,
+    suggest: (country, currency, reason) => (reason === 'location'
+      ? `You seem to be in ${country} right now. Switch billing to ${currency}?`
+      : `Your browser looks like ${country}. Switch billing to ${currency}?`),
     suggestAction: (currency) => `Switch to ${currency}`,
     suggestNote: 'Billing region sets tax and payment methods, so it changes only when you choose it.',
-    globalStore: 'Global Store',
+    globalStore: 'Global Store', reference: 'USD reference',
+    pricedBy: (country) => `Prices for ${country} are set by Neon.`,
+    region_unavailable: 'Purchases are not available in this billing region.',
+    pricing_unavailable: 'Prices for this region are unavailable right now — try again shortly, or choose KR or US.',
     slow: 'This is taking longer than usual. Your purchase is safe.', retry: 'Check again',
     mock: 'Mock mode · no payment is taken', already_owned: 'You already own this.',
     account: 'This device', transfer: 'Get transfer code', useCode: 'Use a code',
@@ -86,10 +91,15 @@ function copy(locale) {
     title: '별빛 상점', buy: 'Neon으로 구매', owned: '보유 중', close: '닫기',
     pending: '구매 완료를 확인하고 있어요…', error: '상점을 잠시 이용할 수 없어요.',
     cosmetic: '치장 전용 · 전투 능력에 영향 없음', region: '결제 지역',
-    suggest: (country, currency) => `브라우저가 ${country} 같아요. 결제를 ${currency}로 바꿀까요?`,
+    suggest: (country, currency, reason) => (reason === 'location'
+      ? `지금 ${country}에서 접속하신 것 같아요. 결제를 ${currency}로 바꿀까요?`
+      : `브라우저가 ${country} 같아요. 결제를 ${currency}로 바꿀까요?`),
     suggestAction: (currency) => `${currency}로 바꾸기`,
     suggestNote: '결제 지역은 세금과 결제수단을 정하기 때문에 직접 고를 때만 바뀝니다.',
-    globalStore: '글로벌 스토어',
+    globalStore: '글로벌 스토어', reference: 'USD 기준가',
+    pricedBy: (country) => `${country} 가격은 Neon이 정합니다.`,
+    region_unavailable: '이 결제 지역에서는 구매할 수 없어요.',
+    pricing_unavailable: '지금은 이 지역 가격을 불러올 수 없어요 — 잠시 뒤 다시 시도하거나 KR·US를 고르세요.',
     slow: '확인이 평소보다 늦어지고 있어요. 구매는 안전하게 기록돼 있어요.', retry: '다시 확인',
     mock: '모의 모드 · 실제 결제가 일어나지 않아요', already_owned: '이미 가지고 있어요.',
     account: '이 기기', transfer: '인계 코드 받기', useCode: '코드 입력',
@@ -135,12 +145,12 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
   modal.addEventListener('click', (event) => { if (event.target === modal) modal.classList.add('hidden'); });
   button.addEventListener('click', () => { modal.classList.remove('hidden'); paymentEvent('store'); });
 
-  /* A browser language may recommend a market, never declare one: the server sends the suggestion, the player's click makes it explicit. */
+  /* A location that disagrees with the billing country, or a browser region when no location is known, may recommend a market, never declare one: the server sends the suggestion, the player's click makes it explicit. */
   function renderSuggestion() {
     if (!catalog?.suggestion) return null;
-    const { country, currency } = catalog.suggestion;
+    const { country, currency, reason } = catalog.suggestion;
     const row = element('div', 'neon-suggest');
-    row.append(element('span', null, words.suggest(country, currency)));
+    row.append(element('span', null, words.suggest(country, currency, reason)));
     const action = element('button', 'neon-linkish', words.suggestAction(currency));
     action.addEventListener('click', async () => {
       try {
@@ -158,15 +168,16 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
     const row = element('label', 'neon-region');
     row.append(element('span', null, words.region));
     const select = element('select');
-    /* A country this catalogue does not price is still a real country: Neon's Global Store prices it in USD, so show it as itself rather than silently as one of the two priced markets. */
-    if (catalog.globalStore) {
-      const option = element('option', null, `${catalog.country} · ${catalog.currency} · ${words.globalStore}`);
+    /* The billing country shows as itself even when it is not one of the catalogue's markets — Neon prices it, or the USD row stands in — never silently as KR or US. Only Neon's answer earns the Global Store label. */
+    if (!catalog.markets.some((market) => market.code === catalog.country)) {
+      const tag = catalog.globalStore ? ` · ${words.globalStore}` : catalog.unpriced ? ` · ${words.reference}` : '';
+      const option = element('option', null, `${catalog.country} · ${catalog.currency}${tag}`);
       option.value = catalog.country;
       option.selected = true;
       select.append(option);
     }
     for (const market of catalog.markets) {
-      const option = element('option', null, `${market.code} · ${market.currency}`);
+      const option = element('option', null, `${market.code} · ${market.code === catalog.country ? catalog.currency : market.currency}`);
       option.value = market.code;
       if (market.code === catalog.country) option.selected = true;
       select.append(option);
@@ -179,6 +190,7 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
       } catch (error) { status.textContent = error.message; }
     });
     row.append(select);
+    if (catalog.priceSource === 'neon') row.append(element('small', 'neon-priced-by', words.pricedBy(catalog.country)));
     return row;
   }
 
@@ -244,9 +256,10 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
       const buy = action(owns(item) ? words.owned : `${words.buy} · ${item.displayPrice}`, () => startCheckout(item), 'big amber');
       buy.dataset.buy = item.sku;
       if (index === 0) buy.id = 'neonBuyBtn';
-      buy.disabled = busy || owns(item) || Boolean(pending);
+      buy.disabled = busy || owns(item) || Boolean(pending) || Boolean(catalog.unavailable);
       card.append(art, body, buy); product.append(card);
     }
+    if (catalog.unavailable) product.append(element('small', 'neon-unavailable', words[catalog.unavailable] || catalog.unavailable));
     product.append(element('small', null, words.cosmetic));
     if (catalog.checkoutMode === 'mock') {
       product.append(element('small', 'neon-mock', words.mock));

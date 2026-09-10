@@ -27,6 +27,8 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
     allowedOrigins: (env.ALLOWED_ORIGINS || '').split(',').map((value) => value.trim()).filter(Boolean),
     /* Only a proxy that sets the geography header and strips the client's own copy makes it a signal; without one it is caller-supplied input. */
     trustGeoHeaders: trueish(env.TRUST_GEO_HEADERS),
+    /* A front end (Cloud Run's) that appends the client address to X-Forwarded-For. Without one the socket peer is the client, and the header is caller-supplied. */
+    trustProxy: trueish(env.TRUST_PROXY),
   };
 
   const problems = [];
@@ -50,8 +52,11 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
     if (environment === 'sandbox') warn('NEON_ENVIRONMENT=sandbox — production webhooks (isSandbox=false) are ignored');
   }
 
-  if (!config.trustGeoHeaders && role === 'service') {
-    warn('TRUST_GEO_HEADERS is unset — geography headers are ignored, so a player without an explicit market selection is billed in the default market and merely offered a switch (no IP geolocation is implemented)');
+  if (role === 'service' && !mock && !config.trustGeoHeaders && !config.trustProxy) {
+    warn('neither TRUST_PROXY nor TRUST_GEO_HEADERS is set — the client address is the socket peer, so behind a proxy nobody is geolocated and a player without a selection is billed in the default market');
+  }
+  if (role === 'service' && mock) {
+    warn('mock mode — no IP geolocation or pricing-sheet prices (Neon is not called); prices are server/catalog.mjs rows');
   }
 
   if (backend === 'json' && role === 'service') {

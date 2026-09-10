@@ -5,9 +5,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkoutItem, formatPrice, marketFor, PRODUCTS } from '../server/catalog.mjs';
+import { checkoutItem, formatPrice, marketFor, priceList, PRODUCTS } from '../server/catalog.mjs';
+import { clientIp, normalizePrices } from '../server/pricing.mjs';
 import { JsonRepository } from '../server/repository.mjs';
-import { createStoreApi, resolveCountry, suggestMarket } from '../server/store-api.mjs';
+import { createStoreApi, recommendMarket, resolveCountry, suggestMarket } from '../server/store-api.mjs';
 import './store-regression-check.mjs';
 
 const secret = 'test-webhook-secret';
@@ -29,13 +30,41 @@ assert.equal(suggestMarket(requestWith({ 'accept-language': 'ko-KR' }), 'KR'), n
 assert.equal(suggestMarket(requestWith({}), 'KR'), null);
 assert.equal(suggestMarket(requestWith({ cookie: 'cd_country=KR', 'accept-language': 'en-US' }), 'KR'), null);
 
-/* Global Store: a country this catalogue does not price stays itself and is priced in USD, instead of being relabelled KR to reach a price row. */
+/* A country this catalogue does not price stays itself and is priced on the USD reference row, instead of being relabelled KR to reach a price row. It is not Neon's Global Store, which only Neon's answer can name. */
 assert.equal(marketFor('JP').currency, 'USD');
-assert.equal(marketFor('JP').global, true);
-assert.equal(marketFor('KR').global, undefined);
+assert.equal(priceList('JP').unpriced, true);
+assert.equal(priceList('JP').globalStore, false);
+assert.equal(priceList('KR').unpriced, false);
 assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'JP' }), { trustGeoHeaders: true }), 'JP');
 assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'XX' }), { trustGeoHeaders: true }), 'KR', 'XX names no jurisdiction');
 assert.equal(suggestMarket(requestWith({ 'accept-language': 'ja-JP' }), 'KR'), 'JP');
+
+/* Neon's pricing sheet prices the whole list when it answers for this country and covers every tier — never a mix. */
+const jpTiers = { '3.99': { price: 60000, localizedPrice: '¥600' }, '4.99': { price: 80000, localizedPrice: '¥800' }, '5.99': { price: 90000, localizedPrice: '¥900' } };
+const jpSheet = normalizePrices({ isSupported: true, country: 'JP', currency: 'JPY', isFallback: false, prices: jpTiers });
+const jpList = priceList('JP', jpSheet);
+assert.equal(jpList.source, 'neon');
+assert.equal(jpList.currency, 'JPY');
+assert.equal(jpList.rows.CELESTIAL_BANNER.displayPrice, '¥800');
+assert.equal(priceList('KR', jpSheet).source, 'catalogue', 'an answer for another country prices nothing here');
+assert.equal(priceList('JP', { ...jpSheet, tiers: { '4.99': jpTiers['4.99'] } }).source, 'catalogue', 'a sheet missing a tier leaves the catalogue in charge');
+assert.deepEqual(checkoutItem('CELESTIAL_BANNER', { locale: 'en', country: 'JP', localized: jpSheet }).item, {
+  sku: 'CELESTIAL_BANNER', name: 'Celestial Pioneer Banner', subtitle: PRODUCTS.CELESTIAL_BANNER.subtitles.en, priceTierCode: '4.99', quantity: 1,
+}, 'a Neon-priced item sends the tier, not an amount');
+assert.equal(normalizePrices({ isSupported: true, country: 'AE', currency: 'USD', isFallback: true, prices: {} }).globalStore, true, 'only Neon names the Global Store');
+assert.equal(normalizePrices({ isSupported: false, country: 'KP', reason: 'restricted' }).supported, false);
+assert.equal(normalizePrices({ id: 'chk_1' }), null, 'an unexpected shape is no answer');
+
+/* The address to geolocate: the socket, unless a trusted front end appended the client's; entries the client sent before it are ignored. */
+assert.equal(clientIp({ headers: {}, socket: { remoteAddress: '127.0.0.1' } }), null, 'loopback locates nobody');
+assert.equal(clientIp({ headers: { 'x-forwarded-for': '8.8.8.8' }, socket: { remoteAddress: '10.0.0.2' } }), null, 'an untrusted header is ignored');
+assert.equal(clientIp({ headers: { 'x-forwarded-for': '1.2.3.4, 203.0.113.7' }, socket: { remoteAddress: '10.0.0.2' } }, { trustProxy: true }), '203.0.113.7');
+assert.equal(clientIp({ headers: {}, socket: { remoteAddress: '::ffff:203.0.113.9' } }), '203.0.113.9');
+
+/* One recommendation at most: a location that disagrees with the billing country is offered; a location that agrees silences the browser region. */
+assert.deepEqual(recommendMarket(requestWith({ cookie: 'cd_country=KR' }), { country: 'KR', located: 'JP' }), { country: 'JP', reason: 'location' });
+assert.equal(recommendMarket(requestWith({ 'accept-language': 'en-US' }), { country: 'KR', located: 'KR' }), null, 'a Seoul address with an English browser is offered nothing');
+assert.deepEqual(recommendMarket(requestWith({ 'accept-language': 'en-US' }), { country: 'KR', located: null }), { country: 'US', reason: 'browser' });
 
 async function runSuite(repository, label) {
   let origin;
@@ -142,7 +171,8 @@ async function runSuite(repository, label) {
       .then((r) => r.json());
     assert.equal(englishBrowser.country, 'KR', '브라우저 언어는 청구 국가를 바꾸지 않는다');
     assert.equal(englishBrowser.items[0].currency, 'KRW');
-    assert.deepEqual(englishBrowser.suggestion, { country: 'US', currency: 'USD' }, '대신 마켓 전환을 제안한다');
+    assert.deepEqual(englishBrowser.suggestion, { country: 'US', reason: 'browser', currency: 'USD' }, '대신 마켓 전환을 제안한다');
+    assert.equal(englishBrowser.countrySource, 'default');
 
     // Accepting the suggestion is an explicit selection, and it silences the suggestion.
     const accepted = await call('/api/store/market', {
@@ -154,7 +184,7 @@ async function runSuite(repository, label) {
     assert.equal(acceptedCatalog.country, 'US', '선택을 받아들이면 청구 국가가 된다');
     assert.equal(acceptedCatalog.suggestion, null, '선택한 뒤에는 제안하지 않는다');
 
-    // Global Store over HTTP: an explicit selection outside the priced markets keeps its own country and is billed in USD.
+    // An explicit selection outside the priced markets keeps its own country; with no pricing sheet (mock mode) the USD row stands in as a reference.
     const jpChoice = await call('/api/store/market', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'JP' }),
     });
@@ -162,7 +192,10 @@ async function runSuite(repository, label) {
     const jpCatalog = await call('/api/store/catalog?locale=en', { headers: { cookie: sessionCookie(jpChoice) } }).then((r) => r.json());
     assert.equal(jpCatalog.country, 'JP', '가격표에 없는 나라도 자기 나라로 남는다');
     assert.equal(jpCatalog.currency, 'USD');
-    assert.equal(jpCatalog.globalStore, true);
+    assert.equal(jpCatalog.unpriced, true);
+    assert.equal(jpCatalog.globalStore, false, 'Global Store 는 Neon 의 답만 붙일 수 있다');
+    assert.equal(jpCatalog.countrySource, 'selection');
+    assert.equal(jpCatalog.unavailable, null, '모의 모드는 기준가로 계속 판다 — 아무도 청구되지 않는다');
     assert.equal(jpCatalog.items[0].displayPrice, '$4.99');
     const badChoice = await call('/api/store/market', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'ZZZ' }),
@@ -584,6 +617,8 @@ async function runSuite(repository, label) {
     /* Exercise the non-mock Neon adapter with injected fetch to verify outgoing payloads and failures before a sandbox attempt. */
     let sent = null;
     const stubNeon = (status, payload) => async (url, options) => {
+      /* These stubs have no pricing sheet: /prices answers nothing and the catalogue's rows price. */
+      if (new URL(url).pathname === '/prices') return new Response('{}', { status: 404 });
       sent = { url, options, body: JSON.parse(options.body) };
       return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
     };
@@ -633,19 +668,115 @@ async function runSuite(repository, label) {
       assert.equal(sent.body.currency, 'KRW');
       assert.equal(sent.body.playerCountry, 'KR');
       assert.equal(sent.body.languageLocale, 'ko-KR');
-      /* The same request from a country this catalogue does not price: Neon is told where the player is, and the amount is the USD row. */
-      const globalBuyer = sessionCookie(await fetch(`${ok.at}/api/store/market`, {
+      assert.ok(sent.body.successUrl.startsWith('https://tunnel.example.test/'), 'successUrl 은 공개 주소를 쓴다');
+      /* A country this catalogue does not price, with no answer from Neon's sheet: refused rather than billed in a guessed currency. */
+      const unpricedBuyer = sessionCookie(await fetch(`${ok.at}/api/store/market`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'JP' }),
       }));
-      await fetch(`${ok.at}/api/store/checkout`, {
-        method: 'POST', headers: { cookie: globalBuyer, 'Content-Type': 'application/json' },
+      const unpriced = await fetch(`${ok.at}/api/store/checkout`, {
+        method: 'POST', headers: { cookie: unpricedBuyer, 'Content-Type': 'application/json' },
         body: JSON.stringify({ sku: 'AURORA_SPIRES', locale: 'en' }),
       });
-      assert.equal(sent.body.playerCountry, 'JP', 'Global Store 는 국가를 바꿔 신고하지 않는다');
-      assert.equal(sent.body.currency, 'USD');
-      assert.equal(sent.body.items[0].price, PRODUCTS.AURORA_SPIRES.prices.USD);
-      assert.ok(sent.body.successUrl.startsWith('https://tunnel.example.test/'), 'successUrl 은 공개 주소를 쓴다');
+      assert.equal(unpriced.status, 503, 'Neon 가격 없이 가격표 밖의 나라에 임의 통화로 청구하지 않는다');
+      assert.equal((await unpriced.json()).error, 'pricing_unavailable');
+      assert.equal(sent.body.playerCountry, 'KR', 'the refused checkout never reached Neon');
     } finally { await ok.close(); }
+
+    /* Neon's geolocation and pricing sheet, stubbed from the documented GET /prices shapes: the country comes from the last X-Forwarded-For entry behind a trusted front end, the list and the checkout use Neon's tier for that country, and Neon's Global Store and restricted answers reach the player as Neon gave them. */
+    {
+      const lookups = [];
+      const answers = {
+        JP: { isSupported: true, country: 'JP', currency: 'JPY', isFallback: false, prices: jpTiers },
+        AE: { isSupported: true, country: 'AE', currency: 'USD', isFallback: true, prices: {
+          '3.99': { price: 399, localizedPrice: '$3.99' }, '4.99': { price: 499, localizedPrice: '$4.99' }, '5.99': { price: 599, localizedPrice: '$5.99' } } },
+        KP: { isSupported: false, country: 'KP', reason: 'restricted' },
+      };
+      const addresses = { '203.0.113.7': 'JP', '203.0.113.8': 'AE', '203.0.113.9': 'KP' };
+      const neon = async (url, options) => {
+        const target = new URL(url);
+        if (target.pathname === '/prices') {
+          lookups.push(target.search);
+          const answer = answers[target.searchParams.get('country') || addresses[target.searchParams.get('ip')]];
+          return new Response(JSON.stringify(answer || { statusCode: 400 }), { status: answer ? 200 : 400 });
+        }
+        sent = { url, options, body: JSON.parse(options.body) };
+        return new Response(JSON.stringify({ id: 'chk_geo', token: 't', redirectUrl: 'https://pay.example.test/chk_geo' }), { status: 201 });
+      };
+      const geoHandler = createStoreApi({
+        repository,
+        config: {
+          mock: false, apiKey: 'test-secret-key', apiUrl: 'https://api.example.test', webhookSecret: secret,
+          publicUrl: 'https://tunnel.example.test', environment: 'sandbox', trustProxy: true,
+        },
+        fetchImpl: neon, log: quiet,
+      });
+      const geo = createServer(async (req, res) => geoHandler(req, res, new URL(req.url, 'https://tunnel.example.test')));
+      await new Promise((resolve) => geo.listen(0, '127.0.0.1', resolve));
+      const at = `http://127.0.0.1:${geo.address().port}`;
+      /* 198.51.100.1 is what a client could send itself; the front end's entry comes last. */
+      const from = (ip, extra = {}) => ({ 'x-forwarded-for': `198.51.100.1, ${ip}`, ...extra });
+      const checkoutFrom = (ip, cookie, sku) => fetch(`${at}/api/store/checkout`, {
+        method: 'POST', headers: from(ip, { cookie, 'Content-Type': 'application/json' }), body: JSON.stringify({ sku, locale: 'en' }),
+      });
+      try {
+        // A Japanese address and no selection: Neon locates it and prices the list in JPY.
+        const jpResponse = await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.7', { 'accept-language': 'en-US' }) });
+        const jp = await jpResponse.json();
+        assert.equal(jp.country, 'JP');
+        assert.equal(jp.countrySource, 'ip');
+        assert.equal(jp.currency, 'JPY');
+        assert.equal(jp.priceSource, 'neon');
+        assert.equal(jp.items[0].displayPrice, '¥800');
+        assert.equal(jp.suggestion, null, '위치가 있으면 브라우저 언어로 제안하지 않는다');
+        assert.ok(lookups.includes('?ip=203.0.113.7'), '마지막 X-Forwarded-For 항목을 지오로케이션한다');
+        assert.ok(!lookups.some((query) => query.includes('198.51.100.1')), '클라이언트가 보낸 앞쪽 항목은 쓰지 않는다');
+
+        // The checkout declares JP in JPY and sends the tier; the intent keeps Neon's quote but no amount of ours.
+        const jpBuyer = sessionCookie(jpResponse);
+        assert.equal((await checkoutFrom('203.0.113.7', jpBuyer, 'CELESTIAL_BANNER')).status, 201);
+        assert.equal(sent.body.playerCountry, 'JP');
+        assert.equal(sent.body.currency, 'JPY');
+        assert.equal(sent.body.items[0].priceTierCode, '4.99');
+        assert.equal(sent.body.items[0].price, undefined, '티어 가격은 금액을 보내지 않는다');
+        const intent = await repository.pendingCheckout(sent.body.externalReferenceId);
+        assert.equal(intent.price, null);
+        assert.equal(intent.priceTierCode, '4.99');
+        assert.equal(intent.quotedPrice, 80000);
+        assert.equal(intent.currency, 'JPY');
+        // Neon set the amount, so a purchase at a different JPY amount still grants.
+        const tierGrant = await deliver(purchaseEvent({ id: `event-tier-${intent.externalReferenceId}` }, {
+          id: `purchase-tier-${intent.externalReferenceId}`, accountId: intent.accountId, externalReferenceId: intent.externalReferenceId,
+          currency: 'JPY', initialCurrency: 'JPY', items: [{ sku: 'CELESTIAL_BANNER', quantity: 1, price: 81000 }],
+        }));
+        assert.equal(tierGrant.payload.ignored, undefined, 'Neon 이 정한 티어 금액은 비교하지 않고 지급한다');
+
+        // A player who chose KR, now on a Japanese address: stays KR, and is offered JP.
+        const krChoice = sessionCookie(await fetch(`${at}/api/store/market`, {
+          method: 'POST', headers: from('203.0.113.7', { 'Content-Type': 'application/json' }), body: JSON.stringify({ country: 'KR' }),
+        }));
+        const traveller = await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.7', { cookie: krChoice }) }).then((r) => r.json());
+        assert.equal(traveller.country, 'KR', '선택은 위치보다 앞선다');
+        assert.equal(traveller.currency, 'KRW', 'no KR answer from the sheet: the catalogue row prices');
+        assert.deepEqual(traveller.suggestion, { country: 'JP', reason: 'location', currency: 'JPY' }, '위치가 다르면 전환을 제안한다');
+
+        // Neon's Global Store and a country Neon will not sell to arrive as Neon said.
+        const ae = await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.8') }).then((r) => r.json());
+        assert.equal(ae.globalStore, true);
+        assert.equal(ae.currency, 'USD');
+        assert.equal(ae.unavailable, null);
+        const kpResponse = await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.9') });
+        const kp = await kpResponse.json();
+        assert.equal(kp.country, 'KP');
+        assert.equal(kp.unavailable, 'region_unavailable');
+        assert.equal((await checkoutFrom('203.0.113.9', sessionCookie(kpResponse), 'AURORA_SPIRES')).status, 403,
+          'Neon 이 팔지 않는 곳에서는 체크아웃을 만들지 않는다');
+
+        // Answers are remembered: the same catalogue again asks Neon nothing new.
+        const before = lookups.length;
+        await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.7') });
+        assert.equal(lookups.length, before, '가격 조회는 캐시된다');
+      } finally { await new Promise((resolve) => geo.close(resolve)); }
+    }
 
     const rejects = await liveServer(stubNeon(400, { message: 'invalid sku' }));
     try {

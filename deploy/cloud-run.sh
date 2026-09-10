@@ -34,6 +34,10 @@
 #                          would be caller-supplied input: anyone could choose
 #                          their own tax jurisdiction with curl. See
 #                          deploy/README.md — "Turning on real geolocation".
+#                          Without it the service still geolocates: TRUST_PROXY=1
+#                          is always set, because Cloud Run's front end appends
+#                          the client address to X-Forwarded-For, and that
+#                          address goes to Neon's GET /prices?ip=.
 #    --env-file PATH       default: .env — where NEON_API_KEY and
 #                          NEON_WEBHOOK_SECRET are read from (never echoed);
 #                          missing values are prompted for with hidden input.
@@ -205,7 +209,7 @@ run "${GC[@]}" run deploy "$SERVICE" \
   --region "$REGION" \
   --allow-unauthenticated \
   --min-instances 0 --max-instances 1 --memory 512Mi \
-  --set-env-vars "^##^NEON_MOCK_CHECKOUT=0##NEON_ENVIRONMENT=sandbox##STORE_BACKEND=firestore##LOG_FORMAT=json##GOOGLE_CLOUD_PROJECT=$PROJECT##PUBLIC_URL=$PUBLIC_URL##ALLOWED_ORIGINS=$ALLOWED_ORIGINS##TRUST_GEO_HEADERS=$TRUST_GEO_HEADERS" \
+  --set-env-vars "^##^NEON_MOCK_CHECKOUT=0##NEON_ENVIRONMENT=sandbox##STORE_BACKEND=firestore##LOG_FORMAT=json##GOOGLE_CLOUD_PROJECT=$PROJECT##PUBLIC_URL=$PUBLIC_URL##ALLOWED_ORIGINS=$ALLOWED_ORIGINS##TRUST_GEO_HEADERS=$TRUST_GEO_HEADERS##TRUST_PROXY=1" \
   --set-secrets "NEON_API_KEY=neon-api-key:latest,NEON_WEBHOOK_SECRET=neon-webhook-secret:latest"
 
 fi # SMOKE_ONLY

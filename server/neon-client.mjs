@@ -22,6 +22,28 @@ export async function createNeonCheckout({ apiKey, apiUrl = DEFAULT_API_URL, pay
   return data;
 }
 
+/* Neon's localized pricing: its pricing sheet's tiers for one country, or for
+ * the country Neon geolocates an IP address to (GET /prices, country or ip).
+ * Read-only, so it runs on catalogue loads; the short timeout is because the
+ * store falls back to its own table when this does not answer. */
+export async function getNeonPrices({ apiKey, apiUrl = DEFAULT_API_URL, country, ip, locale, fetchImpl = fetch, timeoutMs = 3000 }) {
+  if (!apiKey) throw new Error('NEON_API_KEY is not configured');
+  const query = new URLSearchParams(country ? { country } : { ip });
+  if (locale) query.set('locale', locale);
+  const response = await fetchImpl(`${apiUrl}/prices?${query}`, {
+    headers: { 'X-API-KEY': apiKey },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(`Neon price lookup failed (${response.status})`);
+    error.status = 502;
+    error.cause = data;
+    throw error;
+  }
+  return data;
+}
+
 export async function getNeonPurchase({ apiKey, apiUrl = DEFAULT_API_URL, purchaseId, fetchImpl = fetch, timeoutMs = 10000 }) {
   if (!apiKey) throw new Error('NEON_API_KEY is not configured');
   const response = await fetchImpl(`${apiUrl}/purchases/${encodeURIComponent(purchaseId)}`, {

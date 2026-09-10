@@ -95,9 +95,9 @@ export class JsonRepository {
         data.processedEvents[event.eventId] = { purchaseId: event.purchaseId, at: refund.at };
         return { ignored: 'purchase was refunded before fulfillment' };
       }
-      /* Item prices arrive in the settled currency. Compare only when it matches the checkout currency; after a country switch on the hosted page the converted amount is recorded, not compared. */
+      /* Item prices arrive in the settled currency. Compare only when it matches the checkout currency; after a country switch on the hosted page the converted amount is recorded, not compared. A tier-priced checkout has no price of ours (null): Neon set the amount, so there is nothing to compare. */
       const settled = event.settledCurrency ?? event.currency ?? null;
-      if (settled && settled === pending.currency && event.price != null && event.price !== pending.price) {
+      if (settled && settled === pending.currency && event.price != null && pending.price != null && event.price !== pending.price) {
         throw new PermanentRejection('amount does not match checkout');
       }
       const player = data.players[event.accountId] ||= { entitlements: {}, purchases: [] };

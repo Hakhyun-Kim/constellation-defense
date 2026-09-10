@@ -102,10 +102,18 @@ Real geolocation is therefore a deployment change, not a code change:
    Cloudflare overwrites a client-supplied `cf-ipcountry`, so this must still
    answer with the geolocated country, not `US`.
 
-Markets are limited to those in `server/catalog.mjs` (`KR`, `US`); a
-geolocated country outside that table falls through to the default. Widening
-the table means owning a price per market — Neon's pricing sheet and Global
-Store are the alternative to hand-maintaining one.
+A proxy is no longer the only way to a location. The service sends the client
+address to Neon's `GET /prices?ip=` (Cloud Run's front end appends it to
+`X-Forwarded-For`, and `cloud-run.sh` always sets `TRUST_PROXY=1` so the last
+entry is read), and the same answer carries that country's pricing-sheet
+prices. A proxy header, where trusted, takes precedence and saves the lookup.
+
+Prices: Neon's pricing sheet prices a country whenever it answers for every
+tier in `server/catalog.mjs` (`priceTierCode`), and the checkout then sends the
+tier rather than an amount. Otherwise the table's own `KR`/`US` rows price; a
+hosted checkout for any other country without a sheet answer is refused
+(`503 pricing_unavailable`) rather than billed in a guessed currency. Neon's
+Global Store is shown only where Neon's answer says `isFallback`.
 
 ## Sandbox only
 

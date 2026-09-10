@@ -1,8 +1,9 @@
 import { createHash, createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
-  DEFAULT_COUNTRY, checkoutItem, isCountryCode, isSupportedCountry, marketFor, MARKETS, PRODUCTS, publicCatalog,
+  DEFAULT_COUNTRY, checkoutItem, isCountryCode, MARKETS, PRODUCTS, priceList, publicCatalog,
 } from './catalog.mjs';
 import { createNeonCheckout, createNeonRefund, getNeonPurchase } from './neon-client.mjs';
+import { clientIp, createPricing } from './pricing.mjs';
 import { PermanentRejection } from './repository.mjs';
 
 const PLAYER_COOKIE = 'cd_player';
@@ -70,28 +71,40 @@ function account(req, res, config) {
   return id;
 }
 
-/* Never derive billing country from a language signal. Neon aligns currency, payment methods and tax jurisdiction with playerCountry, so this value declares where the player lives: the game's ko/en toggle and the browser's Accept-Language are both language, and an English browser in Seoul is not a US resident. Billing country therefore comes from an explicit market selection, then platform geography from a proxy the deployment trusts, then the default market. Where the player actually is should come from IP (Neon offers localized pricing by IP); that is not wired up here, so nothing infers it. */
-export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
+function chosenCountry(req) {
   const chosen = String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase();
-  if (isCountryCode(chosen)) return chosen;
-  if (trustGeoHeaders) {
-    for (const header of GEO_HEADERS) {
-      const value = String(req.headers[header] || '').toUpperCase();
-      if (isCountryCode(value)) return value;
-    }
+  return isCountryCode(chosen) ? chosen : null;
+}
+
+function geoHeaderCountry(req) {
+  for (const header of GEO_HEADERS) {
+    const value = String(req.headers[header] || '').toUpperCase();
+    if (isCountryCode(value)) return value;
   }
-  return DEFAULT_COUNTRY;
+  return null;
+}
+
+/* Never derive billing country from a language signal. Neon aligns currency, payment methods and tax jurisdiction with playerCountry, so this value declares where the player lives: the game's ko/en toggle and the browser's Accept-Language are both language, and an English browser in Seoul is not a US resident. Billing country therefore comes from an explicit market selection, then a location — platform geography from a proxy the deployment trusts, or Neon's geolocation of the client address (createStoreApi's locate, which needs a network call) — then the default market. This is the part that needs no call. */
+export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
+  return chosenCountry(req) || (trustGeoHeaders ? geoHeaderCountry(req) : null) || DEFAULT_COUNTRY;
 }
 
 /* A weak signal may recommend a market; it may not declare one. The browser's region subtag is enough to offer a visitor the currency they probably expect, and not nearly enough to tell a merchant of record where they live — so it produces a visible suggestion the player accepts with a click, which is then an explicit choice, and never a silent country. Suppressed once the player has chosen, and whenever it agrees with what is already resolved. */
 export function suggestMarket(req, resolved) {
-  if (isCountryCode(String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase())) return null;
+  if (chosenCountry(req)) return null;
   for (const tag of String(req.headers['accept-language'] || '').split(',')) {
     const region = tag.trim().split(';')[0].split('-')[1];
     const country = region ? region.toUpperCase() : '';
     if (isCountryCode(country)) return country === resolved ? null : country;
   }
   return null;
+}
+
+/* One recommendation at most, and it is only ever offered. A location that disagrees with the billing country is worth one line — travelling, a VPN, or a stale choice — and the player decides; a location that agrees needs nothing, and a browser region never argues with it. With no location at all, the browser's region is the weaker hint worth the same line. */
+export function recommendMarket(req, { country, located }) {
+  if (located) return located === country ? null : { country: located, reason: 'location' };
+  const browser = suggestMarket(req, country);
+  return browser ? { country: browser, reason: 'browser' } : null;
 }
 
 /* Return to the player's original host to preserve session cookies, even when localhost and 127.0.0.1 appear equivalent. A mismatched host previously made successful purchases appear unowned. */
@@ -221,6 +234,23 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
   }
 
   const allowedOrigins = config.allowedOrigins || [];
+  const pricing = createPricing({ config, fetchImpl, log });
+
+  /* Where to bill, why, and at what prices. An explicit selection is the player's statement and wins. A location comes next: a geography header from a trusted proxy, otherwise Neon's geolocation of the client address — the lookup that also returns that country's prices. The default market is last. The address is looked up under a selection too, so a location that disagrees can be offered as a switch. */
+  async function locate(req) {
+    const chosen = chosenCountry(req);
+    const header = config.trustGeoHeaders ? geoHeaderCountry(req) : null;
+    const byIp = header ? null : await pricing.forIp(clientIp(req, config));
+    const located = header || byIp?.country || null;
+    const country = chosen || located || DEFAULT_COUNTRY;
+    const source = chosen ? 'selection' : header ? 'geo-header' : located ? 'ip' : 'default';
+    const localized = byIp?.country === country ? byIp : await pricing.forCountry(country);
+    return { country, source, located, localized };
+  }
+
+  /* Why buying is off, when it is: Neon will not sell there, or a hosted checkout would have to guess a currency for a country nobody priced. Mock mode keeps selling on the reference row — no one is billed. */
+  const unavailableReason = ({ unpriced }, localized) => (localized?.supported === false ? 'region_unavailable'
+    : !config.mock && unpriced ? 'pricing_unavailable' : null);
 
   return async function handle(req, res, url) {
     if (!url.pathname.startsWith('/api/')) return false;
@@ -232,21 +262,29 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
     try {
       if (req.method === 'GET' && url.pathname === '/api/store/catalog') {
         const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ko';
-        const country = resolveCountry(req, config);
+        const where = await locate(req);
+        const prices = priceList(where.country, where.localized);
         /* Return identity so token-based web and native clients can persist it; same-origin cookie clients may ignore it. */
         const playerId = account(req, res, cookieOptionsFor(req));
+        const suggested = recommendMarket(req, where);
         return json(res, 200, {
           playerId,
-          items: publicCatalog(locale, country),
-          country,
-          currency: marketFor(country).currency,
-          /* True where Neon's Global Store prices the country rather than a row in server/catalog.mjs. */
-          globalStore: marketFor(country).global === true,
+          items: publicCatalog(locale, prices),
+          country: where.country,
+          /* How the country was decided: selection, geo-header, ip or default. */
+          countrySource: where.source,
+          currency: prices.currency,
+          /* Who priced the list: Neon's pricing sheet ('neon') or server/catalog.mjs ('catalogue'). */
+          priceSource: prices.source,
+          /* Neon serves this country through its Global Store (USD, international cards). Only Neon's answer sets it. */
+          globalStore: prices.globalStore,
+          /* No row here and no answer from Neon: the USD row stands in as a reference. */
+          unpriced: prices.unpriced,
+          unavailable: unavailableReason(prices, where.localized),
           /* Offered, not applied: the client shows it as a one-click switch. */
-          suggestion: (() => {
-            const suggested = suggestMarket(req, country);
-            return suggested ? { country: suggested, currency: marketFor(suggested).currency } : null;
-          })(),
+          suggestion: suggested
+            ? { ...suggested, currency: priceList(suggested.country, await pricing.forCountry(suggested.country)).currency }
+            : null,
           markets: Object.entries(MARKETS).map(([code, market]) => ({ code, currency: market.currency })),
           checkoutMode: config.mock ? 'mock' : 'hosted',
           environment,
@@ -257,10 +295,10 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
       if (req.method === 'POST' && url.pathname === '/api/store/market') {
         const input = readJson(await body(req));
         const country = String(input.country || '').toUpperCase();
-        /* Any real country is selectable: the ones this catalogue prices, and the rest through the Global Store. */
+        /* Any real country is selectable: Neon's sheet prices it, or the catalogue's rows do. */
         if (!isCountryCode(country)) return json(res, 400, { error: 'unsupported country' });
         appendCookie(res, COUNTRY_COOKIE, country, cookieOptionsFor(req));
-        return json(res, 200, { country, currency: marketFor(country).currency });
+        return json(res, 200, { country, currency: priceList(country, await pricing.forCountry(country)).currency });
       }
 
       /* Account transfer provides continuity without email/password signup. The code is a bearer credential: whoever has it can claim the account. A production title should integrate its existing authentication or OAuth flow. */
@@ -321,9 +359,11 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
       if (req.method === 'POST' && url.pathname === '/api/store/checkout') {
         const input = readJson(await body(req));
         const locale = input.locale === 'en' ? 'en' : 'ko';
-        const country = resolveCountry(req, config);
-        const resolved = checkoutItem(input.sku, { locale, country });
+        const { country, localized } = await locate(req);
+        const resolved = checkoutItem(input.sku, { locale, country, localized });
         if (!resolved) return json(res, 400, { error: 'unknown product' });
+        const unavailable = unavailableReason(resolved, localized);
+        if (unavailable) return json(res, unavailable === 'region_unavailable' ? 403 : 503, { error: unavailable });
         const accountId = account(req, res, cookieOptionsFor(req));
         /* Enforce permanent-item ownership on the server, beyond disabled UI controls. A refunded entitlement becomes purchasable again. */
         if (resolved.permanent && (await repository.entitlements(accountId))[resolved.entitlement]) {
@@ -376,7 +416,9 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         const checkoutId = checkout.id ?? checkout.checkoutId ?? null;
         await repository.recordCheckout({
           externalReferenceId, accountId, sku: resolved.item.sku, entitlement: resolved.entitlement,
-          price: resolved.item.price, currency: resolved.currency, country,
+          /* A tier-priced intent has no amount of ours: price is null and Neon's quote is kept beside it. */
+          price: resolved.item.price ?? null, priceTierCode: resolved.item.priceTierCode ?? null, quotedPrice: resolved.quotedPrice,
+          currency: resolved.currency, country,
           status: 'pending',
           checkoutId,
         });
