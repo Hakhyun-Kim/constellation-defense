@@ -14,13 +14,16 @@ const secret = 'test-webhook-secret';
 const quiet = { info() {}, warn() {}, error() {} };
 assert.equal(checkoutItem('constructor', { country: 'KR', locale: 'en' }), null);
 
-/* Country resolution, without HTTP: an explicit selection wins, geography counts only where a proxy is trusted, and language never counts. */
+/* Country resolution, without HTTP: an explicit selection outranks everything, geography counts only where the deployment trusts the proxy, and the browser region decides only when nothing better exists. */
 const requestWith = (headers) => ({ headers });
-assert.equal(resolveCountry(requestWith({ 'accept-language': 'en-US,en;q=0.9' })), 'KR');
+assert.equal(resolveCountry(requestWith({ 'accept-language': 'en-US,en;q=0.9' })), 'US');
+assert.equal(resolveCountry(requestWith({ 'accept-language': 'ja-JP' })), 'KR');
+assert.equal(resolveCountry(requestWith({})), 'KR');
 assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'US' })), 'KR');
 assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'US' }), { trustGeoHeaders: true }), 'US');
-assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'ZZ' }), { trustGeoHeaders: true }), 'KR');
+assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'ZZ', 'accept-language': 'en-US' }), { trustGeoHeaders: true }), 'US');
 assert.equal(resolveCountry(requestWith({ cookie: 'cd_country=US', 'cf-ipcountry': 'KR' }), { trustGeoHeaders: true }), 'US');
+assert.equal(resolveCountry(requestWith({ cookie: 'cd_country=KR', 'accept-language': 'en-US' })), 'KR');
 
 async function runSuite(repository, label) {
   let origin;
@@ -122,13 +125,13 @@ async function runSuite(repository, label) {
     const englishCheckout = await openCheckout(cookie, { locale: 'en' });
     assert.equal(new URL((await englishCheckout.json()).redirectUrl).searchParams.get('lang'), 'en');
 
-    // Language is not country: neither the UI locale nor the browser's region moves billing.
-    const englishBrowser = await call('/api/store/catalog?locale=en', { headers: { 'accept-language': 'en-US,en;q=0.9' } })
+    // The game's UI language never moves billing; the browser's region is the demo's last-resort signal.
+    const usCatalog = await call('/api/store/catalog?locale=ko', { headers: { 'accept-language': 'en-US,en;q=0.9' } })
       .then((r) => r.json());
-    assert.equal(englishBrowser.country, 'KR', 'Accept-Language 지역은 청구 국가가 되지 않는다');
-    assert.equal(englishBrowser.items[0].currency, 'KRW');
+    assert.equal(usCatalog.country, 'US', 'Accept-Language 지역이 기본 국가가 된다');
+    assert.equal(usCatalog.items[0].currency, 'USD');
 
-    // Geography headers are caller-supplied unless a trusted proxy sets them.
+    // Geography headers are caller-supplied unless the deployment trusts a proxy that sets them.
     const forgedGeo = await call('/api/store/catalog?locale=ko', { headers: { 'cf-ipcountry': 'US' } }).then((r) => r.json());
     assert.equal(forgedGeo.country, 'KR', '신뢰하지 않는 배포에서는 geo 헤더를 무시한다');
 

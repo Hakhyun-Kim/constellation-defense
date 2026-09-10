@@ -19,7 +19,7 @@ This directory is the payment service for the Neon Hosted Checkout integration i
 
 ## HTTP routes
 
-Store routes live under `/api/`. Identity comes from `Authorization: Bearer <uuid>` first, then the `cd_player` cookie; a request with neither gets a new UUID set as an `HttpOnly` cookie. Country comes from the `cd_country` cookie set by an explicit market selection, then — only when `TRUST_GEO_HEADERS=1` marks the deployment as sitting behind a proxy that sets them — the `cf-ipcountry`, `x-vercel-ip-country`, `x-appengine-country` and `x-geo-country` headers, then `KR`. No language signal resolves country, and IP geolocation is not implemented. `OPTIONS` on any `/api/` path answers 204 for an origin listed in `ALLOWED_ORIGINS` and 403 otherwise.
+Store routes live under `/api/`. Identity comes from `Authorization: Bearer <uuid>` first, then the `cd_player` cookie; a request with neither gets a new UUID set as an `HttpOnly` cookie. Country comes from the `cd_country` cookie set by an explicit market selection, then — only when `TRUST_GEO_HEADERS=1` marks the deployment as sitting behind a proxy that sets them — the `cf-ipcountry`, `x-vercel-ip-country`, `x-appengine-country` and `x-geo-country` headers, then the `Accept-Language` region, then `KR`. The game's ko/en toggle never resolves country. The `Accept-Language` step is a demo convenience with a real cost — a browser language is not a location — and a production integration replaces it with IP geolocation; see `resolveCountry`. `OPTIONS` on any `/api/` path answers 204 for an origin listed in `ALLOWED_ORIGINS` and 403 otherwise.
 
 | Method | Path | What it does | Notes |
 |---|---|---|---|

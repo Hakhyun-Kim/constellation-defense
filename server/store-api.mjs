@@ -70,7 +70,9 @@ function account(req, res, config) {
   return id;
 }
 
-/* Never derive billing country from any language signal. Neon aligns currency, payment methods and tax jurisdiction with playerCountry, which is where the player is, not what they read: the UI toggle and the browser's Accept-Language are both language, and an English browser in Seoul is not a US resident. Accept-Language reaches Neon as languageLocale only. Signals in order: an explicit market selection, then platform geography from a trusted proxy. IP geolocation belongs above both and is not implemented here; until it is, and with no CDN in front of this service, the default market is the honest answer rather than a guess read off the request's language. */
+/* Never derive billing country from the game's UI language: Neon aligns currency, payment methods and tax jurisdiction with playerCountry, and a ko/en toggle must not move a tax jurisdiction. Signals, in order: an explicit market selection, platform geography from a proxy the deployment trusts, then the region subtag of Accept-Language, then the default market.
+
+   The last step is a deliberate demo trade-off, not a recommendation. A browser language is a weak proxy for location — an English browser in Seoul reports en-US and is billed as a US resident — and it is the only signal that fires on a deployment with no CDN in front of it, so it decides in practice. It is kept because this build is a reviewable demo: a visitor anywhere should meet a plausible currency without hunting for the market picker, and the picker overrides it permanently. A production integration resolves location from IP (Neon offers localized pricing by IP) and leaves Accept-Language to languageLocale. */
 export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
   const chosen = String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase();
   if (isSupportedCountry(chosen)) return chosen;
@@ -79,6 +81,10 @@ export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
       const value = String(req.headers[header] || '').toUpperCase();
       if (isSupportedCountry(value)) return value;
     }
+  }
+  for (const tag of String(req.headers['accept-language'] || '').split(',')) {
+    const region = tag.trim().split(';')[0].split('-')[1];
+    if (region && isSupportedCountry(region.toUpperCase())) return region.toUpperCase();
   }
   return DEFAULT_COUNTRY;
 }
