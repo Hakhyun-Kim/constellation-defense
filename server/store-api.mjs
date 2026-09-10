@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
-  DEFAULT_COUNTRY, checkoutItem, isSupportedCountry, marketFor, MARKETS, PRODUCTS, publicCatalog,
+  DEFAULT_COUNTRY, checkoutItem, isCountryCode, isSupportedCountry, marketFor, MARKETS, PRODUCTS, publicCatalog,
 } from './catalog.mjs';
 import { createNeonCheckout, createNeonRefund, getNeonPurchase } from './neon-client.mjs';
 import { PermanentRejection } from './repository.mjs';
@@ -73,11 +73,11 @@ function account(req, res, config) {
 /* Never derive billing country from a language signal. Neon aligns currency, payment methods and tax jurisdiction with playerCountry, so this value declares where the player lives: the game's ko/en toggle and the browser's Accept-Language are both language, and an English browser in Seoul is not a US resident. Billing country therefore comes from an explicit market selection, then platform geography from a proxy the deployment trusts, then the default market. Where the player actually is should come from IP (Neon offers localized pricing by IP); that is not wired up here, so nothing infers it. */
 export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
   const chosen = String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase();
-  if (isSupportedCountry(chosen)) return chosen;
+  if (isCountryCode(chosen)) return chosen;
   if (trustGeoHeaders) {
     for (const header of GEO_HEADERS) {
       const value = String(req.headers[header] || '').toUpperCase();
-      if (isSupportedCountry(value)) return value;
+      if (isCountryCode(value)) return value;
     }
   }
   return DEFAULT_COUNTRY;
@@ -85,11 +85,11 @@ export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
 
 /* A weak signal may recommend a market; it may not declare one. The browser's region subtag is enough to offer a visitor the currency they probably expect, and not nearly enough to tell a merchant of record where they live — so it produces a visible suggestion the player accepts with a click, which is then an explicit choice, and never a silent country. Suppressed once the player has chosen, and whenever it agrees with what is already resolved. */
 export function suggestMarket(req, resolved) {
-  if (isSupportedCountry(String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase())) return null;
+  if (isCountryCode(String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase())) return null;
   for (const tag of String(req.headers['accept-language'] || '').split(',')) {
     const region = tag.trim().split(';')[0].split('-')[1];
     const country = region ? region.toUpperCase() : '';
-    if (isSupportedCountry(country)) return country === resolved ? null : country;
+    if (isCountryCode(country)) return country === resolved ? null : country;
   }
   return null;
 }
@@ -240,6 +240,8 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           items: publicCatalog(locale, country),
           country,
           currency: marketFor(country).currency,
+          /* True where Neon's Global Store prices the country rather than a row in server/catalog.mjs. */
+          globalStore: marketFor(country).global === true,
           /* Offered, not applied: the client shows it as a one-click switch. */
           suggestion: (() => {
             const suggested = suggestMarket(req, country);
@@ -255,7 +257,8 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
       if (req.method === 'POST' && url.pathname === '/api/store/market') {
         const input = readJson(await body(req));
         const country = String(input.country || '').toUpperCase();
-        if (!isSupportedCountry(country)) return json(res, 400, { error: 'unsupported country' });
+        /* Any real country is selectable: the ones this catalogue prices, and the rest through the Global Store. */
+        if (!isCountryCode(country)) return json(res, 400, { error: 'unsupported country' });
         appendCookie(res, COUNTRY_COOKIE, country, cookieOptionsFor(req));
         return json(res, 200, { country, currency: marketFor(country).currency });
       }

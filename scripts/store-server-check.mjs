@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkoutItem, formatPrice, PRODUCTS } from '../server/catalog.mjs';
+import { checkoutItem, formatPrice, marketFor, PRODUCTS } from '../server/catalog.mjs';
 import { JsonRepository } from '../server/repository.mjs';
 import { createStoreApi, resolveCountry, suggestMarket } from '../server/store-api.mjs';
 import './store-regression-check.mjs';
@@ -26,9 +26,16 @@ assert.equal(resolveCountry(requestWith({ cookie: 'cd_country=US', 'cf-ipcountry
 /* The browser region recommends and never declares: it is offered only while the player has not chosen, and never when it agrees with the resolved market. */
 assert.equal(suggestMarket(requestWith({ 'accept-language': 'en-US,en;q=0.9' }), 'KR'), 'US');
 assert.equal(suggestMarket(requestWith({ 'accept-language': 'ko-KR' }), 'KR'), null);
-assert.equal(suggestMarket(requestWith({ 'accept-language': 'ja-JP' }), 'KR'), null);
 assert.equal(suggestMarket(requestWith({}), 'KR'), null);
 assert.equal(suggestMarket(requestWith({ cookie: 'cd_country=KR', 'accept-language': 'en-US' }), 'KR'), null);
+
+/* Global Store: a country this catalogue does not price stays itself and is priced in USD, instead of being relabelled KR to reach a price row. */
+assert.equal(marketFor('JP').currency, 'USD');
+assert.equal(marketFor('JP').global, true);
+assert.equal(marketFor('KR').global, undefined);
+assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'JP' }), { trustGeoHeaders: true }), 'JP');
+assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'XX' }), { trustGeoHeaders: true }), 'KR', 'XX names no jurisdiction');
+assert.equal(suggestMarket(requestWith({ 'accept-language': 'ja-JP' }), 'KR'), 'JP');
 
 async function runSuite(repository, label) {
   let origin;
@@ -146,6 +153,21 @@ async function runSuite(repository, label) {
     }).then((r) => r.json());
     assert.equal(acceptedCatalog.country, 'US', '선택을 받아들이면 청구 국가가 된다');
     assert.equal(acceptedCatalog.suggestion, null, '선택한 뒤에는 제안하지 않는다');
+
+    // Global Store over HTTP: an explicit selection outside the priced markets keeps its own country and is billed in USD.
+    const jpChoice = await call('/api/store/market', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'JP' }),
+    });
+    assert.equal(jpChoice.status, 200);
+    const jpCatalog = await call('/api/store/catalog?locale=en', { headers: { cookie: sessionCookie(jpChoice) } }).then((r) => r.json());
+    assert.equal(jpCatalog.country, 'JP', '가격표에 없는 나라도 자기 나라로 남는다');
+    assert.equal(jpCatalog.currency, 'USD');
+    assert.equal(jpCatalog.globalStore, true);
+    assert.equal(jpCatalog.items[0].displayPrice, '$4.99');
+    const badChoice = await call('/api/store/market', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'ZZZ' }),
+    });
+    assert.equal(badChoice.status, 400, '국가 코드 형식이 아니면 거절한다');
 
     // Geography headers are caller-supplied unless the deployment trusts a proxy that sets them.
     const forgedGeo = await call('/api/store/catalog?locale=ko', { headers: { 'cf-ipcountry': 'US' } }).then((r) => r.json());
@@ -611,6 +633,17 @@ async function runSuite(repository, label) {
       assert.equal(sent.body.currency, 'KRW');
       assert.equal(sent.body.playerCountry, 'KR');
       assert.equal(sent.body.languageLocale, 'ko-KR');
+      /* The same request from a country this catalogue does not price: Neon is told where the player is, and the amount is the USD row. */
+      const globalBuyer = sessionCookie(await fetch(`${ok.at}/api/store/market`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'JP' }),
+      }));
+      await fetch(`${ok.at}/api/store/checkout`, {
+        method: 'POST', headers: { cookie: globalBuyer, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku: 'AURORA_SPIRES', locale: 'en' }),
+      });
+      assert.equal(sent.body.playerCountry, 'JP', 'Global Store 는 국가를 바꿔 신고하지 않는다');
+      assert.equal(sent.body.currency, 'USD');
+      assert.equal(sent.body.items[0].price, PRODUCTS.AURORA_SPIRES.prices.USD);
       assert.ok(sent.body.successUrl.startsWith('https://tunnel.example.test/'), 'successUrl 은 공개 주소를 쓴다');
     } finally { await ok.close(); }
 

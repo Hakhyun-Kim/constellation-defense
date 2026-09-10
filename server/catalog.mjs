@@ -6,12 +6,22 @@ export const MARKETS = Object.freeze({
 
 export const DEFAULT_COUNTRY = 'KR';
 
+/* Countries this catalogue does not price are Neon's Global Store: the checkout still declares the country the player is actually in and is priced in USD, rather than being relabelled as one of the two markets below. Declaring a Japanese player Korean to reach a price is a tax statement made for our own convenience. */
+export const GLOBAL_MARKET = Object.freeze({ currency: 'USD', displayLocale: 'en-US', global: true });
+
 export function marketFor(country) {
-  return MARKETS[country] || MARKETS[DEFAULT_COUNTRY];
+  return MARKETS[String(country || '').toUpperCase()] || GLOBAL_MARKET;
 }
 
+/* A market with its own price row here. Everything else is valid and handled by the Global Store. */
 export function isSupportedCountry(country) {
   return Object.hasOwn(MARKETS, String(country || '').toUpperCase());
+}
+
+/* ISO 3166-1 alpha-2 shape, minus the user-assigned ranges (AA, QM-QZ, XA-XZ, ZZ). Those name no jurisdiction, and geolocation uses them for exactly that: Cloudflare reports XX for an unresolved address and T1 for Tor, which the shape test already rejects. */
+export function isCountryCode(value) {
+  const country = String(value || '').toUpperCase();
+  return /^[A-Z]{2}$/.test(country) && !/^(AA|Q[M-Z]|X[A-Z]|ZZ)$/.test(country);
 }
 
 export const PRODUCTS = Object.freeze({

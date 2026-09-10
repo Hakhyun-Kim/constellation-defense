@@ -74,6 +74,7 @@ function copy(locale) {
     suggest: (country, currency) => `Your browser looks like ${country}. Switch billing to ${currency}?`,
     suggestAction: (currency) => `Switch to ${currency}`,
     suggestNote: 'Billing region sets tax and payment methods, so it changes only when you choose it.',
+    globalStore: 'Global Store',
     slow: 'This is taking longer than usual. Your purchase is safe.', retry: 'Check again',
     mock: 'Mock mode · no payment is taken', already_owned: 'You already own this.',
     account: 'This device', transfer: 'Get transfer code', useCode: 'Use a code',
@@ -88,6 +89,7 @@ function copy(locale) {
     suggest: (country, currency) => `브라우저가 ${country} 같아요. 결제를 ${currency}로 바꿀까요?`,
     suggestAction: (currency) => `${currency}로 바꾸기`,
     suggestNote: '결제 지역은 세금과 결제수단을 정하기 때문에 직접 고를 때만 바뀝니다.',
+    globalStore: '글로벌 스토어',
     slow: '확인이 평소보다 늦어지고 있어요. 구매는 안전하게 기록돼 있어요.', retry: '다시 확인',
     mock: '모의 모드 · 실제 결제가 일어나지 않아요', already_owned: '이미 가지고 있어요.',
     account: '이 기기', transfer: '인계 코드 받기', useCode: '코드 입력',
@@ -156,6 +158,13 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
     const row = element('label', 'neon-region');
     row.append(element('span', null, words.region));
     const select = element('select');
+    /* A country this catalogue does not price is still a real country: Neon's Global Store prices it in USD, so show it as itself rather than silently as one of the two priced markets. */
+    if (catalog.globalStore) {
+      const option = element('option', null, `${catalog.country} · ${catalog.currency} · ${words.globalStore}`);
+      option.value = catalog.country;
+      option.selected = true;
+      select.append(option);
+    }
     for (const market of catalog.markets) {
       const option = element('option', null, `${market.code} · ${market.currency}`);
       option.value = market.code;
