@@ -70,9 +70,7 @@ function account(req, res, config) {
   return id;
 }
 
-/* Never derive billing country from the game's UI language: Neon aligns currency, payment methods and tax jurisdiction with playerCountry, and a ko/en toggle must not move a tax jurisdiction. Signals, in order: an explicit market selection, platform geography from a proxy the deployment trusts, then the region subtag of Accept-Language, then the default market.
-
-   The last step is a deliberate demo trade-off, not a recommendation. A browser language is a weak proxy for location — an English browser in Seoul reports en-US and is billed as a US resident — and it is the only signal that fires on a deployment with no CDN in front of it, so it decides in practice. It is kept because this build is a reviewable demo: a visitor anywhere should meet a plausible currency without hunting for the market picker, and the picker overrides it permanently. A production integration resolves location from IP (Neon offers localized pricing by IP) and leaves Accept-Language to languageLocale. */
+/* Never derive billing country from a language signal. Neon aligns currency, payment methods and tax jurisdiction with playerCountry, so this value declares where the player lives: the game's ko/en toggle and the browser's Accept-Language are both language, and an English browser in Seoul is not a US resident. Billing country therefore comes from an explicit market selection, then platform geography from a proxy the deployment trusts, then the default market. Where the player actually is should come from IP (Neon offers localized pricing by IP); that is not wired up here, so nothing infers it. */
 export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
   const chosen = String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase();
   if (isSupportedCountry(chosen)) return chosen;
@@ -82,11 +80,18 @@ export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
       if (isSupportedCountry(value)) return value;
     }
   }
+  return DEFAULT_COUNTRY;
+}
+
+/* A weak signal may recommend a market; it may not declare one. The browser's region subtag is enough to offer a visitor the currency they probably expect, and not nearly enough to tell a merchant of record where they live — so it produces a visible suggestion the player accepts with a click, which is then an explicit choice, and never a silent country. Suppressed once the player has chosen, and whenever it agrees with what is already resolved. */
+export function suggestMarket(req, resolved) {
+  if (isSupportedCountry(String(cookies(req)[COUNTRY_COOKIE] || '').toUpperCase())) return null;
   for (const tag of String(req.headers['accept-language'] || '').split(',')) {
     const region = tag.trim().split(';')[0].split('-')[1];
-    if (region && isSupportedCountry(region.toUpperCase())) return region.toUpperCase();
+    const country = region ? region.toUpperCase() : '';
+    if (isSupportedCountry(country)) return country === resolved ? null : country;
   }
-  return DEFAULT_COUNTRY;
+  return null;
 }
 
 /* Return to the player's original host to preserve session cookies, even when localhost and 127.0.0.1 appear equivalent. A mismatched host previously made successful purchases appear unowned. */
@@ -235,6 +240,11 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           items: publicCatalog(locale, country),
           country,
           currency: marketFor(country).currency,
+          /* Offered, not applied: the client shows it as a one-click switch. */
+          suggestion: (() => {
+            const suggested = suggestMarket(req, country);
+            return suggested ? { country: suggested, currency: marketFor(suggested).currency } : null;
+          })(),
           markets: Object.entries(MARKETS).map(([code, market]) => ({ code, currency: market.currency })),
           checkoutMode: config.mock ? 'mock' : 'hosted',
           environment,

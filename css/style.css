@@ -2666,6 +2666,8 @@ body.combat-focus #benchCard .bench { margin-top: 4px; }
 /* Billing region is visually separate from game language. */
 .neon-region { display: flex; grid-column: 1 / -1; gap: 8px; align-items: center; padding-top: 10px; border-top: 1px dashed #d9cdfb; color: #655b7d; font-size: 12px; font-weight: 700; }
 .neon-region select { padding: 4px 8px; border: 1px solid #d9cdfb; border-radius: 8px; background: #fff; color: #39285e; font: inherit; }
+.neon-suggest { display: flex; order: -1; grid-column: 1 / -1; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 10px; border: 1px dashed #d9cdfb; border-radius: 10px; background: #fbf8ff; color: #655b7d; font-size: 12px; font-weight: 700; }
+.neon-suggest-note { flex-basis: 100%; color: #8a7fa6; font-size: 11px; font-weight: 400; }
 /* Account transfer demonstrates purchases following the account across devices. */
 .neon-account { display: flex; grid-column: 1 / -1; gap: 8px; align-items: center; flex-wrap: wrap; color: #655b7d; font-size: 12px; font-weight: 700; }
 .neon-linkish { padding: 3px 10px; border: 1px solid #d9cdfb; border-radius: 8px; background: #fff; color: #4a3a72; font: inherit; font-size: 12px; cursor: pointer; }

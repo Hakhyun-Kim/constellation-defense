@@ -25,6 +25,15 @@
 #                          (--set-env-vars replaces the whole environment on every deploy, so
 #                          repeat the full list whenever it differs from the default)
 #                          Browser origins allowed by CORS to call this API.
+#    --trust-geo-headers   read cf-ipcountry / x-vercel-ip-country /
+#                          x-appengine-country / x-geo-country as the player's
+#                          country. Pass this ONLY when a proxy in front of the
+#                          service sets that header and strips the client's own
+#                          copy (Cloudflare, or an HTTPS load balancer with Cloud
+#                          CDN). Bare Cloud Run has no such proxy, so the header
+#                          would be caller-supplied input: anyone could choose
+#                          their own tax jurisdiction with curl. See
+#                          deploy/README.md — "Turning on real geolocation".
 #    --env-file PATH       default: .env — where NEON_API_KEY and
 #                          NEON_WEBHOOK_SECRET are read from (never echoed);
 #                          missing values are prompted for with hidden input.
@@ -45,6 +54,7 @@ SERVICE="neon-payment"
 PUBLIC_URL="http://127.0.0.1:8642"
 ALLOWED_ORIGINS="http://127.0.0.1:8642,http://localhost:8642,https://hakhyun-kim.github.io"
 ENV_FILE=".env"
+TRUST_GEO_HEADERS=0
 DRY_RUN=0
 SKIP_SECRETS=0
 SMOKE_CHECKOUT=0
@@ -58,13 +68,14 @@ while [ $# -gt 0 ]; do
     --service) SERVICE="$2"; shift 2 ;;
     --public-url) PUBLIC_URL="$2"; shift 2 ;;
     --allowed-origins) ALLOWED_ORIGINS="$2"; shift 2 ;;
+    --trust-geo-headers) TRUST_GEO_HEADERS=1; shift ;;
     --env-file) ENV_FILE="$2"; shift 2 ;;
     --skip-secrets) SKIP_SECRETS=1; shift ;;
     --smoke-only) SMOKE_ONLY=1; shift ;;
     --smoke-checkout) SMOKE_CHECKOUT=1; shift ;;
     --delete) DELETE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
-    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
     *) echo "[!] Unknown flag: $1 (see --help)"; exit 2 ;;
   esac
 done
@@ -194,7 +205,7 @@ run "${GC[@]}" run deploy "$SERVICE" \
   --region "$REGION" \
   --allow-unauthenticated \
   --min-instances 0 --max-instances 1 --memory 512Mi \
-  --set-env-vars "^##^NEON_MOCK_CHECKOUT=0##NEON_ENVIRONMENT=sandbox##STORE_BACKEND=firestore##LOG_FORMAT=json##GOOGLE_CLOUD_PROJECT=$PROJECT##PUBLIC_URL=$PUBLIC_URL##ALLOWED_ORIGINS=$ALLOWED_ORIGINS" \
+  --set-env-vars "^##^NEON_MOCK_CHECKOUT=0##NEON_ENVIRONMENT=sandbox##STORE_BACKEND=firestore##LOG_FORMAT=json##GOOGLE_CLOUD_PROJECT=$PROJECT##PUBLIC_URL=$PUBLIC_URL##ALLOWED_ORIGINS=$ALLOWED_ORIGINS##TRUST_GEO_HEADERS=$TRUST_GEO_HEADERS" \
   --set-secrets "NEON_API_KEY=neon-api-key:latest,NEON_WEBHOOK_SECRET=neon-webhook-secret:latest"
 
 fi # SMOKE_ONLY

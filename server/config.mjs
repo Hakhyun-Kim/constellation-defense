@@ -51,7 +51,7 @@ export function loadConfig(env = process.env, { role = 'service' } = {}) {
   }
 
   if (!config.trustGeoHeaders && role === 'service') {
-    warn('TRUST_GEO_HEADERS is unset — geography headers are ignored, so a player without an explicit market selection is billed from the browser language or the default country (no IP geolocation is implemented)');
+    warn('TRUST_GEO_HEADERS is unset — geography headers are ignored, so a player without an explicit market selection is billed in the default market and merely offered a switch (no IP geolocation is implemented)');
   }
 
   if (backend === 'json' && role === 'service') {

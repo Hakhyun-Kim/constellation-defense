@@ -71,6 +71,9 @@ function copy(locale) {
     title: 'Celestial Store', buy: 'Buy with Neon', owned: 'Owned', close: 'Close',
     pending: 'Confirming your purchase…', error: 'The store is temporarily unavailable.',
     cosmetic: 'Cosmetic only · no gameplay advantage', region: 'Billing region',
+    suggest: (country, currency) => `Your browser looks like ${country}. Switch billing to ${currency}?`,
+    suggestAction: (currency) => `Switch to ${currency}`,
+    suggestNote: 'Billing region sets tax and payment methods, so it changes only when you choose it.',
     slow: 'This is taking longer than usual. Your purchase is safe.', retry: 'Check again',
     mock: 'Mock mode · no payment is taken', already_owned: 'You already own this.',
     account: 'This device', transfer: 'Get transfer code', useCode: 'Use a code',
@@ -82,6 +85,9 @@ function copy(locale) {
     title: '별빛 상점', buy: 'Neon으로 구매', owned: '보유 중', close: '닫기',
     pending: '구매 완료를 확인하고 있어요…', error: '상점을 잠시 이용할 수 없어요.',
     cosmetic: '치장 전용 · 전투 능력에 영향 없음', region: '결제 지역',
+    suggest: (country, currency) => `브라우저가 ${country} 같아요. 결제를 ${currency}로 바꿀까요?`,
+    suggestAction: (currency) => `${currency}로 바꾸기`,
+    suggestNote: '결제 지역은 세금과 결제수단을 정하기 때문에 직접 고를 때만 바뀝니다.',
     slow: '확인이 평소보다 늦어지고 있어요. 구매는 안전하게 기록돼 있어요.', retry: '다시 확인',
     mock: '모의 모드 · 실제 결제가 일어나지 않아요', already_owned: '이미 가지고 있어요.',
     account: '이 기기', transfer: '인계 코드 받기', useCode: '코드 입력',
@@ -126,6 +132,24 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
   close.addEventListener('click', () => modal.classList.add('hidden'));
   modal.addEventListener('click', (event) => { if (event.target === modal) modal.classList.add('hidden'); });
   button.addEventListener('click', () => { modal.classList.remove('hidden'); paymentEvent('store'); });
+
+  /* A browser language may recommend a market, never declare one: the server sends the suggestion, the player's click makes it explicit. */
+  function renderSuggestion() {
+    if (!catalog?.suggestion) return null;
+    const { country, currency } = catalog.suggestion;
+    const row = element('div', 'neon-suggest');
+    row.append(element('span', null, words.suggest(country, currency)));
+    const action = element('button', 'neon-linkish', words.suggestAction(currency));
+    action.addEventListener('click', async () => {
+      try {
+        await postJson('/api/store/market', { country });
+        await loadCatalog();
+      } catch (error) { status.textContent = error.message; }
+    });
+    row.append(action);
+    row.append(element('small', 'neon-suggest-note', words.suggestNote));
+    return row;
+  }
 
   function renderRegion() {
     if (!catalog || catalog.markets.length < 2) return null;
@@ -197,6 +221,9 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
   function render() {
     if (!catalog) return;
     product.replaceChildren();
+    /* Above the prices: a visitor should meet the offer before the currency, not after scrolling past three of them. */
+    const suggestion = renderSuggestion();
+    if (suggestion) product.append(suggestion);
     const icons = ['🚩', '💎', '🛡'];
     for (const [index, item] of catalog.items.entries()) {
       const card = element('article', 'neon-item');
