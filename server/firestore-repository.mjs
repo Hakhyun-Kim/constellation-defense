@@ -1,11 +1,8 @@
 /* Firestore ledger implements the JSON interface using transactions across instances. An in-process promise queue cannot prevent two Cloud Run instances from granting the same webhook concurrently. Separate sandbox and production namespaces as well as validating isSandbox. */
 /* The factory dynamically imports this module; JSON operation and browser bundles do not load the Firestore SDK. */
 import { FieldPath, FieldValue } from '@google-cloud/firestore';
-import { PermanentRejection } from './repository.mjs';
-
-/* Retention exceeds Neon's 36-hour retry window. An enabled Firestore TTL policy deletes expired documents without an application cleanup loop. */
-const PENDING_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/* Retention windows are shared with the JSON ledger so the two cannot drift; they exceed Neon's 36-hour retry window. An enabled Firestore TTL policy on expiresAt deletes expired documents without an application cleanup loop. */
+import { EVENT_TTL_MS, PENDING_TTL_MS, checkAmount, checkFulfillment, checkRefund, purchaseRecord, replacementGrant } from './ledger-rules.mjs';
 
 export class FirestoreRepository {
   constructor(db, { namespace = 'sandbox', now = () => Date.now() } = {}) {
@@ -45,13 +42,8 @@ export class FirestoreRepository {
     return this.db.runTransaction(async (tx) => {
       const [seen, pendingSnapshot] = await Promise.all([tx.get(eventRef), tx.get(checkoutRef)]);
       if (seen.exists) return { duplicate: true };
-      if (!pendingSnapshot.exists) throw new PermanentRejection('unknown checkout reference');
-      const pending = pendingSnapshot.data();
-      /* Reject refunded intents so a late fulfillment cannot restore revoked ownership. */
-      if (pending.status !== 'pending') throw new PermanentRejection(`checkout is already ${pending.status}`);
-      if (pending.accountId !== event.accountId) throw new PermanentRejection('account does not match checkout');
-      if (pending.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
-      if (event.quantity !== 1) throw new PermanentRejection('unexpected quantity');
+      const pending = pendingSnapshot.exists ? pendingSnapshot.data() : null;
+      checkFulfillment(pending, event);
       const refund = await tx.get(this.refunds.doc(event.purchaseId));
       if (refund.exists) {
         const at = refund.data().at;
@@ -60,11 +52,7 @@ export class FirestoreRepository {
         tx.set(eventRef, { purchaseId: event.purchaseId, at });
         return { ignored: 'purchase was refunded before fulfillment' };
       }
-      /* Item prices arrive in the settled currency. Compare only when it matches the checkout currency; after a country switch on the hosted page the converted amount is recorded, not compared. A tier-priced checkout has no price of ours (null): Neon set the amount, so there is nothing to compare. */
-      const settled = event.settledCurrency ?? event.currency ?? null;
-      if (settled && settled === pending.currency && event.price != null && pending.price != null && event.price !== pending.price) {
-        throw new PermanentRejection('amount does not match checkout');
-      }
+      checkAmount(pending, event);
 
       const at = new Date(this.now()).toISOString();
       const playerRef = this.players.doc(event.accountId);
@@ -75,16 +63,7 @@ export class FirestoreRepository {
           entitlements: { [pending.entitlement]: { grantedAt: at, purchaseId: event.purchaseId } },
         }, { merge: true });
       }
-      tx.set(playerRef.collection('purchases').doc(event.purchaseId), {
-        purchaseId: event.purchaseId,
-        orderNumber: event.orderNumber,
-        sku: event.sku,
-        price: event.price ?? pending.price,
-        currency: settled ?? pending.currency,
-        currencySwitched: Boolean(settled && settled !== pending.currency),
-        duplicateGrant,
-        at,
-      });
+      tx.set(playerRef.collection('purchases').doc(event.purchaseId), purchaseRecord(pending, event, { at, duplicateGrant }));
       tx.set(eventRef, {
         purchaseId: event.purchaseId,
         at,
@@ -124,11 +103,7 @@ export class FirestoreRepository {
       }
 
       const checkout = checkoutSnapshot.data();
-      if (event.accountId && checkout.accountId !== event.accountId) {
-        throw new PermanentRejection('account does not match checkout');
-      }
-      if (event.sku && checkout.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
-      if (checkout.status === 'refunded') throw new PermanentRejection('checkout is already refunded');
+      checkRefund(checkout, event);
 
       const at = new Date(this.now()).toISOString();
       const granted = checkout.status === 'fulfilled';
@@ -140,11 +115,8 @@ export class FirestoreRepository {
         const grant = (await tx.get(playerRef)).data()?.entitlements?.[checkout.entitlement];
         if (grant && (!grant.purchaseId || grant.purchaseId === checkout.purchaseId)) {
           const paid = await tx.get(playerRef.collection('purchases').where('sku', '==', checkout.sku));
-          const replacement = paid.docs.map((doc) => doc.data())
-            .filter((entry) => entry.purchaseId !== checkout.purchaseId && !entry.refundedAt)
-            .sort((a, b) => a.at.localeCompare(b.at) || a.purchaseId.localeCompare(b.purchaseId))[0];
-          tx.update(playerRef, new FieldPath('entitlements', checkout.entitlement), replacement
-            ? { grantedAt: replacement.at, purchaseId: replacement.purchaseId } : FieldValue.delete());
+          const replacement = replacementGrant(paid.docs.map((doc) => doc.data()), checkout);
+          tx.update(playerRef, new FieldPath('entitlements', checkout.entitlement), replacement ?? FieldValue.delete());
           revoked = !replacement;
         }
         tx.set(playerRef.collection('purchases').doc(checkout.purchaseId), {

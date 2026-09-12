@@ -1,8 +1,7 @@
 /* Standalone payment API, with no static file serving. Usage: node server/index.mjs. Development mounts it alongside game files via scripts/serve.mjs; production separates cacheable game assets from the credential-bearing API. Web and native clients share this service. */
 import { createServer } from 'node:http';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
 import { loadConfig, isFatal } from './config.mjs';
 import { createLogger } from './logger.mjs';
 import { createRepository } from './repository-factory.mjs';

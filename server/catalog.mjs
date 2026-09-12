@@ -7,15 +7,10 @@ export const MARKETS = Object.freeze({
 export const DEFAULT_COUNTRY = 'KR';
 
 /* A country with no row here is priced on the USD row, as a reference, until Neon's pricing sheet answers for it (server/pricing.mjs). The checkout still declares the country the player is in: relabelling a Japanese player as Korean to reach a price row is a tax statement made for our own convenience. This is not Neon's Global Store — that is Neon's fallback for countries it does not serve locally (Japan is served, in JPY), and only Neon's answer says a country is in it. */
-export const REFERENCE_MARKET = Object.freeze({ currency: 'USD', displayLocale: 'en-US' });
+const REFERENCE_MARKET = Object.freeze({ currency: 'USD', displayLocale: 'en-US' });
 
 export function marketFor(country) {
   return MARKETS[String(country || '').toUpperCase()] || REFERENCE_MARKET;
-}
-
-/* A market with its own price row here. */
-export function isSupportedCountry(country) {
-  return Object.hasOwn(MARKETS, String(country || '').toUpperCase());
 }
 
 /* ISO 3166-1 alpha-2 shape, minus the user-assigned ranges (AA, QM-QZ, XA-XZ, ZZ). Those name no jurisdiction, and geolocation uses them for exactly that: Cloudflare reports XX for an unresolved address and T1 for Tor, which the shape test already rejects. */
@@ -81,7 +76,7 @@ export function priceList(country, localized = null) {
     const price = product.prices[currency];
     if (price) rows[product.sku] = { price, displayPrice: formatPrice(price, currency) };
   }
-  return { currency, source: 'catalogue', globalStore: false, unpriced: !isSupportedCountry(code), rows };
+  return { currency, source: 'catalogue', globalStore: false, unpriced: !Object.hasOwn(MARKETS, code), rows };
 }
 
 export function publicCatalog(locale, prices) {
@@ -113,7 +108,6 @@ export function checkoutItem(sku, { locale, country, localized = null }) {
     currency: prices.currency,
     entitlement: product.entitlement,
     permanent: product.permanent === true,
-    source: prices.source,
     unpriced: prices.unpriced,
     /* What Neon quoted for the tier. Recorded for the audit trail, not compared: the checkout amount is Neon's to set. */
     quotedPrice: row.priceTierCode ? row.price : null,

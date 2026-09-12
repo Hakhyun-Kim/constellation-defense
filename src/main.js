@@ -2128,7 +2128,6 @@ if (urlParams.get('tour') === 'neon') {
     locale,
     openStore: () => { closeStory(); ui.hideOver(); neonStore?.open(); },
     closeStore: () => neonStore?.close(),
-    refreshStore: () => neonStore?.refresh(),
     spectating: () => demo.active,
     riskyDefense: () => {
       demo.stop(); closeStory();

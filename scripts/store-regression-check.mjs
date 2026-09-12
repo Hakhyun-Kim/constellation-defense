@@ -11,9 +11,6 @@ await assert.rejects(createNeonCheckout({ apiKey: 'test', payload: {}, timeoutMs
     signal.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
   }),
 }), error => error.status === 504 && error.cause?.name === 'TimeoutError');
-await assert.rejects(createNeonCheckout({ apiKey: 'test', payload: {},
-  fetchImpl: async () => new Response(JSON.stringify({ checkoutId: 'id', token: 'token' })),
-}), /incomplete hosted checkout/);
 
 const dir = await mkdtemp(join(tmpdir(), 'neon-commit-check-'));
 try {

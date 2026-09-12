@@ -1,20 +1,11 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { EVENT_TTL_MS, PENDING_TTL_MS, checkAmount, checkFulfillment, checkRefund, purchaseRecord, replacementGrant } from './ledger-rules.mjs';
+
+/* The rules live in ledger-rules.mjs; the class is re-exported so the webhook route keeps importing it from here. */
+export { PermanentRejection } from './ledger-rules.mjs';
 
 const EMPTY = () => ({ checkouts: {}, players: {}, processedEvents: {}, transfers: {}, saves: {}, refunds: {} });
-
-/* Prune unpaid intents and old deduplication records after 30 days to bound file growth. Retention must comfortably exceed Neon's 36-hour retry window. */
-const PENDING_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-
-/* Permanent rejections are acknowledged with 200 and logged because retries cannot fix them. Disk/database failures propagate as 5xx so Neon retries. */
-export class PermanentRejection extends Error {
-  constructor(reason) {
-    super(reason);
-    this.name = 'PermanentRejection';
-    this.reason = reason;
-  }
-}
 
 export class JsonRepository {
   constructor(path, { now = () => Date.now() } = {}) {
@@ -81,12 +72,7 @@ export class JsonRepository {
     return this.mutate((data) => {
       if (data.processedEvents[event.eventId]) return { duplicate: true };
       const pending = data.checkouts[event.externalReferenceId];
-      if (!pending) throw new PermanentRejection('unknown checkout reference');
-      /* Event replay was handled above. A new event referencing a processed or refunded intent must also be rejected so late delivery cannot reverse a refund. */
-      if (pending.status !== 'pending') throw new PermanentRejection(`checkout is already ${pending.status}`);
-      if (pending.accountId !== event.accountId) throw new PermanentRejection('account does not match checkout');
-      if (pending.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
-      if (event.quantity !== 1) throw new PermanentRejection('unexpected quantity');
+      checkFulfillment(pending, event);
       const refund = data.refunds[event.purchaseId];
       if (refund) {
         pending.status = 'refunded';
@@ -95,26 +81,13 @@ export class JsonRepository {
         data.processedEvents[event.eventId] = { purchaseId: event.purchaseId, at: refund.at };
         return { ignored: 'purchase was refunded before fulfillment' };
       }
-      /* Item prices arrive in the settled currency. Compare only when it matches the checkout currency; after a country switch on the hosted page the converted amount is recorded, not compared. A tier-priced checkout has no price of ours (null): Neon set the amount, so there is nothing to compare. */
-      const settled = event.settledCurrency ?? event.currency ?? null;
-      if (settled && settled === pending.currency && event.price != null && pending.price != null && event.price !== pending.price) {
-        throw new PermanentRejection('amount does not match checkout');
-      }
+      checkAmount(pending, event);
       const player = data.players[event.accountId] ||= { entitlements: {}, purchases: [] };
       const at = new Date(this.now()).toISOString();
       /* A second paid purchase of an already-granted permanent item keeps the original grant; the duplicate is recorded so it can be refunded. */
       const duplicateGrant = Boolean(player.entitlements[pending.entitlement]);
       if (!duplicateGrant) player.entitlements[pending.entitlement] = { grantedAt: at, purchaseId: event.purchaseId };
-      player.purchases.push({
-        purchaseId: event.purchaseId,
-        orderNumber: event.orderNumber,
-        sku: event.sku,
-        price: event.price ?? pending.price,
-        currency: settled ?? pending.currency,
-        currencySwitched: Boolean(settled && settled !== pending.currency),
-        duplicateGrant,
-        at,
-      });
+      player.purchases.push(purchaseRecord(pending, event, { at, duplicateGrant }));
       data.processedEvents[event.eventId] = { purchaseId: event.purchaseId, at };
       pending.status = 'fulfilled';
       pending.purchaseId = event.purchaseId;
@@ -145,11 +118,7 @@ export class JsonRepository {
         data.processedEvents[event.eventId] = { refundId: event.refundId, at };
         return { deferred: true, revoked: false };
       }
-      if (event.accountId && checkout.accountId !== event.accountId) {
-        throw new PermanentRejection('account does not match checkout');
-      }
-      if (event.sku && checkout.sku !== event.sku) throw new PermanentRejection('sku does not match checkout');
-      if (checkout.status === 'refunded') throw new PermanentRejection('checkout is already refunded');
+      checkRefund(checkout, event);
 
       const at = new Date(this.now()).toISOString();
       const granted = checkout.status === 'fulfilled';
@@ -159,10 +128,9 @@ export class JsonRepository {
         /* Revoke only the grant this purchase made; a duplicate purchase's refund leaves the first purchase's item in place. */
         const grant = player?.entitlements?.[checkout.entitlement];
         if (grant && (!grant.purchaseId || grant.purchaseId === checkout.purchaseId)) {
-          const replacement = player.purchases.find((entry) => entry.sku === checkout.sku
-            && entry.purchaseId !== checkout.purchaseId && !entry.refundedAt);
+          const replacement = replacementGrant(player.purchases, checkout);
           if (replacement) {
-            player.entitlements[checkout.entitlement] = { grantedAt: replacement.at, purchaseId: replacement.purchaseId };
+            player.entitlements[checkout.entitlement] = replacement;
           } else {
             delete player.entitlements[checkout.entitlement];
             revoked = true;

@@ -1,30 +1,30 @@
 const DEFAULT_API_URL = 'https://api.neonpay.com';
 
-async function fetchNeon(fetchImpl, url, options) {
-  try { return await fetchImpl(url, options); }
-  catch (cause) {
-    const error = new Error('Neon request unavailable');
-    error.status = cause.name === 'TimeoutError' ? 504 : 502;
-    error.cause = cause;
-    throw error;
+/* One Neon call. Transport failures (DNS, refused, the timeout's abort) become
+ * 502/504 so a route answers "Neon unavailable" and not "our bug"; a non-2xx
+ * answer is 502 with Neon's body as the cause. A body — even an empty one —
+ * makes it a POST; only its absence makes a GET. */
+async function neonRequest(label, { apiKey, apiUrl = DEFAULT_API_URL, fetchImpl = fetch, timeoutMs = 10000 }, path, body) {
+  if (!apiKey) throw new Error('NEON_API_KEY is not configured');
+  const post = body !== undefined;
+  let response;
+  try {
+    response = await fetchImpl(`${apiUrl}${path}`, {
+      method: post ? 'POST' : 'GET',
+      headers: { 'X-API-KEY': apiKey, ...(post ? { 'Content-Type': 'application/json' } : {}) },
+      body: post ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (cause) {
+    throw Object.assign(new Error('Neon request unavailable'), { status: cause.name === 'TimeoutError' ? 504 : 502, cause });
   }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(`Neon ${label} failed (${response.status})`), { status: 502, cause: data });
+  return data;
 }
 
-export async function createNeonCheckout({ apiKey, apiUrl = DEFAULT_API_URL, payload, fetchImpl = fetch, timeoutMs = 10000 }) {
-  if (!apiKey) throw new Error('NEON_API_KEY is not configured');
-  const response = await fetchNeon(fetchImpl, `${apiUrl}/checkout`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(`Neon checkout failed (${response.status})`);
-    error.status = 502;
-    error.cause = data;
-    throw error;
-  }
+export async function createNeonCheckout({ payload, ...client }) {
+  const data = await neonRequest('checkout', client, '/checkout', payload);
   // This adapter initiates Hosted Checkout; token-only responses cannot be opened.
   if (typeof data.redirectUrl !== 'string' || !/^https:\/\//.test(data.redirectUrl)) {
     throw Object.assign(new Error('Neon returned an incomplete hosted checkout'), { status: 502 });
@@ -36,38 +36,14 @@ export async function createNeonCheckout({ apiKey, apiUrl = DEFAULT_API_URL, pay
  * the country Neon geolocates an IP address to (GET /prices, country or ip).
  * Read-only, so it runs on catalogue loads; the short timeout is because the
  * store falls back to its own table when this does not answer. */
-export async function getNeonPrices({ apiKey, apiUrl = DEFAULT_API_URL, country, ip, locale, fetchImpl = fetch, timeoutMs = 3000 }) {
-  if (!apiKey) throw new Error('NEON_API_KEY is not configured');
+export async function getNeonPrices({ country, ip, locale, timeoutMs = 3000, ...client }) {
   const query = new URLSearchParams(country ? { country } : { ip });
   if (locale) query.set('locale', locale);
-  const response = await fetchImpl(`${apiUrl}/prices?${query}`, {
-    headers: { 'X-API-KEY': apiKey },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(`Neon price lookup failed (${response.status})`);
-    error.status = 502;
-    error.cause = data;
-    throw error;
-  }
-  return data;
+  return neonRequest('price lookup', { ...client, timeoutMs }, `/prices?${query}`);
 }
 
-export async function getNeonPurchase({ apiKey, apiUrl = DEFAULT_API_URL, purchaseId, fetchImpl = fetch, timeoutMs = 10000 }) {
-  if (!apiKey) throw new Error('NEON_API_KEY is not configured');
-  const response = await fetchNeon(fetchImpl, `${apiUrl}/purchases/${encodeURIComponent(purchaseId)}`, {
-    headers: { 'X-API-KEY': apiKey },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(`Neon purchase lookup failed (${response.status})`);
-    error.status = 502;
-    error.cause = data;
-    throw error;
-  }
-  return data;
+export async function getNeonPurchase({ purchaseId, ...client }) {
+  return neonRequest('purchase lookup', client, `/purchases/${encodeURIComponent(purchaseId)}`);
 }
 
 /* Item-level refunds work in the sandbox; the total-refund request returns
@@ -76,20 +52,6 @@ export async function getNeonPurchase({ apiKey, apiUrl = DEFAULT_API_URL, purcha
  * 2026-09-07; internal cause unconfirmed). The purchase object names the item id
  * `items[].id`, while this request wants it as `itemId`. Revocation itself
  * still arrives only through the signed refund.processed webhook. */
-export async function createNeonRefund({ apiKey, apiUrl = DEFAULT_API_URL, purchaseId, itemId, quantity = 1, fetchImpl = fetch, timeoutMs = 10000 }) {
-  if (!apiKey) throw new Error('NEON_API_KEY is not configured');
-  const response = await fetchNeon(fetchImpl, `${apiUrl}/purchases/${encodeURIComponent(purchaseId)}/refund`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
-    body: JSON.stringify({ items: [{ itemId, quantity }] }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(`Neon refund failed (${response.status})`);
-    error.status = 502;
-    error.cause = data;
-    throw error;
-  }
-  return data;
+export async function createNeonRefund({ purchaseId, itemId, quantity = 1, ...client }) {
+  return neonRequest('refund', client, `/purchases/${encodeURIComponent(purchaseId)}/refund`, { items: [{ itemId, quantity }] });
 }

@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
-  DEFAULT_COUNTRY, checkoutItem, isCountryCode, MARKETS, PRODUCTS, priceList, publicCatalog,
+  DEFAULT_COUNTRY, checkoutItem, isCountryCode, MARKETS, priceList, publicCatalog,
 } from './catalog.mjs';
 import { createNeonCheckout, createNeonRefund, getNeonPurchase } from './neon-client.mjs';
 import { clientIp, createPricing } from './pricing.mjs';
@@ -82,11 +82,6 @@ function geoHeaderCountry(req) {
     if (isCountryCode(value)) return value;
   }
   return null;
-}
-
-/* Never derive billing country from a language signal. Neon aligns currency, payment methods and tax jurisdiction with playerCountry, so this value declares where the player lives: the game's ko/en toggle and the browser's Accept-Language are both language, and an English browser in Seoul is not a US resident. Billing country therefore comes from an explicit market selection, then a location — platform geography from a proxy the deployment trusts, or Neon's geolocation of the client address (createStoreApi's locate, which needs a network call) — then the default market. This is the part that needs no call. */
-export function resolveCountry(req, { trustGeoHeaders = false } = {}) {
-  return chosenCountry(req) || (trustGeoHeaders ? geoHeaderCountry(req) : null) || DEFAULT_COUNTRY;
 }
 
 /* A weak signal may recommend a market; it may not declare one. The browser's region subtag is enough to offer a visitor the currency they probably expect, and not nearly enough to tell a merchant of record where they live — so it produces a visible suggestion the player accepts with a click, which is then an explicit choice, and never a silent country. Suppressed once the player has chosen, and whenever it agrees with what is already resolved. */
@@ -237,10 +232,15 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
     }
   }
 
+  /* One wording for both refund paths. Since a refunded grant transfers to a remaining purchase of the same item, revoked:false no longer means "nothing was granted" — it means the grant stayed put or was never made, and the log must not claim otherwise. */
+  const describeRefund = (refund) => (result) => (result.revoked
+    ? `revoked ${refund.sku || 'entitlement'} for purchase ${refund.purchaseId} (${who(refund.accountId)})`
+    : `marked purchase ${refund.purchaseId} refunded; the grant stayed with another purchase or was never made`);
+
   const allowedOrigins = config.allowedOrigins || [];
   const pricing = createPricing({ config, fetchImpl, log });
 
-  /* Where to bill, why, and at what prices. An explicit selection is the player's statement and wins. A location comes next: a geography header from a trusted proxy, otherwise Neon's geolocation of the client address — the lookup that also returns that country's prices. The default market is last. The address is looked up under a selection too, so a location that disagrees can be offered as a switch. */
+  /* Where to bill, why, and at what prices. Never derive billing country from a language signal: Neon aligns currency, payment methods and tax jurisdiction with playerCountry, so this value declares where the player lives — the game's ko/en toggle and the browser's Accept-Language are both language, and an English browser in Seoul is not a US resident. An explicit selection is the player's statement and wins. A location comes next: a geography header from a trusted proxy, otherwise Neon's geolocation of the client address — the lookup that also returns that country's prices. The default market is last. The address is looked up under a selection too, so a location that disagrees can be offered as a switch. */
   async function locate(req) {
     const chosen = chosenCountry(req);
     const header = config.trustGeoHeaders ? geoHeaderCountry(req) : null;
@@ -271,23 +271,20 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         /* Return identity so token-based web and native clients can persist it; same-origin cookie clients may ignore it. */
         const playerId = account(req, res, cookieOptionsFor(req));
         const suggested = recommendMarket(req, where);
+        /* A switch is only worth offering to a country Neon will sell to; the current country being unsupported is no reason to withhold one — that switch is the player's way out. */
+        const forSuggested = suggested ? await pricing.forCountry(suggested.country) : null;
         return json(res, 200, {
           playerId,
           items: publicCatalog(locale, prices),
           country: where.country,
-          /* How the country was decided: selection, geo-header, ip or default. */
           countrySource: where.source,
           currency: prices.currency,
-          /* Who priced the list: Neon's pricing sheet ('neon') or server/catalog.mjs ('catalogue'). */
           priceSource: prices.source,
-          /* Neon serves this country through its Global Store (USD, international cards). Only Neon's answer sets it. */
           globalStore: prices.globalStore,
-          /* No row here and no answer from Neon: the USD row stands in as a reference. */
           unpriced: prices.unpriced,
           unavailable: unavailableReason(prices, where.localized),
-          /* Offered, not applied: the client shows it as a one-click switch. */
-          suggestion: suggested
-            ? { ...suggested, currency: priceList(suggested.country, await pricing.forCountry(suggested.country)).currency }
+          suggestion: suggested && forSuggested?.supported !== false
+            ? { ...suggested, currency: priceList(suggested.country, forSuggested).currency }
             : null,
           markets: Object.entries(MARKETS).map(([code, market]) => ({ code, currency: market.currency })),
           checkoutMode: config.mock ? 'mock' : 'hosted',
@@ -330,7 +327,6 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         return json(res, 200, { accountId: claimed.accountId });
       }
 
-      // Account save snapshots.
       if (req.method === 'GET' && url.pathname === '/api/save') {
         const record = await repository.readSave(account(req, res, cookieOptionsFor(req)));
         if (!record) return json(res, 200, { save: null, version: 0 });
@@ -394,13 +390,12 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         const carriedParams = new URLSearchParams(/^[\w\-.=&%~]*$/.test(rawQuery) ? rawQuery : '');
         for (const reserved of ['api', 'purchase', 'reference', 'sku', 'lang']) carriedParams.delete(reserved);
         const returnQuery = carriedParams.toString();
-        const origin = ((config.allowedOrigins || []).includes(clientOrigin)
-          ? clientOrigin + returnPath
-          : String(config.publicUrl || observed || '')).replace(/\/$/, '');
-        if (config.publicUrl && observed && !config.publicUrl.startsWith(observed) && !(config.allowedOrigins || []).includes(clientOrigin)) {
+        const fromAllowedOrigin = allowedOrigins.includes(clientOrigin);
+        const origin = (fromAllowedOrigin ? clientOrigin + returnPath : String(config.publicUrl || observed || '')).replace(/\/$/, '');
+        if (config.publicUrl && observed && !config.publicUrl.startsWith(observed) && !fromAllowedOrigin) {
           log.warn?.(`[store] PUBLIC_URL (${config.publicUrl}) differs from the request origin (${observed}); a browser on that origin loses its session cookie on return unless its Origin is in ALLOWED_ORIGINS`);
         }
-        const carried = returnQuery && (config.allowedOrigins || []).includes(clientOrigin) ? `${returnQuery}&` : '';
+        const carried = returnQuery && fromAllowedOrigin ? `${returnQuery}&` : '';
         const apiParam = `&api=${encodeURIComponent(String(observed || '').replace(/\/$/, ''))}`;
         const payload = {
           items: [resolved.item],
@@ -448,9 +443,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           return applyOrIgnore(res, () => repository.revoke(refund), {
             eventId: refund.eventId,
             source: 'refund webhook',
-            describe: (result) => (result.revoked
-              ? `revoked ${refund.sku || 'entitlement'} for purchase ${refund.purchaseId}`
-              : `marked purchase ${refund.purchaseId} refunded (no grant of its own to remove)`),
+            describe: describeRefund(refund),
           });
         }
         return applyOrIgnore(res, () => repository.fulfill(purchase), {
@@ -460,11 +453,31 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         });
       }
 
-      if (req.method === 'POST' && url.pathname === '/api/store/mock-complete' && config.mock) {
+      if (req.method === 'POST' && config.mock
+        && (url.pathname === '/api/store/mock-complete' || url.pathname === '/api/store/mock-refund')) {
         const input = readJson(await body(req));
         const pending = await repository.pendingCheckout(input.reference);
         if (!pending || pending.accountId !== account(req, res, cookieOptionsFor(req))) {
           return json(res, 404, { error: 'checkout not found' });
+        }
+        if (url.pathname === '/api/store/mock-refund') {
+          /* Mock-only refunds validate account ownership and use repository.revoke(), the same entry point as real refund webhooks. An intent that was never completed has no purchase to refund: revoke() would file the refund under purchaseId "undefined" and answer deferred, waiting for a purchase that never comes. */
+          if (!pending.purchaseId) return json(res, 409, { error: 'not fulfilled' });
+          const mockRefund = {
+            eventId: `mock-refund-event-${input.reference}`,
+            refundId: `mock-refund-${input.reference}`,
+            purchaseId: pending.purchaseId,
+            accountId: pending.accountId,
+            /* Omit the external reference to exercise the purchaseId lookup used by documented refund events. */
+            externalReferenceId: null,
+            sku: pending.sku,
+            currency: pending.currency,
+          };
+          return applyOrIgnore(res, () => repository.revoke(mockRefund), {
+            eventId: mockRefund.eventId,
+            source: 'mock refund',
+            describe: describeRefund(mockRefund),
+          });
         }
         const mockPurchase = {
           /* Default IDs exercise event replay. distinct sends a new event for the same checkout to exercise intent-state validation instead of deduplication. */
@@ -481,7 +494,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         return applyOrIgnore(res, () => repository.fulfill(mockPurchase), {
           eventId: mockPurchase.eventId,
           source: 'mock',
-          describe: () => `fulfilled ${mockPurchase.sku} for ${mockPurchase.accountId}`,
+          describe: () => `fulfilled ${mockPurchase.sku} for ${who(mockPurchase.accountId)}`,
         });
       }
 
@@ -512,32 +525,6 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
         return json(res, 202, { requested: true, purchaseId: owned.purchaseId, refundId: refund.refundId || refund.id || null });
       }
 
-      /* Mock-only refunds validate account ownership and use repository.revoke(), the same entry point as real refund webhooks. */
-      if (req.method === 'POST' && url.pathname === '/api/store/mock-refund' && config.mock) {
-        const input = readJson(await body(req));
-        const pending = await repository.pendingCheckout(input.reference);
-        if (!pending || pending.accountId !== account(req, res, cookieOptionsFor(req))) {
-          return json(res, 404, { error: 'checkout not found' });
-        }
-        const mockRefund = {
-          eventId: `mock-refund-event-${input.reference}`,
-          refundId: `mock-refund-${input.reference}`,
-          purchaseId: pending.purchaseId,
-          accountId: pending.accountId,
-          /* Omit the external reference to exercise the purchaseId lookup used by documented refund events. */
-          externalReferenceId: null,
-          sku: pending.sku,
-          currency: pending.currency,
-        };
-        return applyOrIgnore(res, () => repository.revoke(mockRefund), {
-          eventId: mockRefund.eventId,
-          source: 'mock refund',
-          describe: (result) => (result.revoked
-            ? `revoked ${mockRefund.sku} for ${mockRefund.accountId}`
-            : `marked ${mockRefund.purchaseId} refunded before it was granted`),
-        });
-      }
-
       return json(res, 404, { error: 'not found' });
     } catch (error) {
       log.error?.(error);
@@ -545,5 +532,3 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
     }
   };
 }
-
-export { PRODUCTS };

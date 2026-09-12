@@ -8,21 +8,15 @@ import { join } from 'node:path';
 import { checkoutItem, formatPrice, marketFor, priceList, PRODUCTS } from '../server/catalog.mjs';
 import { clientIp, normalizePrices } from '../server/pricing.mjs';
 import { JsonRepository } from '../server/repository.mjs';
-import { createStoreApi, recommendMarket, resolveCountry, suggestMarket } from '../server/store-api.mjs';
+import { createStoreApi, recommendMarket, suggestMarket } from '../server/store-api.mjs';
 import './store-regression-check.mjs';
 
 const secret = 'test-webhook-secret';
 const quiet = { info() {}, warn() {}, error() {} };
 assert.equal(checkoutItem('constructor', { country: 'KR', locale: 'en' }), null);
 
-/* Country resolution, without HTTP: an explicit selection outranks everything, geography counts only where the deployment trusts the proxy, and the browser region decides only when nothing better exists. */
+/* Country resolution itself is exercised over HTTP below; the browser region only ever recommends. */
 const requestWith = (headers) => ({ headers });
-assert.equal(resolveCountry(requestWith({ 'accept-language': 'en-US,en;q=0.9' })), 'KR');
-assert.equal(resolveCountry(requestWith({})), 'KR');
-assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'US' })), 'KR');
-assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'US' }), { trustGeoHeaders: true }), 'US');
-assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'ZZ' }), { trustGeoHeaders: true }), 'KR');
-assert.equal(resolveCountry(requestWith({ cookie: 'cd_country=US', 'cf-ipcountry': 'KR' }), { trustGeoHeaders: true }), 'US');
 
 /* The browser region recommends and never declares: it is offered only while the player has not chosen, and never when it agrees with the resolved market. */
 assert.equal(suggestMarket(requestWith({ 'accept-language': 'en-US,en;q=0.9' }), 'KR'), 'US');
@@ -35,8 +29,6 @@ assert.equal(marketFor('JP').currency, 'USD');
 assert.equal(priceList('JP').unpriced, true);
 assert.equal(priceList('JP').globalStore, false);
 assert.equal(priceList('KR').unpriced, false);
-assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'JP' }), { trustGeoHeaders: true }), 'JP');
-assert.equal(resolveCountry(requestWith({ 'cf-ipcountry': 'XX' }), { trustGeoHeaders: true }), 'KR', 'XX names no jurisdiction');
 assert.equal(suggestMarket(requestWith({ 'accept-language': 'ja-JP' }), 'KR'), 'JP');
 
 /* Neon's pricing sheet prices the whole list when it answers for this country and covers every tier — never a mix. */
@@ -77,6 +69,11 @@ async function runSuite(repository, label) {
 
   const call = (path, options = {}) => fetch(`${origin}${path}`, options);
   const sessionCookie = (response) => response.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
+  /* JSON POSTs, at this server unless another is named. Webhook deliveries stay on call(): the HMAC is computed over the literal body, and the malformed/unsigned cases need a raw body or a missing header. */
+  const post = (path, body, headers = {}, at = origin) => fetch(`${at}${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body),
+  });
+  const newSession = (at = origin, locale = 'ko') => fetch(`${at}/api/store/catalog?locale=${locale}`).then(sessionCookie);
 
   function purchaseEvent(overrides = {}, purchaseOverrides = {}) {
     return {
@@ -100,18 +97,35 @@ async function runSuite(repository, label) {
     return { response, payload: await response.json() };
   }
 
-  const openCheckout = (cookie, body = {}) => call('/api/store/checkout', {
-    method: 'POST', headers: { cookie, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sku: 'CELESTIAL_BANNER', locale: 'ko', ...body }),
-  });
+  const openCheckout = (cookie, body = {}) => post('/api/store/checkout', { sku: 'CELESTIAL_BANNER', locale: 'ko', ...body }, { cookie });
 
   /* The mock redirect carries the checkout reference, as the client sees it, without inspecting the ledger directly. */
   const referenceOf = (redirectUrl) => new URL(redirectUrl).searchParams.get('reference');
+  const openReference = async (cookie, body) => referenceOf((await (await openCheckout(cookie, body)).json()).redirectUrl);
 
   const ownsBanner = async (cookie) => {
     const data = await call('/api/store/entitlements', { headers: { cookie } }).then((r) => r.json());
     return Boolean(data.entitlements['cosmetic.celestial_banner']);
   };
+
+  /* A second store on an ephemeral port over the same ledger, for the configurations the main server does not carry (credentials, a trusted proxy, an origin allowlist). The URL base handed to the handler is deliberately irrelevant: the routes read only its path and query, and return addresses derive from Host/X-Forwarded-* and PUBLIC_URL. */
+  async function serverWith(overrides, fetchImpl) {
+    const handle = createStoreApi({
+      repository,
+      config: { webhookSecret: secret, publicUrl: 'https://tunnel.example.test', environment: 'sandbox', ...overrides },
+      fetchImpl, log: quiet,
+    });
+    const httpServer = createServer(async (req, res) => handle(req, res, new URL(req.url, 'https://tunnel.example.test')));
+    await new Promise((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+    const at = `http://127.0.0.1:${httpServer.address().port}`;
+    return {
+      at,
+      checkout: (buyerCookie) => post('/api/store/checkout', { sku: 'CELESTIAL_BANNER', locale: 'ko' }, { cookie: buyerCookie }, at),
+      close: () => new Promise((resolve) => httpServer.close(resolve)),
+    };
+  }
+  /* The non-mock adapter with credentials, so the injected fetch stands in for Neon. */
+  const liveServer = (fetchImpl, overrides = {}) => serverWith({ mock: false, apiKey: 'test-secret-key', apiUrl: 'https://api.example.test', ...overrides }, fetchImpl);
 
   try {
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -122,7 +136,7 @@ async function runSuite(repository, label) {
     const multiCookie = sessionCookie(multiResponse);
     const multi = await multiResponse.json();
     assert.equal(multi.items.length, 3);
-    const mockPost = (path, reference) => call(path, { method: 'POST', headers: { cookie: multiCookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ reference }) });
+    const mockPost = (path, reference) => post(path, { reference }, { cookie: multiCookie });
     const inventory = () => call('/api/store/entitlements', { headers: { cookie: multiCookie } }).then(r => r.json()).then(data => data.entitlements);
     const refs = [];
     for (const item of multi.items) {
@@ -174,20 +188,18 @@ async function runSuite(repository, label) {
     assert.deepEqual(englishBrowser.suggestion, { country: 'US', reason: 'browser', currency: 'USD' }, '대신 마켓 전환을 제안한다');
     assert.equal(englishBrowser.countrySource, 'default');
 
-    // Accepting the suggestion is an explicit selection, and it silences the suggestion.
-    const accepted = await call('/api/store/market', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'US' }),
-    });
-    const acceptedCatalog = await call('/api/store/catalog?locale=en', {
-      headers: { cookie: sessionCookie(accepted), 'accept-language': 'en-US,en;q=0.9' },
+    // Accepting the suggestion is an explicit selection: it silences the suggestion and outranks the game language.
+    const accepted = await post('/api/store/market', { country: 'US' });
+    assert.equal(accepted.status, 200);
+    const acceptedCatalog = await call('/api/store/catalog?locale=ko', {
+      headers: { cookie: [cookie, sessionCookie(accepted)].join('; '), 'accept-language': 'en-US,en;q=0.9' },
     }).then((r) => r.json());
     assert.equal(acceptedCatalog.country, 'US', '선택을 받아들이면 청구 국가가 된다');
     assert.equal(acceptedCatalog.suggestion, null, '선택한 뒤에는 제안하지 않는다');
+    assert.equal(acceptedCatalog.items[0].currency, 'USD', '명시적 국가 선택이 게임 언어보다 우선한다');
 
     // An explicit selection outside the priced markets keeps its own country; with no pricing sheet (mock mode) the USD row stands in as a reference.
-    const jpChoice = await call('/api/store/market', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'JP' }),
-    });
+    const jpChoice = await post('/api/store/market', { country: 'JP' });
     assert.equal(jpChoice.status, 200);
     const jpCatalog = await call('/api/store/catalog?locale=en', { headers: { cookie: sessionCookie(jpChoice) } }).then((r) => r.json());
     assert.equal(jpCatalog.country, 'JP', '가격표에 없는 나라도 자기 나라로 남는다');
@@ -197,27 +209,15 @@ async function runSuite(repository, label) {
     assert.equal(jpCatalog.countrySource, 'selection');
     assert.equal(jpCatalog.unavailable, null, '모의 모드는 기준가로 계속 판다 — 아무도 청구되지 않는다');
     assert.equal(jpCatalog.items[0].displayPrice, '$4.99');
-    const badChoice = await call('/api/store/market', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'ZZZ' }),
-    });
-    assert.equal(badChoice.status, 400, '국가 코드 형식이 아니면 거절한다');
 
     // Geography headers are caller-supplied unless the deployment trusts a proxy that sets them.
     const forgedGeo = await call('/api/store/catalog?locale=ko', { headers: { 'cf-ipcountry': 'US' } }).then((r) => r.json());
     assert.equal(forgedGeo.country, 'KR', '신뢰하지 않는 배포에서는 geo 헤더를 무시한다');
 
-    // Explicit selection takes precedence over inference.
-    const marketResponse = await call('/api/store/market', {
-      method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'US' }),
-    });
-    assert.equal(marketResponse.status, 200);
-    const chosen = [cookie, sessionCookie(marketResponse)].join('; ');
-    const chosenCatalog = await call('/api/store/catalog?locale=ko', { headers: { cookie: chosen } }).then((r) => r.json());
-    assert.equal(chosenCatalog.items[0].currency, 'USD', '명시적 국가 선택이 유지된다');
-    const badMarket = await call('/api/store/market', {
-      method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'ZZ' }),
-    });
-    assert.equal(badMarket.status, 400, '지원하지 않는 국가는 거절된다');
+    for (const bad of ['ZZZ', 'ZZ']) {
+      const badMarket = await post('/api/store/market', { country: bad }, { cookie });
+      assert.equal(badMarket.status, 400, '국가 코드가 아니거나 지원하지 않는 국가는 거절된다');
+    }
 
     // Checkout ignores client-supplied prices.
     const checkoutResponse = await openCheckout(cookie, { price: 1, country: 'US', currency: 'USD' });
@@ -316,9 +316,8 @@ async function runSuite(repository, label) {
     }
 
     async function boughtOnce(tag) {
-      const buyer = sessionCookie(await call('/api/store/catalog?locale=ko'));
-      const opened = await openCheckout(buyer);
-      const buyerReference = referenceOf((await opened.json()).redirectUrl);
+      const buyer = await newSession();
+      const buyerReference = await openReference(buyer);
       const record = await repository.pendingCheckout(buyerReference);
       await deliver(purchaseEvent(
         { id: `buy-${tag}` },
@@ -330,8 +329,8 @@ async function runSuite(repository, label) {
 
     /* Item prices arrive in the settled currency: a country switch on the hosted page must record, not reject. */
     {
-      const switcher = sessionCookie(await call('/api/store/catalog?locale=ko'));
-      const switchRef = referenceOf((await (await openCheckout(switcher)).json()).redirectUrl);
+      const switcher = await newSession();
+      const switchRef = await openReference(switcher);
       const switchRecord = await repository.pendingCheckout(switchRef);
       const switched = await deliver(purchaseEvent(
         { id: 'buy-switched' },
@@ -354,9 +353,9 @@ async function runSuite(repository, label) {
 
     /* Two pending checkouts for the same permanent item can both settle; the refund of the duplicate must not remove the item the first purchase paid for. */
     {
-      const twice = sessionCookie(await call('/api/store/catalog?locale=ko'));
-      const refOne = referenceOf((await (await openCheckout(twice)).json()).redirectUrl);
-      const refTwo = referenceOf((await (await openCheckout(twice)).json()).redirectUrl);
+      const twice = await newSession();
+      const refOne = await openReference(twice);
+      const refTwo = await openReference(twice);
       const twiceAccount = (await repository.pendingCheckout(refOne)).accountId;
       await deliver(purchaseEvent({ id: 'buy-twice-1' }, { id: 'purchase-twice-1', accountId: twiceAccount, externalReferenceId: refOne }));
       const second = await deliver(purchaseEvent({ id: 'buy-twice-2' }, { id: 'purchase-twice-2', accountId: twiceAccount, externalReferenceId: refTwo }));
@@ -372,27 +371,28 @@ async function runSuite(repository, label) {
       assert.equal(await ownsBanner(twice), false, 'refunding the granting purchase revokes');
     }
 
-    // Refunding the original first must retain another unrefunded purchase.
+    /* Refunding the original first must retain another unrefunded purchase: the grant moves to the earliest remaining purchase each time, and only the refund of the last one revokes. */
     {
-      const buyer = sessionCookie(await call('/api/store/catalog'));
+      const buyer = await newSession();
       const refs = [];
-      for (let i = 0; i < 2; i++) refs.push(referenceOf((await (await openCheckout(buyer)).json()).redirectUrl));
+      for (let i = 0; i < 3; i++) refs.push(await openReference(buyer));
       const accountId = (await repository.pendingCheckout(refs[0])).accountId;
-      for (let i = 0; i < 2; i++) await deliver(purchaseEvent({ id: `reverse-buy-${i}` },
+      for (let i = 0; i < 3; i++) await deliver(purchaseEvent({ id: `reverse-buy-${i}` },
         { id: `reverse-purchase-${i}`, accountId, externalReferenceId: refs[i] }));
+      const grantHolder = async () => (await repository.entitlements(accountId))['cosmetic.celestial_banner'].purchaseId;
       const first = await deliver(refundEvent({ id: 'reverse-refund-0' }, { id: 'reverse-rf-0', purchaseId: 'reverse-purchase-0' }));
       assert.equal(first.payload.revoked, false);
-      assert.equal((await repository.entitlements(accountId))['cosmetic.celestial_banner'].purchaseId, 'reverse-purchase-1');
+      assert.equal(await grantHolder(), 'reverse-purchase-1', 'the earliest remaining purchase takes over the grant');
       assert.equal((await repository.purchases(accountId)).find(p => p.purchaseId === 'reverse-purchase-1').refundedAt, undefined);
-      const last = await deliver(refundEvent({ id: 'reverse-refund-1' }, { id: 'reverse-rf-1', purchaseId: 'reverse-purchase-1' }));
+      const middle = await deliver(refundEvent({ id: 'reverse-refund-1' }, { id: 'reverse-rf-1', purchaseId: 'reverse-purchase-1' }));
+      assert.equal(middle.payload.revoked, false);
+      assert.equal(await grantHolder(), 'reverse-purchase-2', 'the earliest remaining purchase takes over the grant');
+      const last = await deliver(refundEvent({ id: 'reverse-refund-2' }, { id: 'reverse-rf-2', purchaseId: 'reverse-purchase-2' }));
       assert.equal(last.payload.revoked, true);
       assert.equal(await ownsBanner(buyer), false);
     }
     for (const value of [null, [], true, 42, 'text']) {
-      const response = await call('/api/store/checkout', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value),
-      });
-      assert.equal(response.status, 400, 'non-object JSON is a client error');
+      assert.equal((await post('/api/store/checkout', value)).status, 400, 'non-object JSON is a client error');
     }
 
     /* A malformed cookie from another app on the origin must not break the store. */
@@ -444,9 +444,8 @@ async function runSuite(repository, label) {
     const unknownRefund = await deliver(refundEvent({ id: 'refund-nowhere' }, { id: 'rf_x', purchaseId: 'purchase-nowhere' }));
     assert.equal(unknownRefund.response.status, 200, '모르는 환불도 재시도를 부르지 않는다');
     assert.equal(unknownRefund.payload.deferred, true, 'unmapped refunds are retained, not discarded');
-    const earlyCookie = sessionCookie(await call('/api/store/catalog'));
-    const earlyCheckout = await openCheckout(earlyCookie);
-    const earlyRef = referenceOf((await earlyCheckout.json()).redirectUrl);
+    const earlyCookie = await newSession();
+    const earlyRef = await openReference(earlyCookie);
     const earlyRecord = await repository.pendingCheckout(earlyRef);
     const earlyGrant = await deliver(purchaseEvent({ id: 'purchase-after-early-refund' }, {
       id: 'purchase-nowhere', accountId: earlyRecord.accountId, externalReferenceId: earlyRef,
@@ -472,48 +471,37 @@ async function runSuite(repository, label) {
     const rebuyAfterRefund = await openCheckout(refunded.cookie);
     assert.equal(rebuyAfterRefund.status, 201, '환불받은 뒤에는 다시 살 수 있다');
 
-    /* Mock refunds use the same revoke method as real webhooks to exercise the purchase lifecycle. */
-    const tourBuyer = await boughtOnce('tour');
-    const mockRefund = await call('/api/store/mock-refund', {
-      method: 'POST', headers: { cookie: tourBuyer.cookie, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reference: tourBuyer.reference }),
-    });
-    assert.equal(mockRefund.status, 200);
-    assert.equal((await mockRefund.json()).revoked, true, '모의 환불도 실제 회수 경로를 탄다');
-    assert.equal(await ownsBanner(tourBuyer.cookie), false);
-    const tourHistory = await repository.purchases(tourBuyer.accountId);
-    assert.ok(tourHistory[0].refundedAt, '모의 환불도 감사 기록을 남긴다');
-
     /* Distinguish replay deduplication from intent-state validation when a new event references a refunded purchase. */
-    const mockBuyer = sessionCookie(await call('/api/store/catalog?locale=ko'));
-    const mockOpened = await openCheckout(mockBuyer);
-    const mockReference = referenceOf((await mockOpened.json()).redirectUrl);
-    const mockComplete = (body) => call('/api/store/mock-complete', {
-      method: 'POST', headers: { cookie: mockBuyer, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reference: mockReference, ...body }),
-    });
+    const mockBuyer = await newSession();
+    const mockReference = await openReference(mockBuyer);
+    const mockComplete = (body) => post('/api/store/mock-complete', { reference: mockReference, ...body }, { cookie: mockBuyer });
 
     assert.equal((await mockComplete().then((r) => r.json())).duplicate, false, '첫 모의 지급');
     assert.equal(await ownsBanner(mockBuyer), true);
     assert.equal((await mockComplete().then((r) => r.json())).duplicate, true,
       '같은 이벤트 재전송은 멱등성이 잡는다');
 
-    await call('/api/store/mock-refund', {
-      method: 'POST', headers: { cookie: mockBuyer, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reference: mockReference }),
-    });
+    /* Mock refunds use the same revoke method as real webhooks to exercise the purchase lifecycle. */
+    const mockRefund = await post('/api/store/mock-refund', { reference: mockReference }, { cookie: mockBuyer });
+    assert.equal(mockRefund.status, 200);
+    assert.equal((await mockRefund.json()).revoked, true, '모의 환불도 실제 회수 경로를 탄다');
     assert.equal(await ownsBanner(mockBuyer), false, '모의 환불로 회수된다');
+    assert.ok((await repository.purchases((await repository.pendingCheckout(mockReference)).accountId))[0].refundedAt,
+      '모의 환불도 감사 기록을 남긴다');
     assert.equal((await mockComplete({ distinct: true }).then((r) => r.json())).ignored,
       'checkout is already refunded', '환불된 결제를 가리키는 다른 이벤트는 상태가 잡는다');
     assert.equal(await ownsBanner(mockBuyer), false, '뒤늦은 지급이 회수를 되돌리지 않는다');
 
     /* Mock refunds cannot modify another player's checkout. */
-    const stranger = sessionCookie(await call('/api/store/catalog?locale=ko'));
-    const notYours = await call('/api/store/mock-refund', {
-      method: 'POST', headers: { cookie: stranger, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reference: strangerRefund.reference }),
-    });
+    const stranger = await newSession();
+    const notYours = await post('/api/store/mock-refund', { reference: strangerRefund.reference }, { cookie: stranger });
     assert.equal(notYours.status, 404, '자기 결제만 모의 환불할 수 있다');
+
+    /* A refund of an intent mock-complete never granted is refused outright; before this it filed refunds['undefined'] and answered deferred. */
+    const unpaid = await newSession();
+    const unpaidRefund = await post('/api/store/mock-refund', { reference: await openReference(unpaid) }, { cookie: unpaid });
+    assert.equal(unpaidRefund.status, 409, '지급되지 않은 의도의 환불은 409');
+    assert.equal((await unpaidRefund.json()).error, 'not fulfilled');
 
     /* Bearer-only identity supports native clients and separately hosted browser clients without relying on SameSite cookies. */
     assert.ok(catalog.playerId, '카탈로그가 자기 신원을 알려준다 — 토큰 클라이언트가 저장할 수 있도록');
@@ -529,39 +517,8 @@ async function runSuite(repository, label) {
     assert.equal(garbageToken.status, 200, '형식이 틀린 토큰은 새 신원으로 취급한다');
     assert.notEqual((await garbageToken.json()).playerId, 'not-a-uuid');
 
-    // CORS accepts only allowlisted origins.
-    const corsHandler = createStoreApi({
-      repository,
-      config: {
-        mock: true, webhookSecret: secret, publicUrl: 'https://api.example.test', environment: 'sandbox',
-        allowedOrigins: ['https://hakhyun-kim.github.io'],
-      },
-      log: quiet,
-    });
-    const corsServer = createServer(async (req, res) => corsHandler(req, res, new URL(req.url, 'https://api.example.test')));
-    try {
-      await new Promise((resolve) => corsServer.listen(0, '127.0.0.1', resolve));
-      const corsAt = `http://127.0.0.1:${corsServer.address().port}`;
-      const preflight = await fetch(`${corsAt}/api/store/checkout`, {
-        method: 'OPTIONS',
-        headers: { origin: 'https://hakhyun-kim.github.io', 'access-control-request-method': 'POST' },
-      });
-      assert.equal(preflight.status, 204, '허용된 오리진의 프리플라이트는 통과한다');
-      assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://hakhyun-kim.github.io');
-      assert.match(preflight.headers.get('access-control-allow-headers') || '', /Authorization/i, '토큰 헤더가 허용된다');
-      assert.equal(preflight.headers.get('access-control-allow-credentials'), null,
-        '교차 오리진은 토큰으로 다닌다 — 쿠키를 끌고 가면 서드파티 차단에 걸린다');
-      const denied = await fetch(`${corsAt}/api/store/checkout`, {
-        method: 'OPTIONS',
-        headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' },
-      });
-      assert.equal(denied.status, 403, '허용 목록에 없는 오리진은 거절된다');
-      const sameOrigin = await fetch(`${corsAt}/api/store/catalog?locale=ko`);
-      assert.equal(sameOrigin.status, 200, 'Origin 헤더가 없는 요청은 영향을 받지 않는다');
-    } finally { await new Promise((resolve) => corsServer.close(resolve)); }
-
     // Checkout creation rate limit.
-    const spammer = sessionCookie(await call('/api/store/catalog?locale=ko'));
+    const spammer = await newSession();
     let limited = 0;
     for (let attempt = 0; attempt < 12; attempt += 1) {
       if ((await openCheckout(spammer)).status === 429) limited += 1;
@@ -572,9 +529,7 @@ async function runSuite(repository, label) {
     const owner = await boughtOnce('account');
     assert.equal(await ownsBanner(owner.cookie), true);
 
-    const issued = await call('/api/account/transfer-code', {
-      method: 'POST', headers: { cookie: owner.cookie, 'Content-Type': 'application/json' }, body: '{}',
-    });
+    const issued = await post('/api/account/transfer-code', {}, { cookie: owner.cookie });
     assert.equal(issued.status, 201);
     const { code, expiresAt } = await issued.json();
     assert.match(code, /^CD-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/, '사람이 옮겨 적을 수 있는 형태');
@@ -582,25 +537,18 @@ async function runSuite(repository, label) {
     assert.ok(Date.parse(expiresAt) > Date.now(), '기한이 있다');
 
     /* A new device without cookies claims the original account using the code. */
-    const freshDevice = sessionCookie(await call('/api/store/catalog?locale=ko'));
+    const freshDevice = await newSession();
     assert.equal(await ownsBanner(freshDevice), false, '새 기기는 아직 아무것도 없다');
-    const claimed = await call('/api/account/claim', {
-      method: 'POST', headers: { cookie: freshDevice, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
-    });
+    const claimed = await post('/api/account/claim', { code }, { cookie: freshDevice });
     assert.equal(claimed.status, 200);
     const adopted = sessionCookie(claimed);
     assert.equal((await claimed.json()).accountId, owner.accountId, '기기가 기존 계정을 입는다');
     assert.equal(await ownsBanner(adopted), true, '구매가 기기가 아니라 계정을 따라온다');
 
     /* Transfer codes are single-use bearer credentials; replay must not repeatedly transfer an account. */
-    const reused = await call('/api/account/claim', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }),
-    });
+    const reused = await post('/api/account/claim', { code });
     assert.equal(reused.status, 404, '같은 코드를 두 번 쓸 수 없다');
-    const nonsense = await call('/api/account/claim', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: 'CD-ZZZZ-ZZZZ-ZZZZ' }),
-    });
+    const nonsense = await post('/api/account/claim', { code: 'CD-ZZZZ-ZZZZ-ZZZZ' });
     assert.equal(nonsense.status, 404);
     assert.equal((await nonsense.json()).error, 'invalid_code', '없음·만료·사용됨을 구분해 주지 않는다');
 
@@ -646,32 +594,10 @@ async function runSuite(repository, label) {
       return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
     };
 
-    async function liveServer(fetchImpl, environment = 'sandbox') {
-      const liveHandler = createStoreApi({
-        repository,
-        config: {
-          mock: false, apiKey: 'test-secret-key', apiUrl: 'https://api.example.test',
-          webhookSecret: secret, publicUrl: 'https://tunnel.example.test', environment,
-        },
-        fetchImpl, log: quiet,
-      });
-      const live = createServer(async (req, res) => liveHandler(req, res, new URL(req.url, 'https://tunnel.example.test')));
-      await new Promise((resolve) => live.listen(0, '127.0.0.1', resolve));
-      const at = `http://127.0.0.1:${live.address().port}`;
-      return {
-        at,
-        checkout: (buyerCookie) => fetch(`${at}/api/store/checkout`, {
-          method: 'POST', headers: { cookie: buyerCookie, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sku: 'CELESTIAL_BANNER', locale: 'ko' }),
-        }),
-        close: () => new Promise((resolve) => live.close(resolve)),
-      };
-    }
-
     /* Neon's create-checkout response names the identifier `id` (the sandbox returns { id, token, redirectUrl, externalProvider }). */
     const ok = await liveServer(stubNeon(201, { id: 'chk_1', token: 'tok_1', redirectUrl: 'https://pay.example.test/chk_1', externalProvider: null }));
     try {
-      const buyer = sessionCookie(await fetch(`${ok.at}/api/store/catalog?locale=ko`));
+      const buyer = await newSession(ok.at);
       const created = await ok.checkout(buyer);
       assert.equal(created.status, 201);
       const createdBody = await created.json();
@@ -693,13 +619,8 @@ async function runSuite(repository, label) {
       assert.equal(sent.body.languageLocale, 'ko-KR');
       assert.ok(sent.body.successUrl.startsWith('https://tunnel.example.test/'), 'successUrl 은 공개 주소를 쓴다');
       /* A country this catalogue does not price, with no answer from Neon's sheet: refused rather than billed in a guessed currency. */
-      const unpricedBuyer = sessionCookie(await fetch(`${ok.at}/api/store/market`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ country: 'JP' }),
-      }));
-      const unpriced = await fetch(`${ok.at}/api/store/checkout`, {
-        method: 'POST', headers: { cookie: unpricedBuyer, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sku: 'AURORA_SPIRES', locale: 'en' }),
-      });
+      const unpricedBuyer = sessionCookie(await post('/api/store/market', { country: 'JP' }, {}, ok.at));
+      const unpriced = await post('/api/store/checkout', { sku: 'AURORA_SPIRES', locale: 'en' }, { cookie: unpricedBuyer }, ok.at);
       assert.equal(unpriced.status, 503, 'Neon 가격 없이 가격표 밖의 나라에 임의 통화로 청구하지 않는다');
       assert.equal((await unpriced.json()).error, 'pricing_unavailable');
       assert.equal(sent.body.playerCountry, 'KR', 'the refused checkout never reached Neon');
@@ -725,22 +646,10 @@ async function runSuite(repository, label) {
         sent = { url, options, body: JSON.parse(options.body) };
         return new Response(JSON.stringify({ id: 'chk_geo', token: 't', redirectUrl: 'https://pay.example.test/chk_geo' }), { status: 201 });
       };
-      const geoHandler = createStoreApi({
-        repository,
-        config: {
-          mock: false, apiKey: 'test-secret-key', apiUrl: 'https://api.example.test', webhookSecret: secret,
-          publicUrl: 'https://tunnel.example.test', environment: 'sandbox', trustProxy: true,
-        },
-        fetchImpl: neon, log: quiet,
-      });
-      const geo = createServer(async (req, res) => geoHandler(req, res, new URL(req.url, 'https://tunnel.example.test')));
-      await new Promise((resolve) => geo.listen(0, '127.0.0.1', resolve));
-      const at = `http://127.0.0.1:${geo.address().port}`;
+      const { at, close } = await liveServer(neon, { trustProxy: true });
       /* 198.51.100.1 is what a client could send itself; the front end's entry comes last. */
       const from = (ip, extra = {}) => ({ 'x-forwarded-for': `198.51.100.1, ${ip}`, ...extra });
-      const checkoutFrom = (ip, cookie, sku) => fetch(`${at}/api/store/checkout`, {
-        method: 'POST', headers: from(ip, { cookie, 'Content-Type': 'application/json' }), body: JSON.stringify({ sku, locale: 'en' }),
-      });
+      const checkoutFrom = (ip, cookie, sku) => post('/api/store/checkout', { sku, locale: 'en' }, from(ip, { cookie }), at);
       try {
         // A Japanese address and no selection: Neon locates it and prices the list in JPY.
         const jpResponse = await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.7', { 'accept-language': 'en-US' }) });
@@ -774,13 +683,14 @@ async function runSuite(repository, label) {
         assert.equal(tierGrant.payload.ignored, undefined, 'Neon 이 정한 티어 금액은 비교하지 않고 지급한다');
 
         // A player who chose KR, now on a Japanese address: stays KR, and is offered JP.
-        const krChoice = sessionCookie(await fetch(`${at}/api/store/market`, {
-          method: 'POST', headers: from('203.0.113.7', { 'Content-Type': 'application/json' }), body: JSON.stringify({ country: 'KR' }),
-        }));
+        const krChoice = sessionCookie(await post('/api/store/market', { country: 'KR' }, from('203.0.113.7'), at));
         const traveller = await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.7', { cookie: krChoice }) }).then((r) => r.json());
         assert.equal(traveller.country, 'KR', '선택은 위치보다 앞선다');
         assert.equal(traveller.currency, 'KRW', 'no KR answer from the sheet: the catalogue row prices');
         assert.deepEqual(traveller.suggestion, { country: 'JP', reason: 'location', currency: 'JPY' }, '위치가 다르면 전환을 제안한다');
+        // The same KR choice on a restricted address: the location disagrees, but Neon will not sell there, so nothing is offered.
+        const restricted = await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.9', { cookie: krChoice }) }).then((r) => r.json());
+        assert.equal(restricted.suggestion, null, 'Neon 이 팔지 않는 나라로는 전환을 제안하지 않는다');
 
         // Neon's Global Store and a country Neon will not sell to arrive as Neon said.
         const ae = await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.8') }).then((r) => r.json());
@@ -798,12 +708,12 @@ async function runSuite(repository, label) {
         const before = lookups.length;
         await fetch(`${at}/api/store/catalog?locale=en`, { headers: from('203.0.113.7') });
         assert.equal(lookups.length, before, '가격 조회는 캐시된다');
-      } finally { await new Promise((resolve) => geo.close(resolve)); }
+      } finally { await close(); }
     }
 
     const rejects = await liveServer(stubNeon(400, { message: 'invalid sku' }));
     try {
-      const buyer = sessionCookie(await fetch(`${rejects.at}/api/store/catalog?locale=ko`));
+      const buyer = await newSession(rejects.at);
       const failed = await rejects.checkout(buyer);
       assert.equal(failed.status, 502, 'Neon 이 거절하면 502 로 알린다 — 우리 버그와 구분된다');
       assert.doesNotMatch(await failed.text(), /test-secret-key/, '오류 응답에 키가 새지 않는다');
@@ -822,27 +732,51 @@ async function runSuite(repository, label) {
 
     const incomplete = await liveServer(stubNeon(201, { checkoutId: 'chk_2' }));
     try {
-      const buyer = sessionCookie(await fetch(`${incomplete.at}/api/store/catalog?locale=ko`));
-      assert.equal((await incomplete.checkout(buyer)).status, 502, 'redirectUrl 없는 응답은 성공으로 치지 않는다');
+      const buyer = await newSession(incomplete.at);
+      const incompleteResponse = await incomplete.checkout(buyer);
+      assert.equal(incompleteResponse.status, 502, 'redirectUrl 없는 응답은 성공으로 치지 않는다');
+      assert.match(await incompleteResponse.text(), /incomplete hosted checkout/);
     } finally { await incomplete.close(); }
 
-    /* Shared-link returns: an allowlisted Origin (plus a validated path) wins
-     * over PUBLIC_URL, and every return URL carries api=<this service>. */
+    /* Both origin rules on one allowlisted store, which also trusts its proxy's
+     * geography headers (mock mode never asks Neon for an address). CORS admits
+     * only listed origins; a shared-link return from a listed Origin (plus a
+     * validated path) wins over PUBLIC_URL, and every return URL carries api=<this service>. */
     {
-      const pagesHandler = createStoreApi({
-        repository,
-        config: { mock: true, webhookSecret: secret, publicUrl: 'https://tunnel.example.test', environment: 'sandbox', allowedOrigins: ['https://pages.example.test'] },
-        log: quiet,
-      });
-      const pages = createServer(async (req, res) => pagesHandler(req, res, new URL(req.url, 'https://x.local')));
-      await new Promise((resolve) => pages.listen(0, '127.0.0.1', resolve));
-      const at = `http://127.0.0.1:${pages.address().port}`;
-      const linkCheckout = (headers, extra = {}) => fetch(`${at}/api/store/checkout`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ sku: 'CELESTIAL_BANNER', locale: 'en', ...extra }),
-      }).then((r) => r.json()).then((data) => new URL(data.redirectUrl));
+      const { at, close } = await serverWith({ mock: true, allowedOrigins: ['https://hakhyun-kim.github.io', 'https://pages.example.test'], trustGeoHeaders: true });
+      const linkCheckout = (headers, extra = {}) => post('/api/store/checkout', { sku: 'CELESTIAL_BANNER', locale: 'en', ...extra }, headers, at)
+        .then((r) => r.json()).then((data) => new URL(data.redirectUrl));
       try {
-        const cookie = sessionCookie(await fetch(`${at}/api/store/catalog?locale=en`));
+        // CORS accepts only allowlisted origins.
+        const preflight = await fetch(`${at}/api/store/checkout`, {
+          method: 'OPTIONS',
+          headers: { origin: 'https://hakhyun-kim.github.io', 'access-control-request-method': 'POST' },
+        });
+        assert.equal(preflight.status, 204, '허용된 오리진의 프리플라이트는 통과한다');
+        assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://hakhyun-kim.github.io');
+        assert.match(preflight.headers.get('access-control-allow-headers') || '', /Authorization/i, '토큰 헤더가 허용된다');
+        assert.equal(preflight.headers.get('access-control-allow-credentials'), null,
+          '교차 오리진은 토큰으로 다닌다 — 쿠키를 끌고 가면 서드파티 차단에 걸린다');
+        const denied = await fetch(`${at}/api/store/checkout`, {
+          method: 'OPTIONS',
+          headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' },
+        });
+        assert.equal(denied.status, 403, '허용 목록에 없는 오리진은 거절된다');
+        const sameOrigin = await fetch(`${at}/api/store/catalog?locale=ko`);
+        assert.equal(sameOrigin.status, 200, 'Origin 헤더가 없는 요청은 영향을 받지 않는다');
+
+        // Behind a trusted proxy the geography header locates the player; a code that names no jurisdiction falls to the default, and an explicit selection still outranks it.
+        const trustedGeo = await fetch(`${at}/api/store/catalog?locale=ko`, { headers: { 'cf-ipcountry': 'US' } }).then((r) => r.json());
+        assert.equal(trustedGeo.country, 'US', '신뢰하는 배포에서는 geo 헤더가 청구 국가가 된다');
+        assert.equal(trustedGeo.countrySource, 'geo-header');
+        const noJurisdiction = await fetch(`${at}/api/store/catalog?locale=ko`, { headers: { 'cf-ipcountry': 'XX' } }).then((r) => r.json());
+        assert.equal(noJurisdiction.country, 'KR', 'XX names no jurisdiction');
+        const chosenOverGeo = await fetch(`${at}/api/store/catalog?locale=ko`, { headers: { cookie: 'cd_country=KR', 'cf-ipcountry': 'US' } }).then((r) => r.json());
+        assert.equal(chosenOverGeo.country, 'KR', '명시적 선택이 geo 헤더보다 앞선다');
+        assert.equal(chosenOverGeo.countrySource, 'selection');
+
+        // Shared-link returns.
+        const cookie = await newSession(at, 'en');
         const fromPages = await linkCheckout({ cookie, origin: 'https://pages.example.test' }, { returnPath: '/constellation-defense/' });
         assert.equal(fromPages.origin, 'https://pages.example.test', '허용된 Origin 이 복귀 기준이 된다');
         assert.equal(fromPages.pathname, '/constellation-defense/', '검증된 returnPath 가 붙는다');
@@ -863,30 +797,22 @@ async function runSuite(repository, label) {
         const badQuery = await linkCheckout({ cookie, origin: 'https://pages.example.test' },
           { returnPath: '/constellation-defense/?x=<script>' });
         assert.equal(badQuery.searchParams.get('x'), null, '검증 실패 쿼리는 통째로 버린다');
-      } finally { await new Promise((resolve) => pages.close(resolve)); }
+      } finally { await close(); }
     }
 
     /* Hosted self-refund: account-scoped, asks Neon item-level, never revokes
      * by itself — the webhook does. Mock mode does not expose the route. */
     {
-      const rBuyer = sessionCookie(await call('/api/store/catalog?locale=ko'));
-      const rRef = referenceOf((await (await openCheckout(rBuyer)).json()).redirectUrl);
-      await call('/api/store/mock-complete', {
-        method: 'POST', headers: { cookie: rBuyer, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reference: rRef }),
-      });
-      assert.equal((await call('/api/store/refund', {
-        method: 'POST', headers: { cookie: rBuyer, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sku: 'CELESTIAL_BANNER' }),
-      })).status, 404, 'mock 모드에는 실환불 라우트가 없다');
+      const rBuyer = await newSession();
+      const rRef = await openReference(rBuyer);
+      await post('/api/store/mock-complete', { reference: rRef }, { cookie: rBuyer });
+      const refundCall = (cookie, at) => post('/api/store/refund', { sku: 'CELESTIAL_BANNER' }, { cookie }, at);
+      assert.equal((await refundCall(rBuyer)).status, 404, 'mock 모드에는 실환불 라우트가 없다');
 
       let sentRefund = null;
-      const production = await liveServer(async () => { throw new Error('production refund must never call Neon'); }, 'production');
+      const production = await liveServer(async () => { throw new Error('production refund must never call Neon'); }, { environment: 'production' });
       try {
-        assert.equal((await fetch(`${production.at}/api/store/refund`, {
-          method: 'POST', headers: { cookie: rBuyer, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sku: 'CELESTIAL_BANNER' }),
-        })).status, 404);
+        assert.equal((await refundCall(rBuyer, production.at)).status, 404);
       } finally { await production.close(); }
       const refundStub = (refundable = 1) => async (url, options = {}) => {
         if (String(url).endsWith('/refund')) {
@@ -897,26 +823,27 @@ async function runSuite(repository, label) {
           { status: 200, headers: { 'Content-Type': 'application/json' } });
       };
       const hosted = await liveServer(refundStub());
-      const refundCall = (cookie) => fetch(`${hosted.at}/api/store/refund`, {
-        method: 'POST', headers: { cookie, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sku: 'CELESTIAL_BANNER' }),
-      });
       try {
-        const accepted = await refundCall(rBuyer);
+        const accepted = await refundCall(rBuyer, hosted.at);
         assert.equal(accepted.status, 202, '환불 요청은 202 — 회수는 웹훅 몫');
         assert.equal((await accepted.json()).requested, true);
         assert.ok(sentRefund.url.includes(`/purchases/mock-purchase-${rRef}/refund`), '원장의 purchaseId 로 Neon 에 요청한다');
         assert.deepEqual(sentRefund.body, { items: [{ itemId: 'itm_9', quantity: 1 }] }, 'item 단위 본문 — 빈 본문은 샌드박스 500');
-        const stranger = sessionCookie(await fetch(`${hosted.at}/api/store/catalog?locale=ko`));
-        assert.equal((await refundCall(stranger)).status, 404, '남의 구매는 환불할 수 없다');
+        const stranger = await newSession(hosted.at);
+        assert.equal((await refundCall(stranger, hosted.at)).status, 404, '남의 구매는 환불할 수 없다');
       } finally { await hosted.close(); }
       const spent = await liveServer(refundStub(0));
       try {
-        assert.equal((await (await fetch(`${spent.at}/api/store/refund`, {
-          method: 'POST', headers: { cookie: rBuyer, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sku: 'CELESTIAL_BANNER' }),
-        })).status), 409, 'refundableQuantity 0 이면 409');
+        assert.equal((await refundCall(rBuyer, spent.at)).status, 409, 'refundableQuantity 0 이면 409');
       } finally { await spent.close(); }
+      for (const [name, expected] of [['TypeError', 502], ['TimeoutError', 504]]) {
+        const down = await liveServer(async () => { throw Object.assign(new Error('transport'), { name }); });
+        try {
+          const response = await refundCall(rBuyer, down.at);
+          assert.equal(response.status, expected, 'a Neon transport failure on refund maps to 502/504');
+          assert.doesNotMatch(await response.text(), /test-secret-key/);
+        } finally { await down.close(); }
+      }
     }
 
     console.log(`  ✅ ${label}: 카탈로그·국가 해석·가격 계약·서명·재전송·환경·속도 제한·환불 회수·계정 인계·저장본·실호출·복귀주소·실환불 경로`);

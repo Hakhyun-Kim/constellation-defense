@@ -46,8 +46,7 @@ export function normalizePrices(data) {
   if (!data || typeof data !== 'object') return null;
   const country = isCountryCode(data.country) ? String(data.country).toUpperCase() : null;
   if (data.isSupported === false) return { supported: false, country, reason: String(data.reason || 'unsupported') };
-  if (data.isSupported !== true || !country || !/^[A-Z]{3}$/.test(String(data.currency || ''))) return null;
-  if (!data.prices || typeof data.prices !== 'object') return null;
+  if (data.isSupported !== true || !country || !/^[A-Z]{3}$/.test(String(data.currency || '')) || !data.prices || typeof data.prices !== 'object') return null;
   return { supported: true, country, currency: data.currency, globalStore: data.isFallback === true, tiers: data.prices };
 }
 
@@ -64,7 +63,9 @@ export function createPricing({ config, fetchImpl = fetch, log = console, now = 
       value = normalizePrices(await getNeonPrices({ apiKey: config.apiKey, apiUrl: config.apiUrl, ...params, fetchImpl }));
       if (!value) log.warn?.('[store] Neon /prices answered in an unexpected shape; using the catalogue\'s own rows');
     } catch (error) {
-      log.warn?.(`[store] Neon /prices unavailable (${error.message}); using the catalogue's own rows`);
+      /* A transport failure arrives as the generic "unavailable"; its cause carries the detail (DNS, refused, timeout). */
+      const reason = error.cause?.message ? `${error.message}: ${error.cause.message}` : error.message;
+      log.warn?.(`[store] Neon /prices unavailable (${reason}); using the catalogue's own rows`);
     }
     if (cache.size >= MAX_ENTRIES) cache.delete(cache.keys().next().value);
     cache.set(key, { value, expires: now() + (value ? TTL_MS : FAILURE_TTL_MS) });
@@ -72,7 +73,6 @@ export function createPricing({ config, fetchImpl = fetch, log = console, now = 
   }
 
   return {
-    enabled,
     forCountry: async (country) => (enabled && isCountryCode(country) ? lookup(`country:${country}`, { country }) : null),
     forIp: async (ip) => (enabled && ip ? lookup(`ip:${ip}`, { ip }) : null),
   };

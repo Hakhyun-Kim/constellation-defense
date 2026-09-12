@@ -15,6 +15,8 @@ export function initNeonTour(ctx) {
   let spectateNoted = false;
   document.body.classList.add('tour-on');
   root.classList.remove('hidden');
+  root.setAttribute('aria-label', text('Checkout inspector', '결제 인스펙터'));
+  get('tourLive').textContent = text('Waiting for a store request…', '상점 요청을 기다리는 중…');
   get('tourTitle').textContent = text('From defense to delivery', '방어에서 지급까지');
   get('tourBody').textContent = text('Play a defense, then give your castle a new identity. Defeat opens the store; cosmetics never improve your odds. You control every purchase and refund.', '방어를 플레이한 뒤 성을 꾸며 보세요. 패배하면 상점이 열립니다. 장식은 승률을 바꾸지 않으며 모든 구매와 환불은 직접 조작합니다.');
   get('tourPlay').textContent = text('Play / retry a defense', '방어 플레이 / 재도전');
@@ -30,7 +32,7 @@ export function initNeonTour(ctx) {
     get('tourSource').textContent = `${entry.file}:${entry.line}`;
     get('tourCode').textContent = entry.code;
   }
-  for (const [key, caption] of [['checkout', 'Checkout'], ['hosted', 'Neon adapter'], ['fulfill', 'Fulfillment'], ['refund', 'Refund'], ['visuals', '3D delivery']]) {
+  for (const [key, caption] of [['checkout', text('Checkout', '체크아웃')], ['hosted', text('Neon adapter', 'Neon 어댑터')], ['fulfill', text('Fulfillment', '지급')], ['refund', text('Refund', '환불')], ['visuals', text('3D delivery', '3D 전달')]]) {
     const button = document.createElement('button');
     button.textContent = caption;
     button.addEventListener('click', () => showCode(key));

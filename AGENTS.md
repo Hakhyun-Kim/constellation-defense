@@ -101,6 +101,7 @@ node scripts/asset-budget-check.mjs
 server/index.mjs          결제 API 독립 서비스 (정적 파일 서빙 안 함, 배포용 진입점)
 server/store-api.mjs      HTTP 라우트 · 신원(토큰→쿠키) · 국가 해석 · 웹훅 검증/분류
 server/catalog.mjs        SKU 허용 목록 + 가격이 존재하는 유일한 곳
+server/ledger-rules.mjs   두 원장이 함께 쓰는 지급·환불 규칙 (PermanentRejection 정의)
 server/repository.mjs     JSON 원장: 결제 의도·권리·멱등성·환불·인계 코드·저장본
 server/firestore-repository.mjs   같은 인터페이스를 Firestore 트랜잭션으로
 server/config.mjs · logger.mjs    부팅 시 설정 판정(fatal/warn) · text/json 로그

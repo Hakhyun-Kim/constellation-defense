@@ -1,9 +1,8 @@
 /* Development static server. PORT defaults to 8642; override it for concurrent workspaces. Mount the payment API here for local same-origin use. Production uses server/index.mjs for API-only hosting and a separate static game host. Development reports configuration problems without exiting, allowing credential-free mock use. Usage: node scripts/serve.mjs */
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { extname, join, normalize, sep } from 'node:path';
+import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
 import { loadConfig } from '../server/config.mjs';
 import { createLogger } from '../server/logger.mjs';
 import { createRepository } from '../server/repository-factory.mjs';

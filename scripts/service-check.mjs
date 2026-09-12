@@ -1,8 +1,5 @@
 /* Standalone payment service contract: reject invalid configuration before accepting traffic, report truthful health/readiness, drain in-flight work on shutdown, and never serve game files. */
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { loadConfig, isFatal } from '../server/config.mjs';
 import { createLogger } from '../server/logger.mjs';
 import { startService } from '../server/index.mjs';
@@ -59,7 +56,6 @@ const base = {
 }
 
 // Running service checks.
-const temporary = await mkdtemp(join(tmpdir(), 'constellation-service-'));
 const service = await startService({ env: { ...base, STORE_BACKEND: 'json' }, out: quiet });
 try {
   assert.ok(service.ok, '올바른 설정이면 뜬다');
@@ -88,5 +84,4 @@ try {
   console.log('service check: 설정 판정·헬스체크·로그 형식·정적 파일 분리·종료 통과');
 } finally {
   if (!service.ok) process.exitCode = 1;
-  await rm(temporary, { recursive: true, force: true });
 }

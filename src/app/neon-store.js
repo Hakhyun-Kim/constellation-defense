@@ -31,8 +31,7 @@ function rememberPlayer(id) {
 
 /* The dedicated gateway reuses this identity so purchases made through the
  * server belong to the same account as client-mode purchases. */
-export const knownPlayerToken = () => playerToken();
-export const adoptPlayerIdentity = (id) => rememberPlayer(id);
+export { playerToken as knownPlayerToken, rememberPlayer as adoptPlayerIdentity };
 
 /* Default wire: direct HTTP to the payment API. The dedicated viewer swaps
  * this for a WebSocket transport so the game server is the only endpoint the
@@ -146,20 +145,19 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
   modal.addEventListener('click', (event) => { if (event.target === modal) modal.classList.add('hidden'); });
   button.addEventListener('click', () => { modal.classList.remove('hidden'); paymentEvent('store'); });
 
+  /* One request for both market controls, so the suggestion and the select report a failed switch the same way. */
+  async function selectMarket(country) {
+    await postJson('/api/store/market', { country });
+    await loadCatalog();
+  }
+
   /* A location that disagrees with the billing country, or a browser region when no location is known, may recommend a market, never declare one: the server sends the suggestion, the player's click makes it explicit. */
   function renderSuggestion() {
     if (!catalog?.suggestion) return null;
     const { country, currency, reason } = catalog.suggestion;
     const row = element('div', 'neon-suggest');
     row.append(element('span', null, words.suggest(country, currency, reason)));
-    const action = element('button', 'neon-linkish', words.suggestAction(currency));
-    action.addEventListener('click', async () => {
-      try {
-        await postJson('/api/store/market', { country });
-        await loadCatalog();
-      } catch (error) { status.textContent = error.message; }
-    });
-    row.append(action);
+    row.append(action(words.suggestAction(currency), () => selectMarket(country)));
     row.append(element('small', 'neon-suggest-note', words.suggestNote));
     return row;
   }
@@ -184,11 +182,8 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
       select.append(option);
     }
     /* Only explicit billing selection changes country; game language must not alter tax or payment methods. */
-    select.addEventListener('change', async () => {
-      try {
-        await postJson('/api/store/market', { country: select.value });
-        await loadCatalog();
-      } catch (error) { status.textContent = error.message; }
+    select.addEventListener('change', () => {
+      selectMarket(select.value).catch((error) => { status.textContent = words[error.message] || error.message; });
     });
     row.append(select);
     if (catalog.priceSource === 'neon') row.append(element('small', 'neon-priced-by', words.pricedBy(catalog.country)));
@@ -200,28 +195,22 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
     const row = element('div', 'neon-account');
     row.append(element('span', null, words.account));
 
-    const getCode = element('button', 'neon-linkish', words.transfer);
-    getCode.addEventListener('click', async () => {
-      try {
-        const { code } = await postJson('/api/account/transfer-code', {});
-        status.replaceChildren();
-        const shown = element('code', 'neon-code', code);
-        status.append(shown, element('small', 'neon-code-note', words.codeShown));
-      } catch (error) { status.textContent = words[error.message] || error.message; }
+    const getCode = action(words.transfer, async () => {
+      const { code } = await postJson('/api/account/transfer-code', {});
+      status.replaceChildren();
+      const shown = element('code', 'neon-code', code);
+      status.append(shown, element('small', 'neon-code-note', words.codeShown));
     });
 
-    const useCode = element('button', 'neon-linkish', words.useCode);
-    useCode.addEventListener('click', async () => {
+    const useCode = action(words.useCode, async () => {
       /* The demo uses prompt for transfer-code entry; a production title should provide a dedicated account screen. */
       const entered = window.prompt(words.codePrompt);
       if (!entered) return;
-      try {
-        const { accountId } = await postJson('/api/account/claim', { code: entered });
-        rememberPlayer(accountId);
-        status.textContent = words.moved;
-        await loadCatalog();
-        await refreshEntitlements();
-      } catch (error) { status.textContent = words[error.message] || error.message; }
+      const { accountId } = await postJson('/api/account/claim', { code: entered });
+      rememberPlayer(accountId);
+      status.textContent = words.moved;
+      await loadCatalog();
+      await refreshEntitlements();
     });
 
     row.append(getCode, useCode);
@@ -257,7 +246,7 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
       const buy = action(owns(item) ? words.owned : `${words.buy} · ${item.displayPrice}`, () => startCheckout(item), 'big amber');
       buy.dataset.buy = item.sku;
       if (index === 0) buy.id = 'neonBuyBtn';
-      buy.disabled = busy || owns(item) || Boolean(pending) || Boolean(catalog.unavailable);
+      buy.disabled = busy || refundPending || owns(item) || Boolean(pending) || Boolean(catalog.unavailable);
       card.append(art, body, buy); product.append(card);
     }
     if (catalog.unavailable) product.append(element('small', 'neon-unavailable', words[catalog.unavailable] || catalog.unavailable));
@@ -275,7 +264,7 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
           status.textContent = label('Delivered. Close the store to see your castle.', '지급 완료. 상점을 닫고 성을 확인하세요.');
           paymentEvent('fulfilled');
         }, 'big amber'), action(label('Cancel / leave unpaid', '취소 / 미결제 유지'), () => {
-          pending = null; status.textContent = label('Unpaid checkout: nothing granted.', '미결제 상태: 지급되지 않았습니다.'); paymentEvent('cancelled');
+          pending = null; status.textContent = label('Unpaid checkout: nothing granted.', '미결제 상태: 지급되지 않았습니다.');
         }));
         product.append(panel);
       }
@@ -308,7 +297,6 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
         const result = await postJson('/api/store/mock-complete', { reference: lastReference, distinct: true });
         await refreshEntitlements();
         status.textContent = JSON.stringify(result);
-        paymentEvent('replayed');
       }));
       inventory.append(failures);
       product.append(inventory);
@@ -324,7 +312,7 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
         for (const item of ownedItems) {
           const row = element('div', 'neon-refund-row');
           const refundButton = action(label('Refund (real sandbox)', '환불 (실 샌드박스)'), () => { void startRealRefund(item); });
-          refundButton.disabled = refundPending;
+          refundButton.disabled = busy || refundPending;
           row.append(element('span', null, item.name), refundButton);
           inventory.append(row);
         }
@@ -343,7 +331,6 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
     entitlements = data.entitlements || {};
     onEntitlements(entitlements);
     render();
-    paymentEvent('inventory', { items: Object.keys(entitlements) });
     return entitlements;
   }
 
@@ -417,8 +404,8 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
     if (refundPending) return;
     refundPending = true;
     refundFlow = { sku: item.sku, name: item.name, stage: 0, error: null };
-    render();
     try {
+      render();
       const requested = await postJson('/api/store/refund', { sku: item.sku });
       refundFlow.stage = 2;                       // Request accepted; Neon created the refund.
       render();
@@ -479,15 +466,11 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
       const params = new URLSearchParams(location.search);
       const outcome = params.get('purchase');
       selectedSku = params.get('sku') || catalog.items[0]?.sku;
-      if (outcome === 'mock' && params.get('reference')) {
-        await postJson('/api/store/mock-complete', { reference: params.get('reference') });
-      }
       if (outcome === 'cancelled') status.textContent = label('Checkout cancelled. No item granted by the return URL.', '결제가 취소되었습니다. 복귀 주소로 지급되지 않습니다.');
       if (params.get('store') === '1') modal.classList.remove('hidden');
-      if (outcome === 'mock' || outcome === 'return') {
+      if (outcome === 'return') {
         modal.classList.remove('hidden');
         params.delete('purchase');
-        params.delete('reference');
         params.delete('sku');
         history.replaceState({}, '', `${location.pathname}?${params}${location.hash}`);
         await pollEntitlements();
@@ -505,6 +488,5 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
     open: () => { modal.classList.remove('hidden'); paymentEvent('store'); },
     close: () => modal.classList.add('hidden'),
     isOpen: () => !modal.classList.contains('hidden'),
-    refresh: () => refreshEntitlements().catch(() => {}),
   };
 }
