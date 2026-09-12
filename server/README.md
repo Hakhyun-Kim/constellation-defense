@@ -30,7 +30,7 @@ Store routes live under `/api/`. Identity comes from `Authorization: Bearer <uui
 | `POST` | `/api/store/checkout` | Resolves `{sku, locale}` against the catalog, records a pending intent, creates the Neon checkout, returns `redirectUrl`. | 400 unknown product. 403 `region_unavailable` where Neon will not sell. 503 `pricing_unavailable` for a country with no catalogue row and no sheet answer (hosted mode). 409 `already_owned`. 429 after 10 checkouts in 10 minutes. 502 when Neon rejects. Mock mode returns a local redirect. A Neon-priced item carries `priceTierCode` instead of `price`, and its intent records `price: null` — the webhook amount is Neon's and is not compared. |
 | `GET` | `/api/store/entitlements` | What the caller owns. | Polled after the return redirect. |
 | `POST` | `/api/webhooks/neon` | Verifies `x-neon-digest` (HMAC-SHA256 over the raw body), classifies the event, calls `repository.fulfill` or `repository.revoke`. | Policy below. |
-| `POST` | `/api/store/refund` | Hosted mode only. Asks Neon for an item-level refund of the caller's own purchase. Revokes nothing itself; the `refund.processed` webhook does. | 202. 404 not owned. 409 not refundable. |
+| `POST` | `/api/store/refund` | Hosted sandbox only; production returns 404 without calling Neon. Asks Neon for an item-level refund of the caller's own purchase. Revokes nothing itself; the `refund.processed` webhook does. | 202. 404 not owned. 409 not refundable. |
 | `POST` | `/api/store/mock-complete`, `/api/store/mock-refund` | Mock mode only. Feed a synthetic purchase into `repository.fulfill`, or a synthetic refund into `repository.revoke`. | 404 unless the caller owns the intent. |
 | `POST` | `/api/account/transfer-code` | Issues a 24-hour, single-use code for the caller's account. | 201. The only response carrying the plaintext code; the ledger stores a SHA-256 hash. |
 | `POST` | `/api/account/claim` | Switches the device to the account behind a code. | 404 `invalid_code` for missing, expired and used codes alike. |
@@ -43,7 +43,9 @@ Webhook response policy, as implemented in `store-api.mjs` and the repositories:
 - Malformed JSON, unhandled type, version other than 2, `isSandbox` not matching `NEON_ENVIRONMENT`, missing ids, item shape other than one SKU, or purchase status other than `complete`: 200 `{received: true, ignored: <reason>}`.
 - `PermanentRejection` from the repository (unknown reference, intent not `pending`, account, SKU, quantity or amount mismatch): 200 `{received: true, ignored: <reason>}` plus a warning log.
 - Event id already processed: 200 `{received: true, duplicate: true}`. Refund for a purchase that has no intent yet: 200 `{received: true, deferred: true, revoked: false}`; the refund is kept by purchase id and a later fulfilment of it is refused.
-- A body over 64 KiB: 413. Any other thrown error, which is what a storage failure is: 500 `{error: 'store service unavailable'}`, so Neon retries.
+- Invalid JSON or a non-object request body: 400. A body over 64 KiB: 413.
+- Upstream HTTP/network failures: 502; outbound request timeouts: 504.
+- Other thrown errors, including storage failure: 500 `{error: 'store service unavailable'}`, so Neon retries.
 
 ## How to run
 
@@ -89,3 +91,12 @@ FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm run store:check   # adds the Firestor
 - [08 Storage and identity](https://github.com/Hakhyun-Kim/neon-checkout-integration/blob/main/docs/08-storage-and-identity.md)
 - [09 Sandbox run](https://github.com/Hakhyun-Kim/neon-checkout-integration/blob/main/docs/09-sandbox-run.md)
 - [12 Current integration review](https://github.com/Hakhyun-Kim/neon-checkout-integration/blob/main/docs/12-review.md)
+
+## Refund ownership and UI
+
+A permanent entitlement stays owned while at least one recorded purchase of that
+SKU has not been refunded. Refunding its current granting purchase transfers the
+grant to a remaining purchase; refunding the last one removes it. The sandbox
+refund API returns the requested purchaseId, and the UI observes either removal
+or a change to another granting purchase. Only one refund flow runs at a time.
+This policy does not prevent multiple concurrent pending checkouts or charges.

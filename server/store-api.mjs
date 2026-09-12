@@ -126,7 +126,11 @@ async function body(req, limit = 64 * 1024) {
 }
 
 function readJson(raw) {
-  try { return JSON.parse(raw.toString('utf8') || '{}'); }
+  try {
+    const value = JSON.parse(raw.toString('utf8') || '{}');
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('expected object');
+    return value;
+  }
   catch { throw Object.assign(new Error('malformed json'), { status: 400 }); }
 }
 
@@ -212,10 +216,10 @@ export function classifyEvent(event, environment) {
 
 export function createStoreApi({ repository, config, fetchImpl = fetch, log = console }) {
   const environment = config.environment === 'production' ? 'production' : 'sandbox';
-  /* Use Secure cookies behind HTTPS; fall back to the request origin when PUBLIC_URL is unset. */
+  /* Secure follows inbound TLS or the HTTPS proxy signal; PUBLIC_URL controls redirects only. */
   const cookieOptionsFor = (req) => ({
     secure: String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https'
-      || String(config.publicUrl || requestOrigin(req) || '').startsWith('https://'),
+      || Boolean(req.socket?.encrypted),
   });
 
   async function applyOrIgnore(res, run, { eventId, describe, source }) {
@@ -488,7 +492,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
        * signed refund.processed webhook that follows, which the client
        * observes by polling. A production title would gate refunds behind
        * support tooling rather than a player-facing button. */
-      if (req.method === 'POST' && url.pathname === '/api/store/refund' && !config.mock) {
+      if (req.method === 'POST' && url.pathname === '/api/store/refund' && !config.mock && environment === 'sandbox') {
         const input = readJson(await body(req));
         const resolved = checkoutItem(input.sku, { locale: 'en', country: DEFAULT_COUNTRY });
         if (!resolved) return json(res, 400, { error: 'unknown product' });
@@ -505,7 +509,7 @@ export function createStoreApi({ repository, config, fetchImpl = fetch, log = co
           purchaseId: owned.purchaseId, itemId: item.id, fetchImpl,
         });
         log.info?.(`[store] refund requested for ${input.sku} (${who(accountId)}); revocation follows the webhook`);
-        return json(res, 202, { requested: true, refundId: refund.refundId || refund.id || null });
+        return json(res, 202, { requested: true, purchaseId: owned.purchaseId, refundId: refund.refundId || refund.id || null });
       }
 
       /* Mock-only refunds validate account ownership and use repository.revoke(), the same entry point as real refund webhooks. */

@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 // Only these reviewed source windows enter the public bundle, never configuration.
 const windows = {
   checkout: ['server/store-api.mjs', '        const payload = {', 13],
-  hosted: ['server/neon-client.mjs', '  const response = await fetchImpl', 6],
+  hosted: ['server/neon-client.mjs', '  const response = await fetchNeon', 6],
   fulfill: ['server/repository.mjs', '  async fulfill(', 20],
   refund: ['server/repository.mjs', '  async revoke(', 16],
   refundRequest: ['server/store-api.mjs', "url.pathname === '/api/store/refund'", 18],

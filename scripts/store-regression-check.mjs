@@ -10,7 +10,7 @@ await assert.rejects(createNeonCheckout({ apiKey: 'test', payload: {}, timeoutMs
     const timer = setTimeout(() => resolve(new Response('{}')), 1000);
     signal.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
   }),
-}), { name: 'TimeoutError' });
+}), error => error.status === 504 && error.cause?.name === 'TimeoutError');
 await assert.rejects(createNeonCheckout({ apiKey: 'test', payload: {},
   fetchImpl: async () => new Response(JSON.stringify({ checkoutId: 'id', token: 'token' })),
 }), /incomplete hosted checkout/);

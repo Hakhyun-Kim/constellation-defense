@@ -138,6 +138,7 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
   /* Live progress of a hosted-mode real refund: stage 1 request sent,
    * 3 Neon accepted (waiting for the webhook), 5 revoked and gone. */
   let refundFlow = null;
+  let refundPending = false;
 
   title.textContent = `✦ ${words.title}`;
   close.textContent = words.close;
@@ -311,7 +312,7 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
       }));
       inventory.append(failures);
       product.append(inventory);
-    } else {
+    } else if (catalog.environment === 'sandbox') {
       /* Hosted mode: the shared demo can walk the real refund lifecycle too —
        * request → Neon 201 → refund.processed webhook → ledger revoke → Owned
        * gone. The button only asks; the webhook is the truth this page polls. */
@@ -322,8 +323,9 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
           element('small', null, label('Item-level request to Neon; only the signed refund.processed webhook revokes. This page watches for it.', 'Neon에 item 단위로 요청하고, 회수는 서명된 refund.processed 웹훅으로만 일어납니다. 이 화면이 그 도착을 지켜봅니다.')));
         for (const item of ownedItems) {
           const row = element('div', 'neon-refund-row');
-          row.append(element('span', null, item.name),
-            action(label('Refund (real sandbox)', '환불 (실 샌드박스)'), () => { void startRealRefund(item); }));
+          const refundButton = action(label('Refund (real sandbox)', '환불 (실 샌드박스)'), () => { void startRealRefund(item); });
+          refundButton.disabled = refundPending;
+          row.append(element('span', null, item.name), refundButton);
           inventory.append(row);
         }
         if (refundFlow) inventory.append(renderRefundFlow());
@@ -384,8 +386,8 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
       label('Refund requested from this page', '이 화면에서 환불 요청'),
       label('Server asks Neon (item-level) → 201 refund created', '서버가 Neon에 item 단위 요청 → 201 환불 생성'),
       label('Signed refund.processed webhook arrives', '서명된 refund.processed 웹훅 도착'),
-      label('Ledger revokes the entitlement', '원장이 권리를 회수'),
-      label('Owned disappears — buyable again', 'Owned가 사라지고 다시 구매 가능'),
+      label('Ledger updates purchase ownership', '원장이 구매 권리를 갱신'),
+      label('Refund reflected in inventory', '환불 결과가 보관함에 반영됨'),
     ];
     const list = element('ol', 'neon-flow-steps');
     steps.forEach((text, index) => {
@@ -398,7 +400,9 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
     });
     flow.append(element('b', null, `${refundFlow.name}`), list);
     if (refundFlow.error) flow.append(element('p', 'neon-flow-error', refundFlow.error));
-    if (refundFlow.stage >= 5) flow.append(element('p', 'neon-flow-done', label('Revoked by the webhook — the castle lost the decoration and the item is buyable again.', '웹훅으로 회수 완료 — 성에서 장식이 사라지고 다시 구매할 수 있습니다.')));
+    if (refundFlow.stage >= 5) flow.append(element('p', 'neon-flow-done', refundFlow.retained
+      ? label('Refund processed. Another paid purchase keeps this item owned; refund it separately if needed.', '환불 완료. 다른 구매가 남아 있어 아이템은 유지됩니다. 필요하면 남은 구매도 별도로 환불하세요.')
+      : label('Revoked by the webhook — the castle lost the decoration and the item is buyable again.', '웹훅으로 회수 완료 — 성에서 장식이 사라지고 다시 구매할 수 있습니다.')));
     const code = element('details', 'neon-flow-code');
     code.append(element('summary', null, label('The code this ran', '방금 실행된 코드')));
     for (const key of ['refundRequest', 'refund']) {
@@ -410,18 +414,21 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
   }
 
   async function startRealRefund(item) {
+    if (refundPending) return;
+    refundPending = true;
     refundFlow = { sku: item.sku, name: item.name, stage: 0, error: null };
     render();
     try {
-      await postJson('/api/store/refund', { sku: item.sku });
+      const requested = await postJson('/api/store/refund', { sku: item.sku });
       refundFlow.stage = 2;                       // Request accepted; Neon created the refund.
       render();
       for (let attempt = 0; attempt < 20; attempt += 1) {
         await sleep(POLL_INTERVAL_MS);
         await refreshEntitlements();
-        if (!owns(item)) {
+        if (!owns(item) || (requested.purchaseId && entitlements[item.entitlement]?.purchaseId !== requested.purchaseId)) {
           refundFlow.stage = 5;                   // Webhook landed and the ledger revoked.
-          paymentEvent('refunded', { sku: item.sku });
+          refundFlow.retained = owns(item);
+          paymentEvent('refunded', { sku: item.sku, retained: refundFlow.retained });
           render();
           return;
         }
@@ -429,8 +436,10 @@ export function initNeonStore({ locale = 'ko', onEntitlements = () => {}, onPrev
       refundFlow.error = label('Still owned — the refund webhook has not arrived yet. Reopen the store to check again.', '아직 보유 중입니다 — 환불 웹훅이 아직 도착하지 않았습니다. 상점을 다시 열어 확인하세요.');
     } catch (error) {
       refundFlow.error = words[error.message] || error.message;
+    } finally {
+      refundPending = false;
+      render();
     }
-    render();
   }
 
   async function startCheckout(item) {

@@ -159,8 +159,14 @@ export class JsonRepository {
         /* Revoke only the grant this purchase made; a duplicate purchase's refund leaves the first purchase's item in place. */
         const grant = player?.entitlements?.[checkout.entitlement];
         if (grant && (!grant.purchaseId || grant.purchaseId === checkout.purchaseId)) {
-          delete player.entitlements[checkout.entitlement];
-          revoked = true;
+          const replacement = player.purchases.find((entry) => entry.sku === checkout.sku
+            && entry.purchaseId !== checkout.purchaseId && !entry.refundedAt);
+          if (replacement) {
+            player.entitlements[checkout.entitlement] = { grantedAt: replacement.at, purchaseId: replacement.purchaseId };
+          } else {
+            delete player.entitlements[checkout.entitlement];
+            revoked = true;
+          }
         }
         const purchase = player?.purchases?.find((entry) => entry.purchaseId === checkout.purchaseId);
         if (purchase) { purchase.refundedAt = at; purchase.refundId = event.refundId || null; }

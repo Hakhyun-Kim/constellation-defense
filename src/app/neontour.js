@@ -57,7 +57,9 @@ export function initNeonTour(ctx) {
     if (event.type === 'store') stage(2, text('2. Choose one of three decorations. Prices come from the server.', '2. 세 가지 장식 중 선택하세요. 가격은 서버 값입니다.'), 'checkout');
     if (event.type === 'checkout') stage(3, text('3. Checkout exists, but nothing is owned. Leave it pending, cancel, or confirm in the store.', '3. 결제는 생성됐지만 보유하지 않습니다. 상점에서 대기·취소·확인하세요.'), 'fulfill');
     if (event.type === 'fulfilled') stage(4, text('4. Close the store: the castle now wears your purchase. Buy more to combine decorations.', '4. 상점을 닫고 성을 확인하세요. 장식을 추가 구매해 함께 표시할 수 있습니다.'), 'visuals');
-    if (event.type === 'refunded') stage(5, text('5. One decoration removed. Others stay. Rebuy it to repeat the lifecycle.', '5. 선택한 장식만 제거됐습니다. 재구매해 수명주기를 반복하세요.'), 'refund');
+    if (event.type === 'refunded') stage(5, event.retained
+      ? text('5. Refund processed. Another paid purchase keeps this decoration owned.', '5. 환불 완료. 다른 구매가 남아 있어 장식은 유지됩니다.')
+      : text('5. One decoration removed. Others stay. Rebuy it to repeat the lifecycle.', '5. 선택한 장식만 제거됐습니다. 재구매해 수명주기를 반복하세요.'), 'refund');
   });
   const clock = setInterval(() => {
     const state = ctx.stage.snapshot();

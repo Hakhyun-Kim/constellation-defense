@@ -8,6 +8,10 @@ export function normalizeLocale(value) {
 
 const EN = new Map(Object.entries({
   ...CONTENT_EN,
+  '원장이 구매 권리를 갱신': 'Ledger updates purchase ownership',
+  '환불 결과가 보관함에 반영됨': 'Refund reflected in inventory',
+  '환불 완료. 다른 구매가 남아 있어 아이템은 유지됩니다. 필요하면 남은 구매도 별도로 환불하세요.': 'Refund processed. Another paid purchase keeps this item owned; refund it separately if needed.',
+  '5. 환불 완료. 다른 구매가 남아 있어 장식은 유지됩니다.': '5. Refund processed. Another paid purchase keeps this decoration owned.',
   '지난 모험이 자동 저장돼 있어요': 'Your previous adventure was saved automatically.',
   '이전': 'Previous',
   '다음': 'Next',

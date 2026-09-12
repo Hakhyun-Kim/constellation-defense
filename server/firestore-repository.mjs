@@ -139,8 +139,13 @@ export class FirestoreRepository {
          * Entitlement keys contain dots. Use FieldPath so Firestore does not interpret them as nested paths. */
         const grant = (await tx.get(playerRef)).data()?.entitlements?.[checkout.entitlement];
         if (grant && (!grant.purchaseId || grant.purchaseId === checkout.purchaseId)) {
-          tx.update(playerRef, new FieldPath('entitlements', checkout.entitlement), FieldValue.delete());
-          revoked = true;
+          const paid = await tx.get(playerRef.collection('purchases').where('sku', '==', checkout.sku));
+          const replacement = paid.docs.map((doc) => doc.data())
+            .filter((entry) => entry.purchaseId !== checkout.purchaseId && !entry.refundedAt)
+            .sort((a, b) => a.at.localeCompare(b.at) || a.purchaseId.localeCompare(b.purchaseId))[0];
+          tx.update(playerRef, new FieldPath('entitlements', checkout.entitlement), replacement
+            ? { grantedAt: replacement.at, purchaseId: replacement.purchaseId } : FieldValue.delete());
+          revoked = !replacement;
         }
         tx.set(playerRef.collection('purchases').doc(checkout.purchaseId), {
           refundedAt: at, refundId: event.refundId || null,

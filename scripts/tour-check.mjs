@@ -66,3 +66,33 @@ for (let tick = 0; tick < 9000 && game.phase !== 'over'; tick++) {
 assert.equal(game.phase, 'over');
 assert.equal(game.castleHp, 0);
 console.log('tour scenario: normal commands and actual enemy damage reach defeat');
+
+// Execute the real refund handler with controlled requests: a second click must
+// not replace the first flow while either its request or polling is pending.
+const storeSource = readFileSync('src/app/neon-store.js', 'utf8');
+assert.ok(storeSource.includes("else if (catalog.environment === 'sandbox')"));
+const refundHandler = storeSource.slice(storeSource.indexOf('  async function startRealRefund(item)'), storeSource.indexOf('  async function startCheckout(item)'));
+let releaseRefund;
+const waiting = new Promise(resolve => { releaseRefund = resolve; });
+let calls = 0;
+const buildRefund = new Function('postJson', 'sleep', 'refreshEntitlements', 'owns', 'paymentEvent', 'entitlements', `
+  let refundFlow = null, refundPending = false;
+  const render = () => {}, label = en => en, words = {}, POLL_INTERVAL_MS = 0;
+  ${refundHandler}
+  return { run: startRealRefund, state: () => refundFlow };
+`);
+const refunds = buildRefund(() => { calls++; return waiting; }, async () => {}, async () => {}, () => false, () => {});
+const firstRefund = refunds.run({ sku: 'A', name: 'Item A' });
+await refunds.run({ sku: 'B', name: 'Item B' });
+assert.equal(calls, 1);
+assert.equal(refunds.state().sku, 'A');
+releaseRefund(); await firstRefund;
+assert.equal(refunds.state().stage, 5);
+await refunds.run({ sku: 'B', name: 'Item B' });
+assert.equal(calls, 2, 'lock releases after completion');
+const retainedRefund = buildRefund(async () => ({ purchaseId: 'original' }), async () => {}, async () => {}, () => true, () => {},
+  { banner: { purchaseId: 'remaining' } });
+await retainedRefund.run({ sku: 'A', name: 'Item A', entitlement: 'banner' });
+assert.equal(retainedRefund.state().stage, 5, 'replacement purchase signals completed refund');
+assert.equal(retainedRefund.state().retained, true);
+console.log('refund UI: concurrent clicks cannot overwrite another refund flow');

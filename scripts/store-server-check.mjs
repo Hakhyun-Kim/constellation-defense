@@ -372,6 +372,29 @@ async function runSuite(repository, label) {
       assert.equal(await ownsBanner(twice), false, 'refunding the granting purchase revokes');
     }
 
+    // Refunding the original first must retain another unrefunded purchase.
+    {
+      const buyer = sessionCookie(await call('/api/store/catalog'));
+      const refs = [];
+      for (let i = 0; i < 2; i++) refs.push(referenceOf((await (await openCheckout(buyer)).json()).redirectUrl));
+      const accountId = (await repository.pendingCheckout(refs[0])).accountId;
+      for (let i = 0; i < 2; i++) await deliver(purchaseEvent({ id: `reverse-buy-${i}` },
+        { id: `reverse-purchase-${i}`, accountId, externalReferenceId: refs[i] }));
+      const first = await deliver(refundEvent({ id: 'reverse-refund-0' }, { id: 'reverse-rf-0', purchaseId: 'reverse-purchase-0' }));
+      assert.equal(first.payload.revoked, false);
+      assert.equal((await repository.entitlements(accountId))['cosmetic.celestial_banner'].purchaseId, 'reverse-purchase-1');
+      assert.equal((await repository.purchases(accountId)).find(p => p.purchaseId === 'reverse-purchase-1').refundedAt, undefined);
+      const last = await deliver(refundEvent({ id: 'reverse-refund-1' }, { id: 'reverse-rf-1', purchaseId: 'reverse-purchase-1' }));
+      assert.equal(last.payload.revoked, true);
+      assert.equal(await ownsBanner(buyer), false);
+    }
+    for (const value of [null, [], true, 42, 'text']) {
+      const response = await call('/api/store/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value),
+      });
+      assert.equal(response.status, 400, 'non-object JSON is a client error');
+    }
+
     /* A malformed cookie from another app on the origin must not break the store. */
     {
       const junk = await call('/api/store/catalog?locale=ko', { headers: { cookie: 'other=%E0%A4%A; flag' } });
@@ -623,12 +646,12 @@ async function runSuite(repository, label) {
       return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } });
     };
 
-    async function liveServer(fetchImpl) {
+    async function liveServer(fetchImpl, environment = 'sandbox') {
       const liveHandler = createStoreApi({
         repository,
         config: {
           mock: false, apiKey: 'test-secret-key', apiUrl: 'https://api.example.test',
-          webhookSecret: secret, publicUrl: 'https://tunnel.example.test', environment: 'sandbox',
+          webhookSecret: secret, publicUrl: 'https://tunnel.example.test', environment,
         },
         fetchImpl, log: quiet,
       });
@@ -786,10 +809,21 @@ async function runSuite(repository, label) {
       assert.doesNotMatch(await failed.text(), /test-secret-key/, '오류 응답에 키가 새지 않는다');
     } finally { await rejects.close(); }
 
+    for (const [name, expected] of [['TypeError', 502], ['TimeoutError', 504]]) {
+      const failing = await liveServer(async () => { throw Object.assign(new Error('controlled transport failure'), { name }); });
+      try {
+        const response = await fetch(`${failing.at}/api/store/catalog`);
+        assert.ok(!response.headers.get('set-cookie').includes('Secure'), 'HTTP cookie ignores HTTPS PUBLIC_URL');
+        const secure = await fetch(`${failing.at}/api/store/catalog`, { headers: { 'x-forwarded-proto': 'https' } });
+        assert.ok(secure.headers.get('set-cookie').includes('Secure'));
+        assert.equal((await failing.checkout(sessionCookie(response))).status, expected);
+      } finally { await failing.close(); }
+    }
+
     const incomplete = await liveServer(stubNeon(201, { checkoutId: 'chk_2' }));
     try {
       const buyer = sessionCookie(await fetch(`${incomplete.at}/api/store/catalog?locale=ko`));
-      assert.equal((await incomplete.checkout(buyer)).status, 500, 'redirectUrl 없는 응답은 성공으로 치지 않는다');
+      assert.equal((await incomplete.checkout(buyer)).status, 502, 'redirectUrl 없는 응답은 성공으로 치지 않는다');
     } finally { await incomplete.close(); }
 
     /* Shared-link returns: an allowlisted Origin (plus a validated path) wins
@@ -847,6 +881,13 @@ async function runSuite(repository, label) {
       })).status, 404, 'mock 모드에는 실환불 라우트가 없다');
 
       let sentRefund = null;
+      const production = await liveServer(async () => { throw new Error('production refund must never call Neon'); }, 'production');
+      try {
+        assert.equal((await fetch(`${production.at}/api/store/refund`, {
+          method: 'POST', headers: { cookie: rBuyer, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sku: 'CELESTIAL_BANNER' }),
+        })).status, 404);
+      } finally { await production.close(); }
       const refundStub = (refundable = 1) => async (url, options = {}) => {
         if (String(url).endsWith('/refund')) {
           sentRefund = { url: String(url), body: JSON.parse(options.body) };
