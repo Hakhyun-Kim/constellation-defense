@@ -11,8 +11,8 @@ The Neon checkout integration (`server/`, `deploy/`, the store UI and checkout
 inspector) and the dedicated server (`dedicated/`, `clients/`, `?dedicated=1`)
 were removed from this repository on 2026-09-20 to keep the game a server-free
 static build. The code, its checks, a wiring patch and the re-attach guide are
-in the `neon-checkout-integration` repository under `code/`; the tag
-`neon-integrated-final` marks the last commit here that still had them. If an
+in the `neon-checkout-integration` repository under `code/`; commit `41f193b`
+is the last one here that still had them. If an
 older checkout on another machine still has a `.env` or `.data/`, leave them
 untracked — `.gitignore` keeps ignoring both.
 

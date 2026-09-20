@@ -59,7 +59,7 @@ again so the game stays a small, server-free static build. The code, its
 checks, the wiring patch and the re-attach guide live in the companion
 [neon-checkout-integration](https://github.com/Hakhyun-Kim/neon-checkout-integration)
 repository under `code/`; the last commit of this repository with everything
-integrated is tagged `neon-integrated-final`.
+integrated is `41f193b`.
 
 ## Built with Codex
 
