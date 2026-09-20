@@ -215,9 +215,8 @@ export function chooseTacticSwap(state, cells, P, rng = state.rng || Math.random
     .sort((a, b) => b.score - a.score || a.move.from - b.move.from || a.move.to - b.move.to)[0].move;
 }
 
-/* Named swap policies shared by the balance gate, its reports, and the
- * dedicated host — one implementation for every consumer of "how the bot
- * decides to swap". */
+/* Named swap policies shared by the balance gate and its reports — one
+ * implementation for every consumer of "how the bot decides to swap". */
 export const TACTIC_POLICIES = ['none', 'random', 'threat'];
 
 export function choosePolicySwap(policy, state, board, profile, rng, legalMoves = findLegalSwaps(board)) {

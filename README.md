@@ -28,7 +28,7 @@ guided live-demo subtitles are documented in
 [docs/design/hero-linked-puzzle-and-cinematic-demo.md](docs/design/hero-linked-puzzle-and-cinematic-demo.md).
 For a fresh setup or handoff to another computer, start with [docs/CONTINUATION.md](docs/CONTINUATION.md).
 
-## Play — client mode, the default game
+## Play
 
 The game itself is a static client build. It needs **no server of any kind**:
 
@@ -51,76 +51,15 @@ npm run check
 npm run balance:check
 ```
 
-## Two ways to run
+## Payments and server mode — detached
 
-| Mode | Start | What runs |
-|---|---|---|
-| **Client mode** (default) | Pages · `index.html` · `npm run serve` | The whole game simulates locally in your browser. No servers, no account. |
-| **Server mode** (optional) | `start-dedicated.bat` / `./start-dedicated.command` | A dedicated server owns the simulation; the browser is an authenticated viewer of its live demo session. |
-
-The optional Neon store demo (`start-demo.bat` / `./start-demo.command`) adds a
-local payment server to client mode; without one the store hides itself. The
-modes stay separate on purpose: server-mode code is inert without
-`?dedicated=1` and adds ~21 KB (1.5%) to the bundle, nothing else.
-
-## Server mode — the dedicated server
-
-The same simulation can run in an authoritative server process, with every
-client — this web build, and the Unity/Unreal samples in `clients/` — acting
-as a renderer of its snapshots. No game rule runs client-side in that mode,
-and the server is also the **store gateway**: store calls ride the same
-WebSocket and are brokered server-to-server to the payment service with the
-connection's account identity, so cosmetics bought from the panel's store
-button appear on the shared castle for every viewer.
-
-`start-dedicated.bat` (Windows) or `./start-dedicated.command` (macOS/Linux)
-starts the dedicated server (`ws://127.0.0.1:8643`) and the web client
-(`http://127.0.0.1:8642`), then opens the live viewer, where a server-side bot
-plays immediately. The on-screen panel shows the architecture, command flow,
-code map and progress, and a **Try the game** button switches back to an
-ordinary client-mode run. Watching is public; pausing, changing speed, and
-restarting the session require the controller key (the launcher passes a
-loopback demo key).
-
-To be precise about what this mode is today: the server plays **itself**
-with the shared bot policy and streams the result; the protocol has no
-player-action message, so nobody plays *through* the server yet, and **Try
-the game** is a local client-mode game, not a game via the server. The
-`clients/` Unity/Unreal files are protocol smoke tests (no rendering, not
-yet executed in an engine). Playing through the server and engine viewers
-are the recorded next steps — see the table in the decision record.
-
-Manual equivalent: `npm run dedicated` in one terminal, `npm run serve` in
-another, then open `http://127.0.0.1:8642/?lang=en&dedicated=1`. The folder
-guide is [`dedicated/README.md`](dedicated/README.md); the wire
-contract is [`dedicated/PROTOCOL.md`](dedicated/PROTOCOL.md), enforced by
-`npm run dedicated:check`; the decision record is
-[`docs/design/dedicated-server-architecture.md`](docs/design/dedicated-server-architecture.md).
-A `compose.yaml`/`dedicated/Dockerfile` container path exists for
-deployment-shaped review (not executed on the development machine).
-
-## Optional store — Neon checkout
-
-The **별빛 상점 / Celestial Store** sells permanent, cosmetic-only castle
-decorations. Pricing and fulfillment are server-owned (`server/`), the game
-engine knows nothing about payments, and on static hosting the store simply
-hides itself. `start-demo.bat` / `./start-demo.command` runs the full local
-demo in mock mode with a checkout inspector on the game screen (with
-`?demo=expert` a bot plays until you take over);
-`npm run store:check` is the focused integration suite. Routes, invariants and
-configuration: [`server/README.md`](server/README.md); Cloud Run deployment:
-[`deploy/README.md`](deploy/README.md); every check script: [`scripts/README.md`](scripts/README.md).
-
-A deployed payment service can also be targeted **from a shared link**:
-`?store=1&api=<payment-service-origin>` points this static build at it — the
-origin must appear in the page's CSP `connect-src` (the allowlist is what
-keeps any other value inert), return URLs carry the parameter back, and owned
-items expose a **real sandbox refund** that shows the whole sequence on
-screen: request → Neon item-level refund → signed `refund.processed` webhook
-→ ledger revoke → Owned gone. The full record — architecture, decisions,
-verification, open questions — lives in the companion
+A Neon Hosted Checkout store and a dedicated-server (spectator / store-gateway)
+mode were integrated into this repository in September 2026 and then detached
+again so the game stays a small, server-free static build. The code, its
+checks, the wiring patch and the re-attach guide live in the companion
 [neon-checkout-integration](https://github.com/Hakhyun-Kim/neon-checkout-integration)
-repository.
+repository under `code/`; the last commit of this repository with everything
+integrated is tagged `neon-integrated-final`.
 
 ## Built with Codex
 
@@ -130,8 +69,7 @@ The design decisions were human-led: matching must map to a visible road, each t
 
 ## Technical notes
 
-- Static client build with esbuild; the optional server mode runs the same
-  pure simulation in a Node process and streams it to viewers.
+- Static client build with esbuild; no server of any kind is required.
 - `src/engine/` is DOM- and renderer-free, enabling deterministic Node checks.
 - `src/balance/` is the single source for tactical and squad-growth numbers.
 - `src/app/tacticflow.js` owns board input and cascades; `src/engine/tactics.js` resolves their commands into combat events.

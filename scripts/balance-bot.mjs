@@ -42,7 +42,7 @@ function spendTownSpecializations(state) {
   }
 }
 
-/* Swap policies and resolution live in src/bot.js so the dedicated host and
+/* Swap policies and resolution live in src/bot.js so the balance gate and
  * the browser share one implementation; re-export for existing consumers. */
 export { TACTIC_POLICIES, choosePolicySwap, resolveTacticSwap } from '../src/bot.js';
 import { choosePolicySwap, resolveTacticSwap } from '../src/bot.js';

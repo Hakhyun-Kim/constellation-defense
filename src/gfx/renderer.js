@@ -1,6 +1,5 @@
 /* Three.js renderer with the distant castle above three incoming lanes. world.js supplies terrain/castle construction and fx.js supplies effects; optional external assets supplement procedural models through a separate loader. */
 import * as THREE from 'three';
-import { CastleCosmetics } from './cosmetics.js';
 import * as D from '../data.js';
 import { CHAMP_CHAT } from '../story.js';
 import { S, wx, wz, emojiTexture, blobTexture } from './common.js';
@@ -99,7 +98,6 @@ export class Renderer3D {
 
     this._buildTerrain();
     this._buildCastle();
-    this.cosmetics = new CastleCosmetics(this.castle);
     this._buildParticles();
     this._buildDamageNumbers();
     this.regions = new RegionScenery(this.scene);
@@ -1537,7 +1535,6 @@ export class Renderer3D {
 
   dispose() {
     this.disposed = true;
-    this.cosmetics.dispose();
     this.gatePilotRequest = null;
     this.ro.disconnect();
     for (const part of this.gatePilot?.parts || []) part.dispose();

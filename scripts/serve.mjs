@@ -1,26 +1,13 @@
-/* Development static server. PORT defaults to 8642; override it for concurrent workspaces. Mount the payment API here for local same-origin use. Production uses server/index.mjs for API-only hosting and a separate static game host. Development reports configuration problems without exiting, allowing credential-free mock use. Usage: node scripts/serve.mjs */
+/* Development static server. PORT defaults to 8642; override it for concurrent workspaces. Usage: node scripts/serve.mjs */
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../server/config.mjs';
-import { createLogger } from '../server/logger.mjs';
-import { createRepository } from '../server/repository-factory.mjs';
-import { createStoreApi } from '../server/store-api.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const { config, problems } = loadConfig(process.env, { role: 'dev' });
-const log = createLogger({ format: config.logFormat });
-
-for (const problem of problems) log.warn(problem.message);
-
-const { repository, backend } = await createRepository({
-  backend: config.backend,
-  dataDir: join(root, '.data'),
-  environment: config.environment,
-  projectId: config.projectId,
-});
-const storeApi = createStoreApi({ repository, config, log });
+/* PORT=0 asks the OS for a free port (used by serve-check). */
+const port = process.env.PORT != null && process.env.PORT !== '' ? Number(process.env.PORT) : 8642;
+const host = process.env.HOST || '127.0.0.1';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -38,12 +25,10 @@ const MIME = {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
-    if (await storeApi(req, res, url)) return;
     let rel = decodeURIComponent(url.pathname);
     if (rel.endsWith('/')) rel += 'index.html';
 
-    // This used to serve the entire repository, including payment credentials
-    // and bearer identities in the ledger. Only the game's public build is served.
+    // Only the game's public build is served, never the repository around it.
     if (!/^\/(?:index\.html|(?:assets|css|dist)\/[^\\:]+)$/.test(rel)
         || rel.split('/').some((part) => part.startsWith('.'))) {
       res.writeHead(404).end('404');
@@ -68,6 +53,6 @@ const server = createServer(async (req, res) => {
   } catch {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404');
   }
-}).listen(config.port, config.host, () => {
-  log.info(`Constellation Defense → http://localhost:${server.address().port}/`, { ledger: backend });
+}).listen(port, host, () => {
+  console.log(`Constellation Defense → http://localhost:${server.address().port}/`);
 });

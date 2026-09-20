@@ -92,94 +92,14 @@ node scripts/asset-budget-check.mjs
 - 콘솔 오류와 누락 파일이 없어야 하며, 공개 Pages URL은 시크릿 창에서 로그인 없이 열려야 한다.
 - 외부 에셋이 있으면 `assets/manifest.json`, `CREDITS.md`, `npm.cmd run asset:check`, 데스크톱 high·모바일 lite 성능 전후 기록이 모두 있어야 한다. 폰트도 라이선스와 폴백을 `CREDITS.md`에 기록한다.
 
-## Neon 결제 통합 (`server/`)
+## 결제·서버 모드는 분리됨
 
-게임은 원래 서버가 없는 정적 빌드였다. `server/`는 결제만을 위한 독립 영역이고
-게임 엔진과 분리돼 있다 — `src/engine/`은 이 코드를 모른다.
-
-```
-server/index.mjs          결제 API 독립 서비스 (정적 파일 서빙 안 함, 배포용 진입점)
-server/store-api.mjs      HTTP 라우트 · 신원(토큰→쿠키) · 국가 해석 · 웹훅 검증/분류
-server/catalog.mjs        SKU 허용 목록 + 가격이 존재하는 유일한 곳
-server/ledger-rules.mjs   두 원장이 함께 쓰는 지급·환불 규칙 (PermanentRejection 정의)
-server/repository.mjs     JSON 원장: 결제 의도·권리·멱등성·환불·인계 코드·저장본
-server/firestore-repository.mjs   같은 인터페이스를 Firestore 트랜잭션으로
-server/config.mjs · logger.mjs    부팅 시 설정 판정(fatal/warn) · text/json 로그
-src/app/neon-store.js     상점 UI · 체크아웃 시작 · 복귀 폴링 · 인계 코드 UI
-src/app/neontour.js       체크아웃 인스펙터 (?tour=neon) — 실제 상점을 관찰; 구매·환불은 수동. ?demo=expert를 붙이면 봇이 플레이(관전)하고 Play 버튼이 봇을 멈춘다
-src/app/neon-events.js    인스펙터로 가는 관찰 이벤트 · 민감 필드 redact
-scripts/payment-excerpts.mjs  빌드 시 검토된 소스 발췌를 번들로 생성
-start-demo.bat            원클릭(Windows): .env 생성·빌드·서버 실행·브라우저 열기
-start-demo.command        원클릭(macOS/Linux): 같은 동작, Node 22.9+ 검사 포함
-```
-
-**실행·검토:** Windows는 `start-demo.bat`, macOS는 `./start-demo.command`가
-가장 빠르다. 수동은 `cp .env.example .env` (모의 모드 이미 설정) →
-`npm run serve` → `http://127.0.0.1:8642/?lang=en&demo=expert&tour=neon&mute`.
-`demo=expert`로 봇이 방어를 플레이하고(관전), 인스펙터는 5단계 안내·실제 소스
-발췌·redact된 HTTP 기록을 보여 주지만 구매를 스스로 만들지 않는다 — 구매·환불은
-상점의 실제 버튼으로 하고, 상점이 열려 있는 동안 봇은 멈춘다(재시작 없음). 모의 구매 상태는
-자동으로 지워지지 않는다(새로고침에도 유지). 초기화는 상점의 Test refund 또는
-`.data/` 삭제. 검증: `npm run store:check`(실패 경로 위주) · `service:check` ·
-`tour:check` — 모두 `npm run check` 게이트에 포함. Firestore 백엔드는 에뮬레이터
-띄우고 `FIRESTORE_EMULATOR_HOST=127.0.0.1:8787 npm run store:check`.
-
-**지켜야 할 규약 (어기면 결제가 조용히 깨진다):**
-
-- 가격·통화·국가는 서버만 소유한다. 클라이언트는 `{sku, locale}`만 보낸다.
-- 지급은 `repository.fulfill()` 한 곳에서만 — 서명된 웹훅만 권리를 쓴다.
-  리다이렉트는 권한이 없다(웹훅이 늦을 수 있어서).
-- 웹훅 응답은 "재시도가 의미 있는가"로 가른다. Neon은 비-2xx를 36시간 재시도.
-  재시도로 못 푸는 것은 `200 {ignored}`+로그, 서명 실패만 403, 저장 실패만 5xx.
-- 가격은 100배 정수, 표시는 `Intl`로 파생. ₩4,900=`490000`. 손으로 적지 말 것.
-- 국가는 게임 언어에서 유추하지 않는다. `?lang=en`이 청구 국가를 바꾸면 안 된다.
-- 모의 모드도 실제 지급 경로(`fulfill`/`revoke`)를 그대로 지난다.
-- `?lang=en` 새 UI 문자열은 `i18n.js` 표에 등록, 숫자가 섞이면 패턴으로.
-
-설계·판단 근거·미완 항목의 전체 기록은 별도 문서 저장소
-`neon-checkout-integration`(README → docs 00~14)에 있다.
-
-> `server/` 변경이 포함돼 외부로 공유되는 PR 은 **영어** 커밋 메시지를 쓴다.
-
-## Dedicated 게임 서버 + 상점 게이트웨이 (`dedicated/`)
-
-시뮬레이션을 권위적으로 소유하고, 클라이언트의 유일한 접점 역할까지 하는
-별도 프로세스. 클라이언트(웹, 이후 Unity/Unreal)는 스냅샷을 렌더링하는
-뷰어이고, 게임 규칙은 클라이언트에서 돌지 않으며, 상점 호출도 이 소켓을
-타고 결제 서비스로 중계된다(server-to-server). 결정 근거:
-`docs/design/dedicated-server-architecture.md`, 와이어 계약:
-`dedicated/PROTOCOL.md` v2 (실행 명세는 `npm run dedicated:check`).
-
-```
-dedicated/server.mjs   WS 엔드포인트 · hello 역할/신원 · 방송 · 상점 게이트웨이
-dedicated/host.mjs     권위 세션: engine+balance+bot 정책, 스냅샷/이벤트/결정 생성
-dedicated/ws.mjs       의존성 없는 RFC6455 서버 (텍스트 프레임)
-src/app/dedicated-client.js   스냅샷 병합 + 이동 보간 + store 전송 — 규칙 없음
-src/app/dedicated-overlay.js  데모 오버레이(상태·아키텍처·흐름·코드맵·상점·컨트롤)
-clients/unity·unreal   같은 계약의 엔진 클라이언트 샘플 (여기서 실행은 안 됨)
-start-dedicated.bat / .command   서버 2개 실행 + ?dedicated=1 뷰어 열기
-```
-
-**지켜야 할 규약:**
-- **클라이언트 모드가 게임의 기준이다.** 기본 게임(Pages·index.html 더블클릭·
-  `npm run serve`)은 서버 0개로 돌아야 하고, dedicated 코드는 `?dedicated=1`
-  없이는 연결·오버레이·입력 차단 어느 것도 활성화하지 않는다. 이 경계를
-  무너뜨리는 변경은 하지 않는다.
-- `dedicated/`는 `src/`(engine·balance·bot·tactics)와 `server/logger.mjs`만
-  import 한다. 결제 코드는 import 하지 않고 **HTTP로만** 부른다
-  (`PAYMENT_API_URL`, 기본 `http://127.0.0.1:8642`).
-- 클라이언트에 게임 규칙을 넣지 않는다. 스냅샷이 항상 로컬 추측을 덮는다.
-- **게이트웨이는 허용 목록 밖을 중계하지 않는다.** 특히 `/api/webhooks/*`는
-  이유를 적어 403 — 웹훅은 Neon→결제 서비스 트래픽이다. 새 클라이언트 경로가
-  필요하면 `STORE_PATHS`·`PROTOCOL.md`·`dedicated-check`를 같은 커밋에서
-  바꾼다.
-- 상점 신원은 hello의 `playerToken`(또는 발급 UUID) bearer 계정이다. 가격·
-  국가·지급 판정은 전부 결제 서비스 몫이고 게이트웨이는 신원과 쿠키 저장고만
-  붙인다. 세션 코스메틱(`cosmetics`)은 표시용 union일 뿐 원장이 아니다.
-- 프로토콜을 바꾸면 `PROTOCOL.md`와 `scripts/dedicated-check.mjs`를 같은
-  커밋에서 갱신한다 — 문서와 검사가 어긋나면 검사가 이긴다.
-- 컨트롤 키는 데모용 공유 비밀이다. 배포에서는 반드시 교체하고, 로컬
-  `local-demo-key`를 문서 밖 예제에 쓰지 않는다.
+Neon 결제 통합(`server/`, `deploy/`, 상점 UI·체크아웃 인스펙터)과 dedicated 게임
+서버(`dedicated/`, `clients/`, `?dedicated=1`)는 2026-09-20에 이 저장소에서 걷어냈다.
+게임은 다시 서버가 없는 정적 빌드다. 코드·검사·배선 패치·재부착 절차는 별도 저장소
+`neon-checkout-integration`의 `code/`에 있고, 통합돼 있던 마지막 커밋은
+`neon-integrated-final` 태그다. 다시 붙이기로 결정하기 전에는 결제·서버 코드를
+이 저장소에 되돌려 넣지 않는다.
 
 ## 작업 방식
 

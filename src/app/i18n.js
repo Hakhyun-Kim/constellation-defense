@@ -110,8 +110,6 @@ const EN = new Map(Object.entries({
   '레벨업 포인트로 전문화를 고르세요': 'Spend level-up points on a specialization',
   '전투에서 얻은 전문화 포인트는 원정 지도 속 마을 시설에서만 사용합니다.': 'Specialization points earned in battle are spent only at town facilities on the expedition map.',
   '전투 처치와 웨이브 완료로 경험치를 얻습니다. 포인트가 생기면 한 영웅의 역할을 깊게 만드세요.': 'Kills and completed waves grant experience. When a point arrives, deepen one hero’s role with it.',
-  '별빛 상점': 'Celestial Store',
-  '별빛 개척자 깃발': 'Celestial Pioneer Banner',
   'AI 관전': 'AI Spectate',
   '관전 끝내기': 'End Spectate',
   '보스 접근!': 'Boss approaching!',

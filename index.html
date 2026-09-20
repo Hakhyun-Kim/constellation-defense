@@ -3,10 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- connect-src names the local dedicated game server explicitly; a remotely hosted payment API or game server means adding its origin here AND in the neon-api-base meta below (deploy/cloud-run.sh prints both edits). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws://127.0.0.1:8643 ws://localhost:8643 https://neon-payment-v6c5fzxt3a-du.a.run.app">
-<!-- Empty = payment API on the page's own origin. Set to a deployed service URL for separate hosting. -->
-<meta name="neon-api-base" content="">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'">
 <title>🌌 Constellation Defense</title>
 <link rel="icon" type="image/png" href="assets/branding/icon.png">
 <link rel="stylesheet" href="css/style.css">
@@ -17,13 +14,12 @@
   <!-- Left: 3D battlefield. -->
   <div class="left">
     <header class="topbar">
-      <h1>🌌 Constellation Defense <span id="paidCosmeticBadge" class="paid-cosmetic hidden" title="별빛 개척자 깃발">🚩</span></h1>
+      <h1>🌌 Constellation Defense</h1>
       <div class="top-right">
         <div class="record">🏆 <b id="bestWave">-</b>웨이브</div>
         <div class="record shard">✨ <b id="shards">0</b></div>
         <button id="bookBtn" title="도감·업적 (B)">📖 도감<span id="bookDot" class="tabdot hidden"></span></button>
         <button id="metaBtn">🌟 별의 축복</button>
-        <button id="neonStoreBtn" class="hidden">🛍️ 별빛 상점</button>
       </div>
     </header>
 
@@ -288,34 +284,6 @@
 </div>
 
 <!-- Star Blessings: persistent upgrades. -->
-<!-- Interactive Neon checkout inspector. -->
-<aside id="neonTour" class="hidden" aria-label="Checkout inspector">
-  <div class="tour-head"><span id="tourStep" class="tour-step">1 / 5</span><b id="tourTitle"></b></div>
-  <p id="tourBody"></p>
-  <p id="tourGame"></p>
-  <p id="tourTask" role="status"></p>
-  <div class="tour-actions"><button id="tourPlay"></button><button id="tourRisk"></button><button id="tourShop"></button></div>
-  <details open class="tour-code-section"><summary id="tourCodeLabel"></summary>
-    <div id="tourCodeTabs" class="tour-actions"></div><code id="tourSource"></code><pre id="tourCode" class="tour-live"></pre>
-  </details>
-  <details open><summary id="tourTraceLabel"></summary><pre id="tourLive" class="tour-live">Waiting for a store request…</pre></details>
-  <p id="tourBoundary"></p>
-  <div class="tour-actions"><button id="tourExport"></button><button id="tourExit"></button></div>
-</aside>
-
-<!-- Dedicated-server viewer: status, architecture, flow and controls (?dedicated=1). -->
-<aside id="dedicatedPanel" class="hidden" aria-label="Dedicated server view" aria-live="polite"></aside>
-
-<div id="neonStoreModal" class="modal hidden">
-  <div class="modal-card neon-store">
-    <h2 id="neonStoreTitle">✦ 별빛 상점</h2>
-    <div id="neonCastlePreview"></div>
-    <div id="neonProduct" class="neon-product"></div>
-    <p id="neonStoreStatus" class="neon-store-status" role="status" aria-live="polite"></p>
-    <button id="neonStoreClose">닫기</button>
-  </div>
-</div>
-
 <div id="metaModal" class="modal hidden">
   <div class="modal-card">
     <h2>🌟 별의 축복</h2>

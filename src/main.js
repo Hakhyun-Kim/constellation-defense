@@ -28,12 +28,6 @@ import {
   KEY_ACTIONS, actionForCode, defaultBindings, keyCodeLabel, normalizeBindings, rebindAction,
 } from './app/preferences.js';
 import { getLocale, installDocumentLocalization, normalizeLocale } from './app/i18n.js';
-import { CastlePreview } from './gfx/castle-preview.js';
-import { adoptPlayerIdentity, initNeonStore, knownPlayerToken } from './app/neon-store.js';
-import { startExposedLaneDemo } from './app/neon-scenario.js';
-import { initNeonTour } from './app/neontour.js';
-import { initDedicatedClient } from './app/dedicated-client.js';
-import { initDedicatedOverlay } from './app/dedicated-overlay.js';
 
 registerDucker((amt, dur) => music.duck(amt, dur));
 
@@ -45,35 +39,6 @@ if (requestedLocale) store.language = locale;
 const ui = new UI();
 const tacticFeedback = createTacticFeedback();
 installDocumentLocalization(locale);
-/* ?dedicated=1 turns this page into a viewer of the dedicated server; the
- * parameter value may override the ws:// address for remote hosts. */
-const dedicatedRoute = urlParams.has('dedicated');
-const dedicatedUrl = (urlParams.get('dedicated') || '').startsWith('ws')
-  ? urlParams.get('dedicated') : `ws://${location.hostname || '127.0.0.1'}:8643`;
-let remoteView = false;
-let dedicatedClient = null;
-/* In dedicated mode every store call travels over the gateway socket; the
- * store UI stays identical and only the wire changes. The client may boot
- * before the socket exists, so the transport waits for it briefly. */
-async function gatewayStoreTransport(path, options) {
-  for (let attempt = 0; attempt < 100 && !dedicatedClient; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  if (!dedicatedClient) return { status: 0, ok: false, data: { error: 'gateway unavailable' } };
-  return dedicatedClient.store(path, options);
-}
-let castlePreview = null;
-const neonStore = initNeonStore({ locale,
-  transport: dedicatedRoute ? gatewayStoreTransport : null,
-  onPreview: container => { castlePreview = new CastlePreview(container, renderer.castle); },
-  onEntitlements: items => {
-    /* In dedicated mode the battlefield castle wears the session's shared
-     * cosmetics from snapshots; the store close-up stays personal. */
-    if (!remoteView) renderer.cosmetics.setEntitlements(items);
-    castlePreview?.setEntitlements(items);
-  },
-});
-window.addEventListener('pagehide', () => castlePreview?.dispose(), { once: true });
 /* Override graphics with ?gfx=high|lite|min; min is for tests and very slow devices. */
 const urlGfx = urlParams.get('gfx');
 const judgeMode = urlParams.has('judge');
@@ -91,7 +56,7 @@ let reducedEffects = systemReducedEffects || store.effectsReduced !== false;
 document.body.classList.toggle('reduced-effects', reducedEffects);
 const weeklyReplay = weeklyChallenge ? createSwapReplay(weeklyChallenge.id) : null;
 const sessionEligible = !judgeMode && !previewChapter && !urlParams.has('demo')
-  && !urlParams.has('perf') && !urlParams.has('sessionqa') && !dedicatedRoute;
+  && !urlParams.has('perf') && !urlParams.has('sessionqa');
 const playtestLog = createLocalPlaytestLog();
 ui.setPlaytestLogStatus(playtestLog.records().length);
 let keyBindings = normalizeBindings(store.keyBindings);
@@ -1105,7 +1070,7 @@ function onGameOver() {
   setTimeout(() => {
     if (overToken !== gameOverToken || state.phase !== 'over') return;
     SFX.shard();
-    if (!document.body.classList.contains('tour-on')) ui.showOver(state);
+    ui.showOver(state);
     ui.updateHud(state, store.shards, store.best(state.difficulty));
   }, 900);
 }
@@ -1586,8 +1551,6 @@ document.addEventListener('click', (ev) => {
 });
 
 document.addEventListener('keydown', (ev) => {
-  /* Viewer mode: the server plays; local game hotkeys stay off. */
-  if (remoteView) return;
   const key = ev.key;
 
   /* Store physical key codes so shortcuts work consistently with Korean IME and English layouts. Reserve Escape, Enter, Space, Tab and arrows for UI navigation. */
@@ -1892,11 +1855,7 @@ function frame(now) {
   /* The demo still manages its flow while modals are open. */
   if (demo.active) demo.step(realDt);
 
-  if (remoteView) {
-    /* The dedicated server owns the simulation. Between its snapshots only
-     * enemy motion is interpolated; no game rule runs in this browser. */
-    dedicatedClient?.smooth(realDt);
-  } else if (!isPaused() && !perfMode) {
+  if (!isPaused() && !perfMode) {
     /* Fixed-step simulation maintains game speed independently of rendering FPS. */
     simAcc = Math.min(simAcc + realDt * speed, STEP * MAX_STEPS);
     while (simAcc >= STEP) {
@@ -1927,7 +1886,7 @@ function frame(now) {
     } else if (state.phase === 'prep') music.setTrack('prep');
   }
 
-  const autoPhaseRemaining = remoteView ? null : updateAutoPhaseFlow(realDt);
+  const autoPhaseRemaining = updateAutoPhaseFlow(realDt);
 
   /* UI updates. */
   ui.updateHud(state, store.shards, store.best(state.difficulty));
@@ -1962,11 +1921,11 @@ function frame(now) {
 
 /* Offer resume when autosave exists. Demo URLs skip the startup menu for immediate viewing. */
 const bootSave = (() => {
-  if (urlParams.has('demo') || judgeMode || previewChapter || dedicatedRoute) return null;
+  if (urlParams.has('demo') || judgeMode || previewChapter) return null;
   const s = store.autosave;
   return s && Number.isFinite(s.wave) && Array.isArray(s.bench) ? s : null;
 })();
-newGame(store.diff, { holdStory: !!bootSave || !!previewChapter || dedicatedRoute });
+newGame(store.diff, { holdStory: !!bootSave || !!previewChapter });
 
 /* The tactics board accepts input only during waves and sends results through existing render/sound event paths. */
 tactics = createTacticFlow({
@@ -2053,8 +2012,6 @@ demo.attach({
   getState: () => state,
   isStoryOpen: () => ui.isStoryOpen(),
   isRevealOpen: () => ui.isRevealOpen(),
-  /* The store belongs to the viewer: while it is open the bot holds still instead of restarting under a purchase. */
-  isStoreOpen: () => !!neonStore?.isOpen?.(),
   closeStory,
   summon: doSummon,
   place(heroId, pad) { selBench = heroId; doPlace(pad); },
@@ -2095,10 +2052,9 @@ demo.attach({
   },
 });
 
-/* ?demo=expert starts spectating unless the dedicated viewer owns the flow. With ?tour=neon the bot plays while the inspector
- * observes; its Play buttons stop the bot and hand the defense to the viewer. Console callers may use __game.demo.start('expert'). */
-if (urlParams.has('demo') && !dedicatedRoute) {
-  setTimeout(() => demo.start(urlParams.get('demo') || '고수', { cards: urlParams.get('tour') !== 'neon' }), 900);
+/* ?demo=expert starts spectating. Console callers may use __game.demo.start('expert'). */
+if (urlParams.has('demo')) {
+  setTimeout(() => demo.start(urlParams.get('demo') || '고수'), 900);
 }
 
 /* Debug hooks for automated validation and testing. */
@@ -2121,115 +2077,3 @@ window.__game = {
   /* Presentation-only tactic preview; size 6 previews a Hero Sigil without changing rules or state. */
   previewTactic(kind = 'flare', lane = 1, size = 3) { return tactics.preview(kind, lane, size); },
 };
-
-/* Payment narration only: observe the wave without changing simulation state. */
-if (urlParams.get('tour') === 'neon') {
-  initNeonTour({
-    locale,
-    openStore: () => { closeStory(); ui.hideOver(); neonStore?.open(); },
-    closeStore: () => neonStore?.close(),
-    spectating: () => demo.active,
-    riskyDefense: () => {
-      demo.stop(); closeStory();
-      startExposedLaneDemo({
-        newGame: () => newGame('normal', { holdStory: true }),
-        travel: id => handlers.onJourneyTravel(id),
-        heroes: () => state.field,
-        move: (id, pad) => { selectField(state.field.find(hero => hero.id === id)); doMove(pad); },
-        doubleSpeed: () => { if (speed !== 2) handlers.onSpeed(); },
-        startWave: tryStartWave,
-      });
-    },
-    play: () => {
-      demo.stop();
-      if (state.phase === 'over') newGame(store.diff, { holdStory: true });
-      closeStory(); ui.hideOver();
-      const next = E.journeyChoices(state).find(node => node.kind === 'battle' || node.kind === 'boss');
-      if (next) handlers.onJourneyTravel(next.id);
-      tryStartWave();
-    },
-    stage: { snapshot: () => ({ wave: state.wave, hp: state.castleHp, maxHp: state.castleMax, phase: state.phase }) },
-  });
-}
-
-/* ?dedicated=1 — render the dedicated server's authoritative session.
- * The local engine stays idle; snapshots overwrite the volatile state the
- * renderer and HUD already read. The overlay explains the architecture and
- * offers the switch back to an ordinary local game. */
-if (dedicatedRoute) {
-  remoteView = true;
-  ui.hideStart();
-  closeStory();
-  ui.setDemoMode(true, locale === 'en' ? 'server' : '서버');
-  let refreshHold = 0;
-  const overlay = initDedicatedOverlay({
-    locale,
-    backUrl: location.href,
-    client: { command: (op, args) => dedicatedClient
-      ? dedicatedClient.command(op, args)
-      : Promise.resolve({ ok: false, error: 'disconnected' }) },
-    onOpenStore: () => { closeStory(); ui.hideOver(); neonStore?.open(); },
-    onTryGame: () => {
-      remoteView = false;
-      dedicatedClient?.disconnect();
-      overlay.minimize();
-      ui.setDemoMode(false);
-      newGame(store.diff, { replaceSession: true });
-    },
-  });
-  dedicatedClient = initDedicatedClient({
-    url: dedicatedUrl,
-    key: urlParams.get('key') || null,
-    playerToken: knownPlayerToken(),
-    api: {
-      getState: () => state,
-      /* The gateway announces (or switches) the store account for this
-       * connection; persisting it keeps client-mode purchases on it too. */
-      onStoreIdentity: (playerId) => adoptPlayerIdentity(playerId),
-      onBoard: (cells) => { if (remoteView) tactics?.setBoard(cells); },
-      onPhase: () => {
-        if (!remoteView) return;
-        closeStory();
-        ui.hideOver();
-        ui.hideDefenseVictory();
-        refreshAll();
-        refreshHold = performance.now();
-      },
-      onEvents: (events) => { if (remoteView) renderer.onEvents(state, events); },
-      onDecision: (decision) => {
-        if (!remoteView) return;
-        const text = overlay.caption(decision);
-        if (text) ui.setDemoCaption(text, '', decision.action === 'tactic' ? 'action' : 'guide');
-        if (decision.action === 'tactic') {
-          for (const cast of decision.casts || []) {
-            if (!cast.ok) continue;
-            SFX.tactic(cast.kind, cast.size);
-            renderer.tacticCast(state, null, cast.kind, cast.route, cast.size);
-            tacticFeedback.showPreview(cast.kind, cast.route, cast.size);
-          }
-        }
-        if (decision.action === 'startWave') SFX.waveStart();
-      },
-      onSession: () => { if (remoteView) refreshAll(); },
-      onStatus: (status) => overlay.setStatus(status),
-      onSnapshot: (snapshot) => {
-        if (!remoteView) return;
-        /* The shared castle wears every cosmetic delivered through this
-         * server's gateway — the same truth for every viewer. */
-        if (Array.isArray(snapshot.cosmetics)) {
-          renderer.cosmetics.setEntitlements(Object.fromEntries(snapshot.cosmetics.map((key) => [key, true])));
-        }
-        overlay.setLive({
-          wave: snapshot.wave, castleHp: Math.ceil(snapshot.castleHp),
-          castleMax: snapshot.castleMax, phase: snapshot.phase,
-          tick: snapshot.tick, viewers: snapshot.viewers || 0,
-        });
-        /* Panels rebuild at most once a second; the HUD already updates every frame. */
-        if (performance.now() - refreshHold > 1000) {
-          refreshHold = performance.now();
-          refreshAll();
-        }
-      },
-    },
-  });
-}

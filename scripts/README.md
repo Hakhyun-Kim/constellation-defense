@@ -1,6 +1,6 @@
 # scripts/
 
-Every file in this directory, what it does, and whether `npm run check` runs it. The "npm" column is the `package.json` script name. "via X" means the file is imported or invoked by X and so runs inside the gate. `serve.mjs` (`npm run serve`) is the development static server with the payment API mounted on the same origin, `PORT` default 8642; it is not a check.
+Every file in this directory, what it does, and whether `npm run check` runs it. The "npm" column is the `package.json` script name. "via X" means the file is imported or invoked by X and so runs inside the gate. `serve.mjs` (`npm run serve`) is the development static server, `PORT` default 8642; it is not a check.
 
 ## Engine, tactics, balance
 
@@ -33,26 +33,9 @@ Every file in this directory, what it does, and whether `npm run check` runs it.
 | `playtest-report.mjs` | `playtest:report` | Prints a report from exported playtest JSON files. `--participants=N`, `--json`. | no |
 | `preferences-check.mjs` | `preferences:check` | Key bindings: defaults, physical-key lookup, reserved keys, conflict swapping, repair. | yes |
 | `i18n-check.mjs` | `i18n:check` | ko/en locale normalization, critical translations, language selector. | yes |
-| `demo-check.mjs` | `demo:check` | Demo bot and guided tour flow; every demo timer holds while the store is open. | yes |
+| `demo-check.mjs` | `demo:check` | Demo bot and guided tour flow. | yes |
 | `storage-check.mjs` | `storage:check` | Migration of legacy `mathdef_*` localStorage keys. | yes |
-
-## Payment
-
-| File | npm | What it does | In `check` |
-|---|---|---|---|
-| `store-server-check.mjs` | `store:check` | Store API over real HTTP on an ephemeral port: forged signatures, replay, client prices, environment mismatch, other accounts, retry codes, refunds, return addresses. Always runs against the JSON ledger; also against Firestore when `FIRESTORE_EMULATOR_HOST` is set. | yes |
-| `store-regression-check.mjs` | | Neon client timeout and response handling; a failed disk commit stays retryable; a restart preserves the grant. | via `store:check` |
-| `service-check.mjs` | `service:check` | `server/index.mjs` contract: bad configuration refuses to start, health and readiness are truthful, in-flight work drains on shutdown, no game files are served. | yes |
-| `serve-check.mjs` | | Spawns `serve.mjs` on `PORT=0`; public assets load; credentials, ledger and source are blocked. | via `service:check` |
-| `tour-check.mjs` | `tour:check` | Castle cosmetics per entitlement survive refresh and refund removes only one item; redacted events; inspector DOM contract; the bot keeps playing under `?demo=expert&tour=neon`. | yes |
-| `payment-excerpts.mjs` | (first step of `build`) | Generates `src/app/neon-excerpts.generated.js` from six fixed source windows. `--check` fails if the file is stale. | via `build` |
-| `secrets.mjs` | | Encrypts or decrypts an `.env` file (scrypt, AES-256-GCM) for private hand-off. Passphrase from `SECRETS_PASSPHRASE` or a prompt. | no |
-
-## Dedicated server
-
-| File | npm | What it does | In `check` |
-|---|---|---|---|
-| `dedicated-check.mjs` | `dedicated:check` | Conformance check for `dedicated/server.mjs`: hello/welcome roles, snapshot schema, event flow, the viewer/controller auth boundary, and the store gateway in front of an in-process payment service (mock mode, temporary JSON ledger). Runs the real server on an ephemeral port with an accelerated clock. | yes |
+| `serve-check.mjs` | `serve:check` | Spawns `serve.mjs` on `PORT=0`; public assets load; dotfiles, source and repository files are blocked. | yes |
 
 ## Assets and performance
 
@@ -78,6 +61,6 @@ Every file in this directory, what it does, and whether `npm run check` runs it.
 
 ## Build and CI
 
-`npm run build` runs `payment-excerpts.mjs`, then esbuild for `src/main.js` and `src/rafshim.js` into `dist/`. `npm run check` runs every "yes" row above in order, then `build`, then `asset:check`.
+`npm run build` runs esbuild for `src/main.js` and `src/rafshim.js` into `dist/`. `npm run check` runs every "yes" row above in order, then `build`, then `asset:check`.
 
 `.github/workflows/pr-check.yml` runs on pull requests, pushes to `main`, and manual dispatch on `ubuntu-latest` with Node 22: `npm ci`, `npm run check`, then `git diff --exit-code -- dist/`. `dist/game.js` is committed so `index.html` opens without a build; if the fresh build differs, the committed bundle is stale and the job fails. `.github/workflows/balance-check.yml` runs daily at 21:17 UTC and on manual dispatch on `windows-latest`: `npm.cmd ci`, `npm.cmd run check`, `npm.cmd run storage:check`, then `node scripts/balance-check.mjs 60`.

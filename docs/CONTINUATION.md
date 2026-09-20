@@ -1,18 +1,20 @@
 # Cross-machine continuation guide
 
-Last updated: 2026-09-06
+Last updated: 2026-09-20
 
 This document is the starting point for a developer or Codex session picking
 up `Constellation Defense` on another computer.
 
-## 2026-09 — payments and server mode
+## 2026-09 — payments and server mode were detached
 
-Everything below this section predates the Neon checkout integration and the
-dedicated server. For those, start with `AGENTS.md` (sections "Neon 결제 통합"
-and "Dedicated 게임 서버") and the folder guides `server/README.md`,
-`dedicated/README.md`, `deploy/README.md` and `scripts/README.md`. The gates
-`store:check`, `service:check`, `tour:check` and `dedicated:check` are part of
-`npm run check`; `deploy/cloud-run.sh` is the one-command Cloud Run deploy.
+The Neon checkout integration (`server/`, `deploy/`, the store UI and checkout
+inspector) and the dedicated server (`dedicated/`, `clients/`, `?dedicated=1`)
+were removed from this repository on 2026-09-20 to keep the game a server-free
+static build. The code, its checks, a wiring patch and the re-attach guide are
+in the `neon-checkout-integration` repository under `code/`; the tag
+`neon-integrated-final` marks the last commit here that still had them. If an
+older checkout on another machine still has a `.env` or `.data/`, leave them
+untracked — `.gitignore` keeps ignoring both.
 
 ## Current handoff state
 
